@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Kill Service Worker</title>
+</head>
+<body>
+  <h1>Nettoyage du cache et du Service Worker...</h1>
+  <p id="status">En cours...</p>
+
+  <script>
+    async function killServiceWorkers() {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+          await registration.unregister();
+        }
+      }
+      if (caches) {
+        const cacheNames = await caches.keys();
+        for (let name of cacheNames) {
+          await caches.delete(name);
+        }
+      }
+      document.getElementById('status').innerText = 'Cache et Service Worker supprimés ✅';
+
+      // Redirection après nettoyage
+      const params = new URLSearchParams(window.location.search);
+      const to = params.get('to') || 'index.html';
+      setTimeout(() => {
+        window.location.href = to;
+      }, 1000);
+    }
+
+    killServiceWorkers();
+  </script>
+</body>
+</html>
