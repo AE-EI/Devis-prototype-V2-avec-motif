@@ -123,31 +123,37 @@ function pageHome(){
 
 /* Sélection / création de pièce */
 function pageAddPiece(){
-  const options = PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('');
+  const options =
+    PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
+    `<option value="__NEW__">➕ Créer une nouvelle pièce…</option>`;
+
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
-      <label>Choisir une pièce prédéfinie</label>
+      <label>Choisir une pièce</label>
       <select id="piece-choice">${options}</select>
       <div class="row" style="margin-top:10px;">
-        ${b("Ajouter la pièce sélectionnée","confirmPieceChoice()","btn primary")}
+        ${b("Valider","confirmPieceChoice()","btn primary")}
       </div>
-    </div>
-    <div class="card" style="margin-top:12px;">
-      <h2>…ou créer une nouvelle pièce</h2>
-      <input id="piece-custom" placeholder="Ex. Chambre parentale" />
-      <div class="row" style="margin-top:10px;">
-        ${b("Créer cette pièce","confirmPieceCustom()","btn")}
-      </div>
+      <p class="muted" style="margin-top:10px;">
+        L’option “Créer une nouvelle pièce…” te demande un nom et n’est pas mémorisée pour les prochaines fois.
+      </p>
     </div>
   `);
 }
 function confirmPieceChoice(){
   const sel = document.getElementById('piece-choice').value;
   if(!sel) return;
-  ensureSection(sel);
-  goPiece(sel);
+
+  let name = sel;
+  if (sel === "__NEW__") {
+    name = (prompt("Nom de la pièce :","") || "").trim();
+    if(!name) return; // annulé ou vide
+  }
+
+  ensureSection(name);   // crée la section si nécessaire
+  goPiece(name);         // ouvre la pièce directement
 }
 function confirmPieceCustom(){
   const name = (document.getElementById('piece-custom').value||"").trim();
