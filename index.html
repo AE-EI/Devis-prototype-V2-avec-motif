@@ -6,7 +6,7 @@
   <!-- ============================= -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V2</title>
+  <title>MiniDevis — V2 (menu + flux validé)</title>
   <style>
     :root { --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666; --line:#e8e8e8; --primary:#111; }
     *{ box-sizing:border-box }
@@ -41,7 +41,8 @@
 const PIECES_PREDEFINIES = ["Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
   "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau","Buanderie","Garage","Couloir",
   "Terrasse","Balcon","Jardin","Débarras","Extérieur","Grenier/Combles"];
-const CATEGORIES = ["Prises","Éclairage","Spécifique"];
+
+const CATEGORIES = ["Prises","Éclairage","Spécifique"]; // “Spécifique” = saisie libre dans la pièce
 const POSES = ["Encastré maçonnerie","Placo","Semi-encastré","Sur-mesure"];
 const DESIGNATIONS_PAR_CATEGORIE = {
   "Prises": ["Prise"],
@@ -68,28 +69,42 @@ function euro(n){ return `${(+n).toFixed(2)} €`; }
 function ensureSection(piece){ if(!devis[piece]) devis[piece] = { items:[], note:"" }; }
 
 /* ============================= */
-/* CHAPITRE 4 : MENU PRINCIPAL */
+/* CHAPITRE 4 : MENU PRINCIPAL (ne remplace rien, il coiffe le flux existant) */
 /* ============================= */
-function pageMenu(){
+function pageMain(){
   view(`
     <div class="card">
       <h2>Menu principal</h2>
       <div class="row">
-        ${b("➕ Nouveau devis","newDevis()","btn primary")}
+        ${b("➕ Nouveau devis","actionNouveauDevis()","btn primary")}
         ${b("📂 Mes devis sauvegardés","pageSavedDevis()")}
       </div>
     </div>
   `);
 }
-function newDevis(){ devis = {}; pageHome(); }
+function actionNouveauDevis(){
+  devis = {}; // reset propre
+  pageHome(); // ↩️ on lance le FLUX VALIDÉ (petits carrés) tel quel
+}
 function pageSavedDevis(){
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
   if(!saved.length){
-    view(`<div class="card">${b("Retour","pageMenu()","btn back")}<h2>Mes devis sauvegardés</h2><p class="muted">Aucun devis sauvegardé.</p></div>`);
+    view(`<div class="card">
+      ${b("Retour","pageMain()","btn back")}
+      <h2>Mes devis sauvegardés</h2>
+      <p class="muted">Aucun devis sauvegardé.</p>
+    </div>`);
     return;
   }
-  const list = saved.map((d,i)=>`<div class="pill"><strong>${d.name}</strong> (${d.date}) ${b("Ouvrir",`loadDevis(${i})`)} ${b("Supprimer",`deleteDevis(${i})`,"btn")}</div>`).join('');
-  view(`<div class="card">${b("Retour","pageMenu()","btn back")}<h2>Mes devis sauvegardés</h2><div class="list">${list}</div></div>`);
+  const list = saved.map((d,i)=>`<div class="pill">
+      <strong>${d.name}</strong> <small>${d.date}</small>
+      ${b("Ouvrir",`loadDevis(${i})`)} ${b("Supprimer",`deleteDevis(${i})`,"btn")}
+    </div>`).join('');
+  view(`<div class="card">
+      ${b("Retour","pageMain()","btn back")}
+      <h2>Mes devis sauvegardés</h2>
+      <div class="list">${list}</div>
+  </div>`);
 }
 function saveCurrentDevis(){
   const name = prompt("Nom du devis :","") || ("Devis " + new Date().toLocaleDateString());
@@ -111,7 +126,7 @@ function deleteDevis(idx){
 }
 
 /* ============================= */
-/* CHAPITRE 5 : ACCUEIL & PIÈCES */
+/* CHAPITRE 5 : FLUX VALIDÉ — ACCUEIL DU DEVIS & PIÈCES */
 /* ============================= */
 function pageHome(){
   const listPieces = Object.keys(devis);
@@ -126,7 +141,7 @@ function pageHome(){
 
   view(`
     <div class="card">
-      ${b("Retour menu","pageMenu()","btn back")}
+      ${b("Retour menu","pageMain()","btn back")}
       <h2>Accueil du devis</h2>
       <div class="row">
         ${b("Ajouter une pièce","pageAddPiece()","btn primary")}
@@ -147,143 +162,267 @@ function pageHome(){
   `);
 }
 
+/* Sélection / création de pièce */
 function pageAddPiece(){
-  const opts = PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('');
+  const options =
+    PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
+    `<option value="__NEW__">➕ Créer une nouvelle pièce…</option>`;
+
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
-      <select id="pieceSelect">${opts}<option value="autre">➕ Créer une pièce</option></select>
-      <div class="row">${b("Valider","confirmPiece()","btn primary")}</div>
+      <select id="piece-choice">${options}</select>
+      <div class="row" style="margin-top:10px;">${b("Valider","confirmPieceChoice()","btn primary")}</div>
+      <p class="muted" style="margin-top:10px;">L’option “Créer une nouvelle pièce…” n’est pas mémorisée pour les prochaines fois.</p>
     </div>
   `);
 }
-function confirmPiece(){
-  const sel = document.getElementById("pieceSelect").value;
+function confirmPieceChoice(){
+  const sel = document.getElementById('piece-choice').value;
+  if(!sel) return;
   let name = sel;
-  if(sel==="autre"){ name = prompt("Nom de la nouvelle pièce :",""); if(!name) return pageAddPiece(); }
-  ensureSection(name); ctx.piece=name; pagePiece(name);
+  if (sel === "__NEW__") {
+    name = (prompt("Nom de la pièce :","") || "").trim();
+    if(!name) return; // annulé ou vide
+  }
+  ensureSection(name);
+  goPiece(name);
 }
-function removePiece(p){ if(confirm("Supprimer cette pièce ?")){ delete devis[p]; pageHome(); } }
-function goPiece(p){ ctx.piece=p; pagePiece(p); }
-function pagePiece(p){
-  const sec = devis[p]; if(!sec) return pageHome();
-  const lines = sec.items.map((it,i)=>`<div class="pill">
-      ${it.qty}x ${it.designation} — ${it.intervention} — ${euro(it.total)}
-      ${b("✏️","editLine('${p}',${i})")} ${b("🗑️","delLine('${p}',${i})")}
-    </div>`).join('');
+function removePiece(piece){
+  if(confirm(`Supprimer la pièce “${piece}” et toutes ses lignes ?`)){
+    delete devis[piece];
+    pageHome();
+  }
+}
+
+/* Page d’une pièce */
+function goPiece(piece){
+  ctx = { piece, category:null, intervention:null, pose:null, designation:null };
+  ensureSection(piece);
+
+  const cats = CATEGORIES.map(cat => b(cat, `goCategory('${cat}')`)).join('');
+  const noteTxt = devis[piece].note ? `<em class="muted">Note : ${devis[piece].note}</em>` : `<span class="muted">Aucune note</span>`;
+  const lignes = devis[piece].items.length
+    ? `<ul>` + devis[piece].items.map((it,i)=>{
+        const total = (it.prixU||0) * (it.qty||0);
+        const poseTxt = (it.intervention==="Création" && it.pose) ? ` — ${it.pose.toLowerCase()}` : "";
+        const unitTxt = it.unit || "u";
+        return `<li>${it.intervention?it.intervention+" — ":""}${it.designation}${poseTxt} (${it.qty} ${unitTxt} × ${euro(it.prixU)} = ${euro(total)}) ${b("×",`delLine('${piece}',${i})`,"btn")}</li>`;
+      }).join('') + `</ul>`
+    : `<p class="muted">Aucune ligne pour l’instant.</p>`;
+
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
-      <h2>${p}</h2>
-      <div class="row">
-        ${b("Ajouter une ligne","pageCategory()","btn primary")}
-        ${b("📝 Note","pageNotePiece('${p}')")}
-      </div>
+      <h2>${piece}</h2>
+      <div class="row">${cats} ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}</div>
+      <div class="row" style="margin-top:10px;">${b("Ajouter / modifier la note","editPieceNote()")}</div>
     </div>
-    <div class="card"><h2>Lignes</h2><div class="list">${lines||"<p class='muted'>Aucune ligne</p>"}</div></div>
+
+    <div class="card">
+      <h2>Lignes de la pièce</h2>
+      ${lignes}
+      <p style="margin-top:8px;">${noteTxt}</p>
+    </div>
   `);
 }
-function pageNotePiece(p){
-  const sec = devis[p]; const val = sec.note || "";
+function delLine(piece, idx){
+  devis[piece].items.splice(idx,1);
+  goPiece(piece);
+}
+function editPieceNote(){
+  const cur = devis[ctx.piece].note || "";
+  const n = prompt(`Note pour ${ctx.piece}`, cur);
+  if(n!==null) devis[ctx.piece].note = n.trim();
+  goPiece(ctx.piece);
+}
+
+/* Catégorie → Intervention → Pose → Quantité */
+function goCategory(cat){
+  ctx.category = cat;
+  const interventions = (cat==="Prises")
+    ? ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"]
+    : (cat==="Éclairage")
+      ? ["Création","Remplacement luminaire","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"]
+      : ["Saisie libre avec prix"]; // “Spécifique” (dans la pièce)
+
+  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
   view(`
     <div class="card">
-      ${b("Retour",`pagePiece('${p}')`,"btn back")}
-      <h2>Note pour ${p}</h2>
-      <textarea id="note" rows="6">${val}</textarea>
-      ${b("Enregistrer","saveNotePiece('"+p+"')","btn primary")}
+      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
+      <h2>${ctx.category} — ${ctx.piece}</h2>
+      <div class="row">${btns}</div>
     </div>
   `);
 }
-function saveNotePiece(p){ devis[p].note = document.getElementById("note").value; pagePiece(p); }
-
-/* ============================= */
-/* CHAPITRE 6 : CATÉGORIE → INTERVENTION → POSE → DESIGNATION */
-/* ============================= */
-function pageCategory(){
-  const opts = CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('');
-  view(`<div class="card">${b("Retour","pagePiece(ctx.piece)","btn back")}<h2>Catégorie</h2>
-    <select id="cat">${opts}</select>
-    ${b("Valider","confirmCategory()","btn primary")}</div>`);
-}
-function confirmCategory(){ ctx.category=document.getElementById("cat").value; pageIntervention(); }
-function pageIntervention(){
-  const opts=["Création","Recâblage sans saignée","Recâblage avec saignée","Remplacement"].map(x=>`<option>${x}</option>`).join('');
-  view(`<div class="card">${b("Retour","pageCategory()","btn back")}<h2>Type d’intervention</h2>
-    <select id="interv">${opts}</select>
-    ${b("Valider","confirmInterv()","btn primary")}</div>`);
-}
-function confirmInterv(){ ctx.intervention=document.getElementById("interv").value; pagePose(); }
-function pagePose(){
-  const opts = POSES.map(p=>`<option>${p}</option>`).join('');
-  view(`<div class="card">${b("Retour","pageIntervention()","btn back")}<h2>Type de pose</h2>
-    <select id="pose">${opts}</select>
-    ${b("Valider","confirmPose()","btn primary")}</div>`);
-}
-function confirmPose(){ ctx.pose=document.getElementById("pose").value; pageDesignation(); }
-function pageDesignation(){
-  const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category]||["Autre"];
-  const opts = list.map(d=>`<option value="${d}">${d}</option>`).join('');
-  view(`<div class="card">${b("Retour","pagePose()","btn back")}<h2>Désignation</h2>
-    <select id="des">${opts}<option value="autre">Autre...</option></select>
-    ${b("Valider","confirmDes()","btn primary")}</div>`);
-}
-function confirmDes(){
-  let d=document.getElementById("des").value;
-  if(d==="autre") d=prompt("Nouvelle désignation :","")||"Autre";
-  ctx.designation=d; pageQty();
-}
-function pageQty(){
-  const btns = Array.from({length:6},(_,i)=>b(i+1,`addLine(${i+1})`,"btn")).join('');
-  view(`<div class="card">${b("Retour","pageDesignation()","btn back")}<h2>Quantité</h2><div class="grid-qty">${btns}</div></div>`);
-}
-function addLine(q){
-  const prix = TARIFS[ctx.designation];
-  let unit=0;
-  if(prix){
-    if(ctx.intervention==="Création") unit=prix.creation;
-    else if(ctx.intervention.includes("sans")) unit=prix.recablage_sans;
-    else if(ctx.intervention.includes("avec")) unit=prix.recablage_avec;
-    else unit=prix.remplacement;
+function goIntervention(interv){
+  ctx.intervention = interv;
+  if(ctx.category==="Spécifique"){
+    const label = prompt("Nom de la prestation spécifique :","");
+    if(!label){ return goCategory("Spécifique"); }
+    const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
+    ensureSection(ctx.piece);
+    devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
+    goPiece(ctx.piece);
+    return;
   }
-  const total=unit*q;
-  devis[ctx.piece].items.push({ category:ctx.category, intervention:ctx.intervention, pose:ctx.pose, designation:ctx.designation, qty:q, unit, total });
-  pagePiece(ctx.piece);
+  if(interv==="Création"){
+    const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
+    view(`
+      <div class="card">
+        ${b("Retour",`goCategory('${ctx.category}')`,"btn back")}
+        <h2>Type de pose</h2>
+        <div class="row">${poses}</div>
+      </div>
+    `);
+  } else {
+    goDesignation(null);
+  }
 }
-function editLine(p,i){
-  const it=devis[p].items[i]; const newQty=prompt("Nouvelle quantité:",it.qty);
-  if(newQty){ it.qty=+newQty; it.total=it.qty*it.unit; pagePiece(p); }
+function goDesignation(pose){
+  ctx.pose = pose; // peut être null (hors Création)
+  const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
+  const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour", ctx.intervention==="Création" ? `goIntervention('${ctx.intervention}')` : `goCategory('${ctx.category}')`,"btn back")}
+      <h2>Désignation</h2>
+      <div class="row">${btns}</div>
+    </div>
+  `);
 }
-function delLine(p,i){ devis[p].items.splice(i,1); pagePiece(p); }
+function pageQuantite(designation){
+  ctx.designation = designation;
+  const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour",`goDesignation('${ctx.pose}')`,"btn back")}
+      <h2>Quantité</h2>
+      <div class="grid-qty">${qtyBtns}</div>
+      <div class="row" style="margin-top:10px;">
+        ${b("1","saveItem(1)")}
+        ${b("5","saveItem(5)")}
+        ${b("10","saveItem(10)")}
+      </div>
+    </div>
+  `);
+}
+function getPrix(designation, intervention){
+  const base = TARIFS[designation] || {};
+  if(intervention==="Création") return base.creation||0;
+  if(intervention.includes("sans remplacement")) return base.recablage_sans||0;
+  if(intervention.includes("avec remplacement")) return base.recablage_avec||0;
+  if(intervention.startsWith("Remplacement")) return base.remplacement||0;
+  return 0;
+}
+function saveItem(qty){
+  ensureSection(ctx.piece);
+  devis[ctx.piece].items.push({
+    category: ctx.category,
+    intervention: ctx.intervention,
+    pose: ctx.pose,
+    designation: ctx.designation,
+    qty: qty,
+    prixU: getPrix(ctx.designation, ctx.intervention)
+  });
+  // rester sur la pièce pour enchaîner
+  goPiece(ctx.piece);
+}
+
+/* Spécifique dans la pièce (saisie rapide) */
+function pagePieceSpecifique(){
+  const label = prompt("Nom de la prestation spécifique :","");
+  if(!label){ return goPiece(ctx.piece); }
+  const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
+  ensureSection(ctx.piece);
+  devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
+  goPiece(ctx.piece);
+}
 
 /* ============================= */
-/* CHAPITRE 7 : INSTALLATIONS SPÉCIFIQUES */
+/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder pour l’instant) */
 /* ============================= */
 function pageISHome(){
-  view(`<div class="card">${b("Retour","pageHome()","btn back")}<h2>Installations spécifiques</h2><p class="muted">(Module à compléter)</p></div>`);
+  view(`
+    <div class="card">
+      ${b("Retour","pageHome()","btn back")}
+      <h2>Installations spécifiques</h2>
+      <p class="muted">Module détaillé à réintégrer (Terre / Ventilation / Tableau) — on l’ajoute ensuite sans toucher au flux validé.</p>
+    </div>
+  `);
 }
 
 /* ============================= */
-/* CHAPITRE 8 : ESTIMATIF & TOTAUX */
+/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
 /* ============================= */
 function pageEstimatif(){
-  let html=""; let total=0;
-  for(const p in devis){
-    html+=`<h3>${p}</h3>`;
-    devis[p].items.forEach(it=>{ html+=`${it.qty}x ${it.designation} (${it.intervention}) — ${euro(it.total)}<br>`; total+=it.total; });
-    if(devis[p].note) html+=`<em>Note: ${devis[p].note}</em><br>`;
+  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
+  let totalGlobal = 0;
+  for (const section in devis) {
+    if (!devis[section] || devis[section].items.length === 0) continue;
+    let sectionTotal = 0;
+    html += `<h3><strong>${section}</strong></h3><ul>`;
+    devis[section].items.forEach((item) => {
+      const prixTotal = (item.prixU||0) * (item.qty||0);
+      sectionTotal += prixTotal;
+      totalGlobal += prixTotal;
+      const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
+      const unitTxt = item.unit ? item.unit : "u";
+      const left = item.intervention ? `${item.intervention} — ` : "";
+      html += `<li>${left}${item.designation}${poseTxt} (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
+    });
+    if (devis[section].note) html += `<li><em>Note : ${devis[section].note}</em></li>`;
+    html += `</ul><p><strong>Total ${section} : ${euro(sectionTotal)}</strong></p><hr>`;
   }
-  view(`<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2><pre>${html||"Aucune ligne"}</pre><p><strong>Total: ${euro(total)}</strong></p></div>`);
+  html += `<h3>Total global : ${euro(totalGlobal)}</h3>
+           <div class="row" style="margin-top:10px;">${b("Exporter en .txt","exportText()")}</div></div>`;
+  view(html);
 }
 function pageTotaux(){
-  let total=0; for(const p in devis){ devis[p].items.forEach(it=>total+=it.total); }
-  view(`<div class="card">${b("Retour","pageHome()","btn back")}<h2>Total global</h2><p><strong>${euro(total)}</strong></p></div>`);
+  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par section</h2>`;
+  let totalGlobal = 0;
+  for (const section in devis) {
+    if (!devis[section] || devis[section].items.length === 0) continue;
+    const sectionTotal = devis[section].items.reduce((sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0);
+    totalGlobal += sectionTotal;
+    html += `<p><strong>${section}</strong> : ${euro(sectionTotal)}</p>`;
+  }
+  html += `<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
+           <div class="row" style="margin-top:10px;">${b("Exporter en .txt","exportText()")}</div></div>`;
+  view(html);
+}
+function exportText(){
+  let lines = [];
+  let totalGlobal = 0;
+  for (const section in devis) {
+    if (!devis[section] || devis[section].items.length === 0) continue;
+    lines.push(`${section} :`);
+    let sectionTotal = 0;
+    devis[section].items.forEach(item => {
+      const prixTotal = (item.prixU||0) * (item.qty||0);
+      sectionTotal += prixTotal;
+      totalGlobal += prixTotal;
+      const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
+      const unitTxt = item.unit ? item.unit : "u";
+      lines.push(`-${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
+    });
+    if (devis[section].note) lines.push(`_Note : ${devis[section].note}_`);
+    lines.push(`Total ${section} : ${sectionTotal}€`);
+    lines.push("");
+  }
+  lines.push(`Total global : ${totalGlobal}€`);
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "devis.txt"; a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ============================= */
-/* CHAPITRE 9 : DÉMARRAGE */
+/* CHAPITRE 8 : DÉMARRAGE (menu → flux validé) */
 /* ============================= */
-function init(){ pageMenu(); }
+function init(){ pageMain(); }
 init();
 </script>
 </main>
