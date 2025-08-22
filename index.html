@@ -107,6 +107,54 @@ function resetAll(){
   try{ localStorage.removeItem(LS_KEY); }catch(e){}
   pageHome();
 }
+  /* ============================= */
+/* CHAPITRE 4.6 : PERSISTANCE MULTI-DEVIS */
+/* ============================= */
+const LS_PROJECTS = "minidevis_v2_projects"; // index { nom: {...devis} }
+
+function loadProjectsIndex(){
+  try{
+    return JSON.parse(localStorage.getItem(LS_PROJECTS)) || {};
+  }catch(e){ return {}; }
+}
+function saveProjectsIndex(idx){
+  try{
+    localStorage.setItem(LS_PROJECTS, JSON.stringify(idx));
+  }catch(e){}
+}
+
+function saveAsPrompt(){
+  const name = (prompt("Nom du devis à enregistrer :", "Devis " + new Date().toLocaleDateString()) || "").trim();
+  if(!name) return;
+  const idx = loadProjectsIndex();
+  if(idx[name] && !confirm("Un devis porte déjà ce nom. Écraser ?")) return;
+  idx[name] = devis;              // on stocke l’objet tel quel
+  saveProjectsIndex(idx);
+  alert("Devis enregistré sous “" + name + "”.");
+}
+function newDevis(){
+  if(Object.keys(devis).length && !confirm("Créer un nouveau devis ? (Le devis courant restera disponible via “Enregistrer ce devis…”)")){
+    return;
+  }
+  devis = {};
+  saveLocal();                    // vide le devis courant
+  pageHome();
+}
+function openProject(name){
+  const idx = loadProjectsIndex();
+  if(!idx[name]) return alert("Introuvable.");
+  devis = idx[name];
+  saveLocal();                    // utile pour l’auto‑sauvegarde courant
+  pageHome();
+}
+function deleteProject(name){
+  const idx = loadProjectsIndex();
+  if(!idx[name]) return;
+  if(!confirm("Supprimer “" + name + "” ?")) return;
+  delete idx[name];
+  saveProjectsIndex(idx);
+  pageSavedList();
+}
 
 /* ============================= */
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
@@ -142,6 +190,8 @@ function pageHome(){
     <div class="row" style="margin-top:12px;">
       ${b("Voir l’estimatif","pageEstimatif()")}
       ${b("Voir les totaux","pageTotaux()")}
+      ${b("Enregistrer ce devis…","saveAsPrompt()","btn")}
+      ${b("Menu principal","pageMainMenu()","btn")}
     </div>
 
     <p class="muted" style="margin-top:8px;">Astuce : tu peux créer des pièces librement (liste ci‑dessous + “Créer une nouvelle pièce”).</p>
@@ -348,6 +398,44 @@ function pagePieceSpecifique(){
   devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
   saveLocal();              // ← persistance
   goPiece(ctx.piece);
+}
+  /* ============================= */
+/* CHAPITRE 5.1 : MENU PRINCIPAL & DOSSIER DES DEVIS */
+/* ============================= */
+
+function pageMainMenu(){
+  view(`
+    <div class="card">
+      <h2>Menu principal</h2>
+      <div class="row">
+        ${b("Créer un nouveau devis","newDevis()","btn primary")}
+        ${b("Mes devis sauvegardés","pageSavedList()","btn")}
+      </div>
+      <p class="muted" style="margin-top:10px;">Astuce : depuis l’accueil, utilise “Enregistrer ce devis…” pour l’ajouter au dossier.</p>
+    </div>
+  `);
+}
+
+function pageSavedList(){
+  const idx = loadProjectsIndex();
+  const names = Object.keys(idx);
+  const list = names.length
+    ? names.map(n => `
+        <div class="pill">
+          <strong>${n}</strong>
+          ${b("Ouvrir", `openProject(${JSON.stringify(n)})`,"btn")}
+          ${b("Supprimer", `deleteProject(${JSON.stringify(n)})`,"btn")}
+        </div>
+      `).join('')
+    : `<p class="muted">Aucun devis sauvegardé pour l’instant.</p>`;
+
+  view(`
+    <div class="card">
+      ${b("Retour","pageMainMenu()","btn back")}
+      <h2>Mes devis sauvegardés</h2>
+      <div class="list">${list}</div>
+    </div>
+  `);
 }
 
 /* ============================= */
