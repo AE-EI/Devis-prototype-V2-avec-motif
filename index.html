@@ -80,6 +80,33 @@ function euro(n){ return `${(+n).toFixed(2)} €`; }
 function ensureSection(piece){
   if(!devis[piece]) devis[piece] = { items:[], note:"" };
 }
+  /* ============================= */
+/* CHAPITRE 4.5 : PERSISTANCE (localStorage) */
+/* ============================= */
+const LS_KEY = "minidevis_v2";
+
+function saveLocal(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(devis));
+  }catch(e){ console.warn("saveLocal error:", e); }
+}
+
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      const obj = JSON.parse(raw);
+      if(obj && typeof obj === "object") devis = obj;
+    }
+  }catch(e){ console.warn("loadLocal error:", e); }
+}
+
+function resetAll(){
+  if(!confirm("Réinitialiser le devis (toutes les pièces et lignes) ?")) return;
+  devis = {};
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  pageHome();
+}
 
 /* ============================= */
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
@@ -152,6 +179,11 @@ function confirmPieceChoice(){
     if(!name) return; // annulé ou vide
   }
 
+  ensureSection(name);
+  saveLocal();              // ← persistance
+  goPiece(name);
+}
+
   ensureSection(name);   // crée la section si nécessaire
   goPiece(name);         // ouvre la pièce directement
 }
@@ -164,6 +196,7 @@ function confirmPieceCustom(){
 function removePiece(piece){
   if(confirm(`Supprimer la pièce “${piece}” et toutes ses lignes ?`)){
     delete devis[piece];
+    saveLocal();            // ← persistance
     pageHome();
   }
 }
@@ -203,12 +236,14 @@ function goPiece(piece){
 }
 function delLine(piece, idx){
   devis[piece].items.splice(idx,1);
+  saveLocal();              // ← persistance
   goPiece(piece);
 }
 function editPieceNote(){
   const cur = devis[ctx.piece].note || "";
   const n = prompt(`Note pour ${ctx.piece}`, cur);
   if(n!==null) devis[ctx.piece].note = n.trim();
+  saveLocal();              // ← persistance
   goPiece(ctx.piece);
 }
 
@@ -300,8 +335,8 @@ function saveItem(qty){
     qty: qty,
     prixU: getPrix(ctx.designation, ctx.intervention)
   });
-  // après ajout : rester sur la pièce pour enchaîner
-  goPiece(ctx.piece);
+  saveLocal();              // ← persistance
+  goPiece(ctx.piece);       // rester sur la pièce pour enchaîner
 }
 
 /* Spécifique dans la pièce (saisie rapide) */
@@ -311,6 +346,7 @@ function pagePieceSpecifique(){
   const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
+  saveLocal();              // ← persistance
   goPiece(ctx.piece);
 }
 
@@ -319,14 +355,20 @@ function pagePieceSpecifique(){
    Rôle : pages IS (mise à la terre, ventilation, tableau).
    → Ajoutées dans la PARTIE 2. Ici, on met juste un écran tampon. */
 /* ============================= */
-function pageISHome(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>Installations spécifiques</h2>
-      <p class="muted">Les boutons détaillés (Mise à la terre, Ventilation, Distribution tableau) arrivent dans la Partie 2.</p>
-    </div>
-  `);
+function addIS(section, label, prixU, qty=1, unit="u"){
+  ensureSection(section);
+  devis[section].items.push({
+    category:"Installation spécifique",
+    intervention:"",
+    pose:"",
+    designation:label,
+    qty:+qty,
+    prixU:+prixU,
+    unit:unit
+  });
+  saveLocal();  // ← persistance
+  alert(`${label} ajouté (${qty} ${unit}, ${prixU} €/ ${unit})`);
+  pageISHome();
 }
 
 /* ============================= */
