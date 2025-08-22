@@ -3,11 +3,10 @@
 <head>
   <!-- ============================= -->
   <!-- CHAPITRE 1 : STRUCTURE & STYLES -->
-  <!-- Rôle : page de base + styles simples responsive -->
   <!-- ============================= -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V2 (dev, pièces dynamiques)</title>
+  <title>MiniDevis — V2</title>
   <style>
     :root { --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666; --line:#e8e8e8; --primary:#111; }
     *{ box-sizing:border-box }
@@ -22,7 +21,7 @@
     .btn.primary{ background:#111; color:#fff; border-color:#000; }
     .btn.back{ background:#ddd; }
     .btn.ghost{ background:#fff; }
-    .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
     .muted{ color:var(--muted); }
     pre{ white-space:pre-wrap; background:var(--card); border:1px solid var(--line); padding:12px; border-radius:10px; }
     input, select, textarea{ width:100%; padding:10px; font-size:16px; border:1px solid #ccc; border-radius:8px; }
@@ -32,26 +31,17 @@
   </style>
 </head>
 <body>
-<header>MiniDevis — V2 (dev) — Pièces dynamiques</header>
+<header>MiniDevis — V2</header>
 <main id="app"></main>
-
-<!-- ============================= -->
-<!-- CHAPITRE 2 : CONTENEUR & PAGES -->
-<!-- Rôle : un seul fichier / plusieurs “écrans” rendus par JS -->
-<!-- ============================= -->
 
 <script>
 /* ============================= */
-/* CHAPITRE 3 : DONNÉES & CONSTANTES
-   Rôle : listes de pièces, poses, catégories, tarifs de base            */
+/* CHAPITRE 2 : DONNÉES & CONSTANTES */
 /* ============================= */
-const PIECES_PREDEFINIES = [
-  "Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
-  "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau",
-  "Buanderie","Garage","Couloir","Terrasse","Balcon","Jardin",
-  "Débarras","Extérieur","Grenier/Combles"
-];
-const CATEGORIES = ["Prises","Éclairage","Spécifique"]; // “Spécifique” = saisie libre dans la pièce
+const PIECES_PREDEFINIES = ["Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
+  "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau","Buanderie","Garage","Couloir",
+  "Terrasse","Balcon","Jardin","Débarras","Extérieur","Grenier/Combles"];
+const CATEGORIES = ["Prises","Éclairage","Spécifique"];
 const POSES = ["Encastré maçonnerie","Placo","Semi-encastré","Sur-mesure"];
 const DESIGNATIONS_PAR_CATEGORIE = {
   "Prises": ["Prise"],
@@ -66,8 +56,7 @@ const TARIFS = {
 };
 
 /* ============================= */
-/* CHAPITRE 4 : ÉTAT & HELPERS UI
-   Rôle : état global, rendu, boutons utilitaires                       */
+/* CHAPITRE 3 : ÉTAT & HELPERS UI */
 /* ============================= */
 let devis = {}; // { [piece]: { items:[{...}], note:"" } }
 let ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
@@ -76,92 +65,54 @@ const $app = () => document.getElementById('app');
 function view(html){ $app().innerHTML = html; }
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
 function euro(n){ return `${(+n).toFixed(2)} €`; }
+function ensureSection(piece){ if(!devis[piece]) devis[piece] = { items:[], note:"" }; }
 
-function ensureSection(piece){
-  if(!devis[piece]) devis[piece] = { items:[], note:"" };
-}
-  /* ============================= */
-/* CHAPITRE 4.5 : PERSISTANCE (localStorage) */
 /* ============================= */
-const LS_KEY = "minidevis_v2";
-
-function saveLocal(){
-  try{
-    localStorage.setItem(LS_KEY, JSON.stringify(devis));
-  }catch(e){ console.warn("saveLocal error:", e); }
-}
-
-function loadLocal(){
-  try{
-    const raw = localStorage.getItem(LS_KEY);
-    if(raw){
-      const obj = JSON.parse(raw);
-      if(obj && typeof obj === "object") devis = obj;
-    }
-  }catch(e){ console.warn("loadLocal error:", e); }
-}
-
-function resetAll(){
-  if(!confirm("Réinitialiser le devis (toutes les pièces et lignes) ?")) return;
-  devis = {};
-  try{ localStorage.removeItem(LS_KEY); }catch(e){}
-  pageHome();
-}
-  /* ============================= */
-/* CHAPITRE 4.6 : PERSISTANCE MULTI-DEVIS */
+/* CHAPITRE 4 : MENU PRINCIPAL */
 /* ============================= */
-const LS_PROJECTS = "minidevis_v2_projects"; // index { nom: {...devis} }
-
-function loadProjectsIndex(){
-  try{
-    return JSON.parse(localStorage.getItem(LS_PROJECTS)) || {};
-  }catch(e){ return {}; }
+function pageMenu(){
+  view(`
+    <div class="card">
+      <h2>Menu principal</h2>
+      <div class="row">
+        ${b("➕ Nouveau devis","newDevis()","btn primary")}
+        ${b("📂 Mes devis sauvegardés","pageSavedDevis()")}
+      </div>
+    </div>
+  `);
 }
-function saveProjectsIndex(idx){
-  try{
-    localStorage.setItem(LS_PROJECTS, JSON.stringify(idx));
-  }catch(e){}
-}
-
-function saveAsPrompt(){
-  const name = (prompt("Nom du devis à enregistrer :", "Devis " + new Date().toLocaleDateString()) || "").trim();
-  if(!name) return;
-  const idx = loadProjectsIndex();
-  if(idx[name] && !confirm("Un devis porte déjà ce nom. Écraser ?")) return;
-  idx[name] = devis;              // on stocke l’objet tel quel
-  saveProjectsIndex(idx);
-  alert("Devis enregistré sous “" + name + "”.");
-}
-function newDevis(){
-  if(Object.keys(devis).length && !confirm("Créer un nouveau devis ? (Le devis courant restera disponible via “Enregistrer ce devis…”)")){
+function newDevis(){ devis = {}; pageHome(); }
+function pageSavedDevis(){
+  const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
+  if(!saved.length){
+    view(`<div class="card">${b("Retour","pageMenu()","btn back")}<h2>Mes devis sauvegardés</h2><p class="muted">Aucun devis sauvegardé.</p></div>`);
     return;
   }
-  devis = {};
-  saveLocal();                    // vide le devis courant
-  pageHome();
+  const list = saved.map((d,i)=>`<div class="pill"><strong>${d.name}</strong> (${d.date}) ${b("Ouvrir",`loadDevis(${i})`)} ${b("Supprimer",`deleteDevis(${i})`,"btn")}</div>`).join('');
+  view(`<div class="card">${b("Retour","pageMenu()","btn back")}<h2>Mes devis sauvegardés</h2><div class="list">${list}</div></div>`);
 }
-function openProject(name){
-  const idx = loadProjectsIndex();
-  if(!idx[name]) return alert("Introuvable.");
-  devis = idx[name];
-  saveLocal();                    // utile pour l’auto‑sauvegarde courant
-  pageHome();
+function saveCurrentDevis(){
+  const name = prompt("Nom du devis :","") || ("Devis " + new Date().toLocaleDateString());
+  const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
+  saved.push({ name, date:new Date().toLocaleDateString(), data:devis });
+  localStorage.setItem("savedDevisList", JSON.stringify(saved));
+  alert("Devis sauvegardé !");
 }
-function deleteProject(name){
-  const idx = loadProjectsIndex();
-  if(!idx[name]) return;
-  if(!confirm("Supprimer “" + name + "” ?")) return;
-  delete idx[name];
-  saveProjectsIndex(idx);
-  pageSavedList();
+function loadDevis(idx){
+  const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
+  if(saved[idx]){ devis = saved[idx].data; pageHome(); }
+}
+function deleteDevis(idx){
+  if(!confirm("Supprimer ce devis ?")) return;
+  const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
+  saved.splice(idx,1);
+  localStorage.setItem("savedDevisList", JSON.stringify(saved));
+  pageSavedDevis();
 }
 
 /* ============================= */
-/* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
-   Rôle : ajouter/supprimer des pièces, puis dérouler : catégorie → intervention → pose → quantité → note */
+/* CHAPITRE 5 : ACCUEIL & PIÈCES */
 /* ============================= */
-
-/* Accueil */
 function pageHome(){
   const listPieces = Object.keys(devis);
   const listHtml = listPieces.length
@@ -175,515 +126,165 @@ function pageHome(){
 
   view(`
     <div class="card">
-      <h2>Accueil</h2>
+      ${b("Retour menu","pageMenu()","btn back")}
+      <h2>Accueil du devis</h2>
       <div class="row">
         ${b("Ajouter une pièce","pageAddPiece()","btn primary")}
         ${b("Installations spécifiques","pageISHome()","btn")}
       </div>
     </div>
 
-    <div class="card" style="margin-top:12px;">
+    <div class="card">
       <h2>Pièces ajoutées</h2>
       <div class="list">${listHtml}</div>
     </div>
 
-    <div class="row" style="margin-top:12px;">
+    <div class="row">
       ${b("Voir l’estimatif","pageEstimatif()")}
       ${b("Voir les totaux","pageTotaux()")}
-      ${b("Enregistrer ce devis…","saveAsPrompt()","btn")}
-      ${b("Menu principal","pageMainMenu()","btn")}
+      ${b("💾 Sauvegarder ce devis","saveCurrentDevis()")}
     </div>
-
-    <p class="muted" style="margin-top:8px;">Astuce : tu peux créer des pièces librement (liste ci‑dessous + “Créer une nouvelle pièce”).</p>
   `);
 }
 
-/* Sélection / création de pièce */
 function pageAddPiece(){
-  const options =
-    PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
-    `<option value="__NEW__">➕ Créer une nouvelle pièce…</option>`;
-
+  const opts = PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('');
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
-      <label>Choisir une pièce</label>
-      <select id="piece-choice">${options}</select>
-      <div class="row" style="margin-top:10px;">
-        ${b("Valider","confirmPieceChoice()","btn primary")}
-      </div>
-      <p class="muted" style="margin-top:10px;">
-        L’option “Créer une nouvelle pièce…” te demande un nom et n’est pas mémorisée pour les prochaines fois.
-      </p>
+      <select id="pieceSelect">${opts}<option value="autre">➕ Créer une pièce</option></select>
+      <div class="row">${b("Valider","confirmPiece()","btn primary")}</div>
     </div>
   `);
 }
-function confirmPieceChoice(){
-  const sel = document.getElementById('piece-choice').value;
-  if(!sel) return;
-
+function confirmPiece(){
+  const sel = document.getElementById("pieceSelect").value;
   let name = sel;
-  if (sel === "__NEW__") {
-    name = (prompt("Nom de la pièce :","") || "").trim();
-    if(!name) return; // annulé ou vide
-  }
-
-  ensureSection(name);
-  saveLocal();              // ← persistance
-  goPiece(name);
+  if(sel==="autre"){ name = prompt("Nom de la nouvelle pièce :",""); if(!name) return pageAddPiece(); }
+  ensureSection(name); ctx.piece=name; pagePiece(name);
 }
-
-  ensureSection(name);   // crée la section si nécessaire
-  goPiece(name);         // ouvre la pièce directement
-}
-function confirmPieceCustom(){
-  const name = (document.getElementById('piece-custom').value||"").trim();
-  if(!name) return alert("Indique un nom de pièce.");
-  ensureSection(name);
-  goPiece(name);
-}
-function removePiece(piece){
-  if(confirm(`Supprimer la pièce “${piece}” et toutes ses lignes ?`)){
-    delete devis[piece];
-    saveLocal();            // ← persistance
-    pageHome();
-  }
-}
-
-/* Page d’une pièce */
-function goPiece(piece){
-  ctx = { piece, category:null, intervention:null, pose:null, designation:null };
-  ensureSection(piece);
-
-  const cats = CATEGORIES.map(cat => b(cat, `goCategory('${cat}')`)).join('');
-  const noteTxt = devis[piece].note ? `<em class="muted">Note : ${devis[piece].note}</em>` : `<span class="muted">Aucune note</span>`;
-  const lignes = devis[piece].items.length
-    ? `<ul>` + devis[piece].items.map((it,i)=>{
-        const total = (it.prixU||0) * (it.qty||0);
-        const poseTxt = (it.intervention==="Création" && it.pose) ? ` — ${it.pose.toLowerCase()}` : "";
-        const unitTxt = it.unit || "u";
-        return `<li>${it.intervention?it.intervention+" — ":""}${it.designation}${poseTxt} (${it.qty} ${unitTxt} × ${euro(it.prixU)} = ${euro(total)}) ${b("×",`delLine('${piece}',${i})`,"btn")}</li>`;
-      }).join('') + `</ul>`
-    : `<p class="muted">Aucune ligne pour l’instant.</p>`;
-
+function removePiece(p){ if(confirm("Supprimer cette pièce ?")){ delete devis[p]; pageHome(); } }
+function goPiece(p){ ctx.piece=p; pagePiece(p); }
+function pagePiece(p){
+  const sec = devis[p]; if(!sec) return pageHome();
+  const lines = sec.items.map((it,i)=>`<div class="pill">
+      ${it.qty}x ${it.designation} — ${it.intervention} — ${euro(it.total)}
+      ${b("✏️","editLine('${p}',${i})")} ${b("🗑️","delLine('${p}',${i})")}
+    </div>`).join('');
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
-      <h2>${piece}</h2>
-      <div class="row">${cats} ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}</div>
-      <div class="row" style="margin-top:10px;">
-        ${b("Ajouter / modifier la note","editPieceNote()")}
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:12px;">
-      <h2>Lignes de la pièce</h2>
-      ${lignes}
-      <p style="margin-top:8px;">${noteTxt}</p>
-    </div>
-  `);
-}
-function delLine(piece, idx){
-  devis[piece].items.splice(idx,1);
-  saveLocal();              // ← persistance
-  goPiece(piece);
-}
-function editPieceNote(){
-  const cur = devis[ctx.piece].note || "";
-  const n = prompt(`Note pour ${ctx.piece}`, cur);
-  if(n!==null) devis[ctx.piece].note = n.trim();
-  saveLocal();              // ← persistance
-  goPiece(ctx.piece);
-}
-
-/* Catégorie → Intervention → Pose → Quantité */
-function goCategory(cat){
-  ctx.category = cat;
-  const interventions = (cat==="Prises")
-    ? ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"]
-    : (cat==="Éclairage")
-      ? ["Création","Remplacement luminaire","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"]
-      : ["Saisie libre avec prix"]; // “Spécifique” (dans la pièce)
-
-  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
-  view(`
-    <div class="card">
-      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
-      <h2>${ctx.category} — ${ctx.piece}</h2>
-      <div class="row">${btns}</div>
-    </div>
-  `);
-}
-function goIntervention(interv){
-  ctx.intervention = interv;
-  if(ctx.category==="Spécifique"){
-    const label = prompt("Nom de la prestation spécifique :","");
-    if(!label){ return goCategory("Spécifique"); }
-    const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
-    ensureSection(ctx.piece);
-    devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
-    goPiece(ctx.piece);
-    return;
-  }
-  if(interv==="Création"){
-    const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
-    view(`
-      <div class="card">
-        ${b("Retour",`goCategory('${ctx.category}')`,"btn back")}
-        <h2>Type de pose</h2>
-        <div class="row">${poses}</div>
-      </div>
-    `);
-  } else {
-    goDesignation(null);
-  }
-}
-function goDesignation(pose){
-  ctx.pose = pose; // peut être null (hors Création)
-  const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
-  const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
-  view(`
-    <div class="card">
-      ${b("Retour", ctx.intervention==="Création" ? `goIntervention('${ctx.intervention}')` : `goCategory('${ctx.category}')`,"btn back")}
-      <h2>Désignation</h2>
-      <div class="row">${btns}</div>
-    </div>
-  `);
-}
-function pageQuantite(designation){
-  ctx.designation = designation;
-  const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
-  view(`
-    <div class="card">
-      ${b("Retour",`goDesignation('${ctx.pose}')`,"btn back")}
-      <h2>Quantité</h2>
-      <div class="grid-qty">${qtyBtns}</div>
-      <div class="row" style="margin-top:10px;">
-        ${b("1","saveItem(1)")}
-        ${b("5","saveItem(5)")}
-        ${b("10","saveItem(10)")}
-      </div>
-    </div>
-  `);
-}
-function getPrix(designation, intervention){
-  const base = TARIFS[designation] || {};
-  if(intervention==="Création") return base.creation||0;
-  if(intervention.includes("sans remplacement")) return base.recablage_sans||0;
-  if(intervention.includes("avec remplacement")) return base.recablage_avec||0;
-  if(intervention.startsWith("Remplacement")) return base.remplacement||0;
-  return 0;
-}
-function saveItem(qty){
-  ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({
-    category: ctx.category,
-    intervention: ctx.intervention,
-    pose: ctx.pose,
-    designation: ctx.designation,
-    qty: qty,
-    prixU: getPrix(ctx.designation, ctx.intervention)
-  });
-  saveLocal();              // ← persistance
-  goPiece(ctx.piece);       // rester sur la pièce pour enchaîner
-}
-
-/* Spécifique dans la pièce (saisie rapide) */
-function pagePieceSpecifique(){
-  const label = prompt("Nom de la prestation spécifique :","");
-  if(!label){ return goPiece(ctx.piece); }
-  const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
-  ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
-  saveLocal();              // ← persistance
-  goPiece(ctx.piece);
-}
-  /* ============================= */
-/* CHAPITRE 5.1 : MENU PRINCIPAL & DOSSIER DES DEVIS */
-/* ============================= */
-
-function pageMainMenu(){
-  view(`
-    <div class="card">
-      <h2>Menu principal</h2>
+      <h2>${p}</h2>
       <div class="row">
-        ${b("Créer un nouveau devis","newDevis()","btn primary")}
-        ${b("Mes devis sauvegardés","pageSavedList()","btn")}
+        ${b("Ajouter une ligne","pageCategory()","btn primary")}
+        ${b("📝 Note","pageNotePiece('${p}')")}
       </div>
-      <p class="muted" style="margin-top:10px;">Astuce : depuis l’accueil, utilise “Enregistrer ce devis…” pour l’ajouter au dossier.</p>
     </div>
+    <div class="card"><h2>Lignes</h2><div class="list">${lines||"<p class='muted'>Aucune ligne</p>"}</div></div>
   `);
 }
-
-function pageSavedList(){
-  const idx = loadProjectsIndex();
-  const names = Object.keys(idx);
-  const list = names.length
-    ? names.map(n => `
-        <div class="pill">
-          <strong>${n}</strong>
-          ${b("Ouvrir", `openProject(${JSON.stringify(n)})`,"btn")}
-          ${b("Supprimer", `deleteProject(${JSON.stringify(n)})`,"btn")}
-        </div>
-      `).join('')
-    : `<p class="muted">Aucun devis sauvegardé pour l’instant.</p>`;
-
+function pageNotePiece(p){
+  const sec = devis[p]; const val = sec.note || "";
   view(`
     <div class="card">
-      ${b("Retour","pageMainMenu()","btn back")}
-      <h2>Mes devis sauvegardés</h2>
-      <div class="list">${list}</div>
+      ${b("Retour",`pagePiece('${p}')`,"btn back")}
+      <h2>Note pour ${p}</h2>
+      <textarea id="note" rows="6">${val}</textarea>
+      ${b("Enregistrer","saveNotePiece('"+p+"')","btn primary")}
     </div>
   `);
 }
+function saveNotePiece(p){ devis[p].note = document.getElementById("note").value; pagePiece(p); }
 
 /* ============================= */
-/* CHAPITRE 6 : (PLACEHOLDER) INSTALLATIONS SPÉCIFIQUES (IS)
-   Rôle : pages IS (mise à la terre, ventilation, tableau).
-   → Ajoutées dans la PARTIE 2. Ici, on met juste un écran tampon. */
+/* CHAPITRE 6 : CATÉGORIE → INTERVENTION → POSE → DESIGNATION */
 /* ============================= */
-function addIS(section, label, prixU, qty=1, unit="u"){
-  ensureSection(section);
-  devis[section].items.push({
-    category:"Installation spécifique",
-    intervention:"",
-    pose:"",
-    designation:label,
-    qty:+qty,
-    prixU:+prixU,
-    unit:unit
-  });
-  saveLocal();  // ← persistance
-  alert(`${label} ajouté (${qty} ${unit}, ${prixU} €/ ${unit})`);
-  pageISHome();
+function pageCategory(){
+  const opts = CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('');
+  view(`<div class="card">${b("Retour","pagePiece(ctx.piece)","btn back")}<h2>Catégorie</h2>
+    <select id="cat">${opts}</select>
+    ${b("Valider","confirmCategory()","btn primary")}</div>`);
 }
-
-/* ============================= */
-/* CHAPITRE 7 : (PLACEHOLDER) ESTIMATIF & TOTAUX
-   Rôle : affichages récapitulatifs.
-   → Ajoutés dans la PARTIE 2. */
-/* ============================= */
-function pageEstimatif(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>Estimatif</h2>
-      <p class="muted">Cette section sera activée dans la Partie 2.</p>
-    </div>
-  `);
+function confirmCategory(){ ctx.category=document.getElementById("cat").value; pageIntervention(); }
+function pageIntervention(){
+  const opts=["Création","Recâblage sans saignée","Recâblage avec saignée","Remplacement"].map(x=>`<option>${x}</option>`).join('');
+  view(`<div class="card">${b("Retour","pageCategory()","btn back")}<h2>Type d’intervention</h2>
+    <select id="interv">${opts}</select>
+    ${b("Valider","confirmInterv()","btn primary")}</div>`);
 }
-function pageTotaux(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>Totaux</h2>
-      <p class="muted">Cette section sera activée dans la Partie 2.</p>
-    </div>
-  `);
+function confirmInterv(){ ctx.intervention=document.getElementById("interv").value; pagePose(); }
+function pagePose(){
+  const opts = POSES.map(p=>`<option>${p}</option>`).join('');
+  view(`<div class="card">${b("Retour","pageIntervention()","btn back")}<h2>Type de pose</h2>
+    <select id="pose">${opts}</select>
+    ${b("Valider","confirmPose()","btn primary")}</div>`);
 }
-
-/* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE */
-/* ============================= */
-function init(){
-  // Restaure le devis courant si la persistance existe
-  if (typeof loadLocal === 'function') {
-    try { loadLocal(); } catch(e) { console.warn(e); }
+function confirmPose(){ ctx.pose=document.getElementById("pose").value; pageDesignation(); }
+function pageDesignation(){
+  const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category]||["Autre"];
+  const opts = list.map(d=>`<option value="${d}">${d}</option>`).join('');
+  view(`<div class="card">${b("Retour","pagePose()","btn back")}<h2>Désignation</h2>
+    <select id="des">${opts}<option value="autre">Autre...</option></select>
+    ${b("Valider","confirmDes()","btn primary")}</div>`);
+}
+function confirmDes(){
+  let d=document.getElementById("des").value;
+  if(d==="autre") d=prompt("Nouvelle désignation :","")||"Autre";
+  ctx.designation=d; pageQty();
+}
+function pageQty(){
+  const btns = Array.from({length:6},(_,i)=>b(i+1,`addLine(${i+1})`,"btn")).join('');
+  view(`<div class="card">${b("Retour","pageDesignation()","btn back")}<h2>Quantité</h2><div class="grid-qty">${btns}</div></div>`);
+}
+function addLine(q){
+  const prix = TARIFS[ctx.designation];
+  let unit=0;
+  if(prix){
+    if(ctx.intervention==="Création") unit=prix.creation;
+    else if(ctx.intervention.includes("sans")) unit=prix.recablage_sans;
+    else if(ctx.intervention.includes("avec")) unit=prix.recablage_avec;
+    else unit=prix.remplacement;
   }
-  // Si le menu principal existe, on l’affiche, sinon on retombe sur l’accueil
-  if (typeof pageMainMenu === 'function') {
-    pageMainMenu();
-  } else {
-    pageHome();
-  }
+  const total=unit*q;
+  devis[ctx.piece].items.push({ category:ctx.category, intervention:ctx.intervention, pose:ctx.pose, designation:ctx.designation, qty:q, unit, total });
+  pagePiece(ctx.piece);
 }
-init();
-
-/* (NE PAS FERMER LE SCRIPT ICI — la PARTIE 2 continue juste après) */
-/* ============================= */
-/* CHAPITRE 6 (COMPLET) : INSTALLATIONS SPÉCIFIQUES (IS)
-   Rôle : mêmes IS que V1 (Terre, Ventilation, Tableau)
-   → addIS(section, label, prixU, qty=1, unit="u") ajoute une ligne dans la section */
-/* ============================= */
-
-const IS_TERRA = { complete_base:500, piquet_supp:100, part_conducteur_m:20, part_barrette:40, part_piquet_pack:120 };
-const IS_VENTIL = { bouche_remplacement:40, bouche_creation:120, groupe_remplacement:200, pack_creation:900, bouche_supp:120, gaine_m:10, chapeau_125:180, alim_groupe:100, nettoyage:80 };
-const IS_TABLEAU = { circ_prises:180, circ_eclairage:150, circ_specialise:200, recablage_circuit:100, remplacement_protection:40, remplacement_tableau:800, tableau_secondaire:500, extension_tableau:250 };
-
-function addIS(section, label, prixU, qty=1, unit="u"){
-  ensureSection(section);
-  devis[section].items.push({ category:"Installation spécifique", intervention:"", pose:"", designation:label, qty:+qty, prixU:+prixU, unit:unit });
-  alert(`${label} ajouté (${qty} ${unit}, ${prixU} €/ ${unit})`);
-  pageISHome();
+function editLine(p,i){
+  const it=devis[p].items[i]; const newQty=prompt("Nouvelle quantité:",it.qty);
+  if(newQty){ it.qty=+newQty; it.total=it.qty*it.unit; pagePiece(p); }
 }
+function delLine(p,i){ devis[p].items.splice(i,1); pagePiece(p); }
 
+/* ============================= */
+/* CHAPITRE 7 : INSTALLATIONS SPÉCIFIQUES */
+/* ============================= */
 function pageISHome(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>Installations spécifiques</h2>
-      <div class="row" style="margin-bottom:10px;">
-        ${b("Mise à la terre","pageISTerre()")}
-        ${b("Ventilation","pageISVentil()")}
-        ${b("Distribution tableau","pageISTableau()")}
-      </div>
-      <p class="muted">Ajoute des postes “hors‑pièces”, regroupés par section dans l’estimatif.</p>
-    </div>
-  `);
+  view(`<div class="card">${b("Retour","pageHome()","btn back")}<h2>Installations spécifiques</h2><p class="muted">(Module à compléter)</p></div>`);
 }
-
-/* --- Mise à la terre --- */
-function pageISTerre(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageISHome()","btn back")}
-      <h2>Mise à la terre</h2>
-      <div class="row">
-        ${b(`Complète (${euro(IS_TERRA.complete_base)})`,"terreComplete()")}
-        ${b(`Piquet supp. +2m câblette (${euro(IS_TERRA.piquet_supp)})`,"terrePiquetSupp()")}
-        ${b(`Rempl. conducteur 16mm² (${euro(IS_TERRA.part_conducteur_m)}/m)`,"terreRemplacementConducteur()")}
-        ${b(`Barrette de coupure (${euro(IS_TERRA.part_barrette)})`,"terreBarrette()")}
-        ${b(`Piquet pack (${euro(IS_TERRA.part_piquet_pack)})`,"terrePiquetPack()")}
-      </div>
-    </div>
-  `);
-}
-function terreComplete(){ addIS("Mise à la terre","Mise à la terre complète (conducteur 16mm² tableau→barrette, barrette, 4 piquets, 10m câblette 25mm²)", IS_TERRA.complete_base, 1, "u"); }
-function terrePiquetSupp(){ const q=parseInt(prompt("Nb de piquets supplémentaires (+2m câblette chacun) :","1")||"0",10); if(q>0) addIS("Mise à la terre","Piquet supplémentaire (+2m câblette)", IS_TERRA.piquet_supp, q, "u"); else pageISTerre(); }
-function terreRemplacementConducteur(){ const m=parseFloat(prompt("Longueur de conducteur 16mm² (m) :","1")||"0"); if(m>0) addIS("Mise à la terre","Remplacement conducteur principal 16mm²", IS_TERRA.part_conducteur_m, m, "m"); else pageISTerre(); }
-function terreBarrette(){ addIS("Mise à la terre","Pose d’une barrette de coupure", IS_TERRA.part_barrette, 1, "u"); }
-function terrePiquetPack(){ const q=parseInt(prompt("Nb de piquets pack (avec câblette) :","1")||"0",10); if(q>0) addIS("Mise à la terre","Piquet supplémentaire (pack avec câblette)", IS_TERRA.part_piquet_pack, q, "u"); else pageISTerre(); }
-
-/* --- Ventilation --- */
-function pageISVentil(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageISHome()","btn back")}
-      <h2>Ventilation</h2>
-      <div class="row">
-        ${b(`Remplacement bouche (${euro(IS_VENTIL.bouche_remplacement)})`,"ventilBoucheRempl()")}
-        ${b(`Création bouche (${euro(IS_VENTIL.bouche_creation)})`,"ventilBoucheCreation()")}
-        ${b(`Remplacement groupe VMC (${euro(IS_VENTIL.groupe_remplacement)})`,"ventilGroupeRempl()")}
-        ${b(`Pack création VMC (${euro(IS_VENTIL.pack_creation)})`,"ventilPackCreation()")}
-        ${b(`Bouche supplémentaire (${euro(IS_VENTIL.bouche_supp)})`,"ventilBoucheSupp()")}
-        ${b(`Gaine supplémentaire (${euro(IS_VENTIL.gaine_m)}/m)`,"ventilGaineM()")}
-        ${b(`Chapeau toiture Ø125 (${euro(IS_VENTIL.chapeau_125)})`,"ventilChapeau()")}
-        ${b(`Alimentation groupe (${euro(IS_VENTIL.alim_groupe)})`,"ventilAlim()")}
-        ${b(`Nettoyage / réglage (${euro(IS_VENTIL.nettoyage)})`,"ventilNettoyage()")}
-      </div>
-    </div>
-  `);
-}
-function ventilBoucheRempl(){ const q=parseInt(prompt("Nombre de bouches à remplacer :","1")||"0",10); if(q>0) addIS("Ventilation","Remplacement bouche d’extraction", IS_VENTIL.bouche_remplacement, q, "u"); else pageISVentil(); }
-function ventilBoucheCreation(){ const q=parseInt(prompt("Nombre de bouches à créer :","1")||"0",10); if(q>0) addIS("Ventilation","Création bouche d’extraction", IS_VENTIL.bouche_creation, q, "u"); else pageISVentil(); }
-function ventilGroupeRempl(){ addIS("Ventilation","Remplacement groupe VMC simple flux", IS_VENTIL.groupe_remplacement, 1, "u"); }
-function ventilPackCreation(){ addIS("Ventilation","Pack création VMC (groupe + 2 bouches + ~10m gaine + sortie murale)", IS_VENTIL.pack_creation, 1, "u"); }
-function ventilBoucheSupp(){ const q=parseInt(prompt("Nombre de bouches supplémentaires :","1")||"0",10); if(q>0) addIS("Ventilation","Bouche supplémentaire", IS_VENTIL.bouche_supp, q, "u"); else pageISVentil(); }
-function ventilGaineM(){ const m=parseFloat(prompt("Longueur de gaine (m) :","1")||"0"); if(m>0) addIS("Ventilation","Gaine supplémentaire Ø125", IS_VENTIL.gaine_m, m, "m"); else pageISVentil(); }
-function ventilChapeau(){ addIS("Ventilation","Pose chapeau de toiture Ø125", IS_VENTIL.chapeau_125, 1, "u"); }
-function ventilAlim(){ addIS("Ventilation","Alimentation électrique du groupe VMC", IS_VENTIL.alim_groupe, 1, "u"); }
-function ventilNettoyage(){ addIS("Ventilation","Nettoyage / réglage réseau VMC", IS_VENTIL.nettoyage, 1, "u"); }
-
-/* --- Distribution tableau --- */
-function pageISTableau(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageISHome()","btn back")}
-      <h2>Distribution tableau</h2>
-      <div class="row">
-        ${b(`Création circuit prises (${euro(IS_TABLEAU.circ_prises)})`,"tabCircPrises()")}
-        ${b(`Création circuit éclairage (${euro(IS_TABLEAU.circ_eclairage)})`,"tabCircEclairage()")}
-        ${b(`Création circuit spécialisé (${euro(IS_TABLEAU.circ_specialise)})`,"tabCircSpecialise()")}
-        ${b(`Recâblage circuit (${euro(IS_TABLEAU.recablage_circuit)})`,"tabRecablage()")}
-        ${b(`Remplacement protection (${euro(IS_TABLEAU.remplacement_protection)})`,"tabRemplProtection()")}
-        ${b(`Remplacement tableau complet (${euro(IS_TABLEAU.remplacement_tableau)})`,"tabRemplTableau()")}
-        ${b(`Création tableau secondaire (${euro(IS_TABLEAU.tableau_secondaire)})`,"tabSecondaire()")}
-        ${b(`Extension tableau (${euro(IS_TABLEAU.extension_tableau)})`,"tabExtension()")}
-      </div>
-    </div>
-  `);
-}
-function tabCircPrises(){ const q=parseInt(prompt("Nb circuits prises à créer :","1")||"0",10); if(q>0) addIS("Distribution tableau","Création circuit prises", IS_TABLEAU.circ_prises, q, "u"); else pageISTableau(); }
-function tabCircEclairage(){ const q=parseInt(prompt("Nb circuits éclairage à créer :","1")||"0",10); if(q>0) addIS("Distribution tableau","Création circuit éclairage", IS_TABLEAU.circ_eclairage, q, "u"); else pageISTableau(); }
-function tabCircSpecialise(){ const q=parseInt(prompt("Nb circuits spécialisés à créer :","1")||"0",10); if(q>0) addIS("Distribution tableau","Création circuit spécialisé", IS_TABLEAU.circ_specialise, q, "u"); else pageISTableau(); }
-function tabRecablage(){ const q=parseInt(prompt("Nb de circuits à recâbler :","1")||"0",10); if(q>0) addIS("Distribution tableau","Recâblage de circuit", IS_TABLEAU.recablage_circuit, q, "u"); else pageISTableau(); }
-function tabRemplProtection(){ const q=parseInt(prompt("Nb de protections à remplacer (DJ / diff.) :","1")||"0",10); if(q>0) addIS("Distribution tableau","Remplacement de protection", IS_TABLEAU.remplacement_protection, q, "u"); else pageISTableau(); }
-function tabRemplTableau(){ addIS("Distribution tableau","Remplacement tableau complet (même emplacement / nb circuits)", IS_TABLEAU.remplacement_tableau, 1, "u"); }
-function tabSecondaire(){ addIS("Distribution tableau","Création d’un tableau secondaire", IS_TABLEAU.tableau_secondaire, 1, "u"); }
-function tabExtension(){ addIS("Distribution tableau","Extension de tableau (rangées / modules)", IS_TABLEAU.extension_tableau, 1, "u"); }
 
 /* ============================= */
-/* CHAPITRE 7 (COMPLET) : ESTIMATIF & TOTAUX + EXPORT */
+/* CHAPITRE 8 : ESTIMATIF & TOTAUX */
 /* ============================= */
 function pageEstimatif(){
-  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
-  let totalGlobal = 0;
-  for (const section in devis) {
-    if (!devis[section] || devis[section].items.length === 0) continue;
-    let sectionTotal = 0;
-    html += `<h3><strong>${section}</strong></h3><ul>`;
-    devis[section].items.forEach((item, idx) => {
-      const prixTotal = (item.prixU||0) * (item.qty||0);
-      sectionTotal += prixTotal;
-      const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
-      const unitTxt = item.unit ? item.unit : "u";
-      const left = item.intervention ? `${item.intervention} — ` : "";
-      html += `<li>${left}${item.designation}${poseTxt} (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
-    });
-    if (devis[section].note) html += `<li><em>Note : ${devis[section].note}</em></li>`;
-    html += `</ul><p><strong>Total ${section} : ${euro(sectionTotal)}</strong></p><hr>`;
-    totalGlobal += sectionTotal;
+  let html=""; let total=0;
+  for(const p in devis){
+    html+=`<h3>${p}</h3>`;
+    devis[p].items.forEach(it=>{ html+=`${it.qty}x ${it.designation} (${it.intervention}) — ${euro(it.total)}<br>`; total+=it.total; });
+    if(devis[p].note) html+=`<em>Note: ${devis[p].note}</em><br>`;
   }
-  html += `<h3>Total global : ${euro(totalGlobal)}</h3>
-           <div class="row" style="margin-top:10px;">${b("Exporter en .txt","exportText()")}</div></div>`;
-  view(html);
+  view(`<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2><pre>${html||"Aucune ligne"}</pre><p><strong>Total: ${euro(total)}</strong></p></div>`);
 }
-
 function pageTotaux(){
-  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par section</h2>`;
-  let totalGlobal = 0;
-  for (const section in devis) {
-    if (!devis[section] || devis[section].items.length === 0) continue;
-    const sectionTotal = devis[section].items.reduce((sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0);
-    totalGlobal += sectionTotal;
-    html += `<p><strong>${section}</strong> : ${euro(sectionTotal)}</p>`;
-  }
-  html += `<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
-           <div class="row" style="margin-top:10px;">${b("Exporter en .txt","exportText()")}</div></div>`;
-  view(html);
-}
-
-function exportText(){
-  let lines = [];
-  let totalGlobal = 0;
-  for (const section in devis) {
-    if (!devis[section] || devis[section].items.length === 0) continue;
-    lines.push(`${section} :`);
-    let sectionTotal = 0;
-    devis[section].items.forEach(item => {
-      const prixTotal = (item.prixU||0) * (item.qty||0);
-      sectionTotal += prixTotal;
-      totalGlobal += prixTotal;
-      const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
-      const unitTxt = item.unit ? item.unit : "u";
-      lines.push(`-${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
-    });
-    if (devis[section].note) lines.push(`_Note : ${devis[section].note}_`);
-    lines.push(`Total ${section} : ${sectionTotal}€`);
-    lines.push(""); // ligne vide entre sections
-  }
-  lines.push(`Total global : ${totalGlobal}€`);
-  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "devis.txt"; a.click();
-  URL.revokeObjectURL(url);
+  let total=0; for(const p in devis){ devis[p].items.forEach(it=>total+=it.total); }
+  view(`<div class="card">${b("Retour","pageHome()","btn back")}<h2>Total global</h2><p><strong>${euro(total)}</strong></p></div>`);
 }
 
 /* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE (déjà appelé dans la Partie 1) */
+/* CHAPITRE 9 : DÉMARRAGE */
 /* ============================= */
+function init(){ pageMenu(); }
+init();
 </script>
 </main>
 </body>
