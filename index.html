@@ -487,8 +487,16 @@ function pageTotaux(){
 /* CHAPITRE 8 : DÉMARRAGE */
 /* ============================= */
 function init(){
-  loadLocal();     // ← RESTAURE depuis localStorage
-  pageHome();
+  // Restaure le devis courant si la persistance existe
+  if (typeof loadLocal === 'function') {
+    try { loadLocal(); } catch(e) { console.warn(e); }
+  }
+  // Si le menu principal existe, on l’affiche, sinon on retombe sur l’accueil
+  if (typeof pageMainMenu === 'function') {
+    pageMainMenu();
+  } else {
+    pageHome();
+  }
 }
 init();
 
