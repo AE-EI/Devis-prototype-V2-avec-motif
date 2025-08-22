@@ -356,7 +356,10 @@ function pageTotaux(){
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE */
 /* ============================= */
-function init(){ pageHome(); }
+function init(){
+  loadLocal();     // ← RESTAURE depuis localStorage
+  pageHome();
+}
 init();
 
 /* (NE PAS FERMER LE SCRIPT ICI — la PARTIE 2 continue juste après) */
