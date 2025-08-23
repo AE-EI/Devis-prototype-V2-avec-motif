@@ -63,27 +63,18 @@ window.addEventListener('error', (e) => {
 /* CHAPITRE 2 : ÉTAT & HELPERS UI */
 /* ============================= */
 
-// État global courant (un devis en cours d’édition)
-let devis = {}; // contiendra aussi __id, __name
+// ── État global courant (un devis en cours d’édition)
+let devis = {}; // contiendra aussi des meta: __id, __name, __updated
 let ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
 
-// ID stable pour le devis
+// ── Génère un ID stable pour un devis
 function genId(){ return 'dv_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 
-// DOM helpers
+// ── Helpers DOM
 const $app = () => document.getElementById('app');
-function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
-function euro(n){ return `${(+n).toFixed(2)} €`; }
-  // Formate le nom affiché d'une pièce avec qualificatif + étage si présents
-function formatPieceLabel(piece){
-  const data = devis[piece] || {};
-  const q = data.qualificatif ? ` (${data.qualificatif})` : "";
-  const e = data.etage ? ` — ${data.etage}` : "";
-  return piece + q + e;
-}
 
-// view(html, noFooter=false): footer Accueil/Sauvegarder caché si noFooter=true
+// view(html, noFooter=false) : injecte Accueil / Sauvegarder sauf si noFooter=true
 function view(html, noFooter=false){
   let out = html;
   if(!noFooter){
@@ -97,32 +88,48 @@ function view(html, noFooter=false){
   $app().innerHTML = out;
 }
 
-// Confirmation retour accueil
+// ── Bouton "Accueil" avec confirmation (évite la perte d’un devis non sauvegardé)
 function confirmBackHome(){
-  const hasData = Object.keys(devis).some(k => !k.startsWith('__') && (devis[k]?.items?.length||0)>0);
+  const hasData = Object.keys(devis)
+    .filter(k => !k.startsWith('__'))
+    .some(k => (devis[k]?.items?.length||0) > 0 || (devis[k]?.note?.trim()?.length||0) > 0);
+
   if(!hasData || confirm("Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.")){
-    pageMain();
+    pageMain(); // fonction déclarée dans le Chapitre 4
   }
 }
 
-// Persistance locale rapide
+// ── Bouton HTML & format monétaire
+function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
+function euro(n){ return `${(+n).toFixed(2)} €`; }
+
+// ── Formatage du libellé de pièce (Nom + qualificatif + étage)
+function formatPieceLabel(piece){
+  const section = devis[piece];
+  if (!section) return piece;
+
+  let label = piece;
+  if (section.qualificatif && section.qualificatif.trim()){
+    label += " (" + section.qualificatif.trim() + ")";
+  }
+  if (section.etage && section.etage.trim()){
+    label += " — " + section.etage.trim();
+  }
+  return label;
+}
+
+// ── Persistance locale rapide (état courant uniquement)
 function ensureSection(piece){
-  if(!devis[piece]) devis[piece] = { items:[], note:"", qualifier:"", floor:"" };
-  if(typeof devis[piece].qualifier === "undefined") devis[piece].qualifier = "";
-  if(typeof devis[piece].floor === "undefined") devis[piece].floor = "";
+  if(!devis[piece]) devis[piece] = { items:[], note:"", qualificatif:"", etage:"" };
 }
-
-function formatPieceLabel(name){
-  const sec = devis[name];
-  if(!sec) return name;
-  const parts = [];
-  if (sec.qualifier) parts.push(sec.qualifier);
-  if (sec.floor) parts.push(sec.floor);
-  return parts.length ? `${name} — ${parts.join(' · ')}` : name;
+function saveLocal(){
+  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
 }
-function saveLocal(){ try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){} }
-function loadLocal(){ try { devis = JSON.parse(localStorage.getItem('devis')||'{}') || {}; } catch(e){ devis = {}; } }
-
+function loadLocal(){
+  try { devis = JSON.parse(localStorage.getItem('devis')||'{}') || {}; }
+  catch(e){ devis = {}; }
+  ensureId(); // garantit un __id même pour d’anciens devis
+}
 /* ============================= */
 /* CHAPITRE 3 : DONNÉES & CONSTANTES */
 /* ============================= */
