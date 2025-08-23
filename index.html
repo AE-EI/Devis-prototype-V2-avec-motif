@@ -559,9 +559,11 @@ function editPieceNote(){
   goPiece(ctx.piece);
 }
 
-/* ============================= */
-/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
-/* ============================= */
+<!-- ============================= -->
+<!-- CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT -->
+<!-- ============================= -->
+<script>
+// Groupes de pièces
 const PIECE_GROUPS = {
   "Buanderie": "Pièces techniques","Garage": "Pièces techniques","Atelier": "Pièces techniques",
   "Jardin": "Extérieur","Terrasse": "Extérieur","Balcon": "Extérieur","Abri de jardin": "Extérieur",
@@ -632,6 +634,7 @@ function pageEstimatif(){
            </div></div>`;
   view(html);
 }
+
 function pageTotaux(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par groupe</h2>`;
   let totalGlobal = 0;
@@ -654,6 +657,7 @@ function pageTotaux(){
            </div></div>`;
   view(html);
 }
+
 function exportText(){
   const grouped = groupDevis();
   for (const group in grouped) {
@@ -681,9 +685,11 @@ function exportText(){
   }
   alert("✅ Export terminé : un fichier .txt par groupe a été généré.");
 }
+
 async function exportZipGroups(){
   if (typeof JSZip === "undefined") { alert("JSZip non chargé."); return; }
   const grouped = groupDevis(); const zip = new JSZip(); let globalTotal = 0;
+
   for (const group in grouped) {
     let lines = []; let groupTotal = 0;
     lines.push(`=== ${group} ===\n`);
@@ -705,39 +711,23 @@ async function exportZipGroups(){
     globalTotal += groupTotal;
     zip.file(`devis_${group}.txt`, lines.join("\r\n"));
   }
+
   const name = (devis.__name || "Devis").trim() || "Devis";
   const stamp = new Date().toLocaleString();
-  const readme = [`Récapitulatif — ${name}`,`Date: ${stamp}`,"",`Total global: ${globalTotal.toFixed(2)}€`,"","Contenu: un fichier par groupe avec les détails, quantités, PU et totaux.`].join("\r\n");
+  const readme = [
+    `Récapitulatif — ${name}`,
+    `Date: ${stamp}`,
+    ``,
+    `Total global: ${globalTotal.toFixed(2)}€`,
+    ``,
+    `Contenu: un fichier par groupe avec les détails, quantités, PU et totaux.`
+  ].join("\r\n"); // ← backtick SUPPRIMÉ ici (chaîne classique)
   zip.file(`README.txt`, readme);
+
   const blob = await zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = `${name.replace(/\s+/g,'_').toLowerCase()}_groupes.zip`; a.click();
   URL.revokeObjectURL(url);
   alert("✅ Export ZIP généré avec succès.");
 }
-
-/* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
-/* ============================= */
-function init(){
-  try{
-    loadLocal();
-    pageMain();
-  }catch(err){
-    const el = document.getElementById('app');
-    if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
-  }
-}
-Object.assign(window, {
-  pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
-  pageHome, pageAddPiece, confirmPieceChoice, removePiece,
-  goPiece, delLine, editPieceNote, pagePieceSpecifique,
-  goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
-  pageEstimatif, pageTotaux, exportText, exportZipGroups,
-  confirmBackHome
-});
-init();
 </script>
-</main>
-</body>
-</html>
