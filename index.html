@@ -60,11 +60,12 @@ let ctx = { piece:null, category:null, intervention:null, pose:null, designation
 const $app = () => document.getElementById('app');
 
 function view(html, withFooter = true){
-  // Contenu principal
+  // Sécurité : si le contenu demande explicitement "pas de footer", on le masque
+  const noFooterMarker = html.includes('data-nofooter');
+
   let out = html;
 
-  // Footer (Accueil + Sauvegarder) UNIQUEMENT si withFooter = true
-  if (withFooter) {
+  if (withFooter && !noFooterMarker) {
     out += `
       <div class="row" style="margin-top:16px; gap:12px;">
         ${b("⬅️ Accueil","confirmBackHome()","btn back")}
@@ -78,9 +79,10 @@ function view(html, withFooter = true){
 
 // Bouton "Accueil" avec confirmation
 function confirmBackHome(){
-  if (confirm("Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.")) {
-    pageMain();            // retour menu principal
-  }
+  const ok = confirm(
+    "Revenir au menu principal ?\n\n⚠️ Les modifications non sauvegardées seront perdues."
+  );
+  if (ok) pageMain();
 }
 
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
@@ -162,14 +164,14 @@ const TARIFS = {
 
 function pageMain(){
   view(`
-    <div class="card">
+    <div class="card" data-nofooter>
       <h2>Menu principal</h2>
       <div class="row">
         ${b("➕ Nouveau devis","actionNouveauDevis()","btn primary")}
         ${b("📂 Mes devis sauvegardés","pageSavedDevis()")}
       </div>
     </div>
-  `, false); // ⬅️ false pour masquer Accueil/Sauvegarder sur le menu principal
+  `, false); // ⬅️ on force l'absence de footer
 }
 
 function actionNouveauDevis(){
