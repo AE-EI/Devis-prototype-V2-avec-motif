@@ -648,7 +648,7 @@ const PIECE_GROUPS = {
 
 /* --- Helpers export --- */
 
-// Nom enrichi de pièce (Nom + (qualificatif) + — étage)
+// ⚠️ formatPieceLabel existe déjà au Chapitre 2 (même logique). Si tu préfères, garde celui-ci.
 function formatPieceLabel(piece){
   const section = devis[piece];
   if (!section) return piece;
@@ -673,12 +673,12 @@ function itemLine(item){
   return `- ${left}${item.designation}${poseTxt} | Qté: ${q} ${unit} | PU: ${pu}€ | Total: ${total}€`;
 }
 
-// Séparateur “façon Abby” : ligne au-dessus du nom de pièce
+// Séparateur “façon Abby”
 function pieceSeparator(label){
   return `\n---------------- ${label} ----------------\n`;
 }
 
-// Regrouper le devis courant par groupes (en ignorant les clés meta __…)
+// Regrouper le devis courant par groupes (ignore les clés __meta)
 function groupDevis(){
   const grouped = {};
   for (const piece in devis) {
@@ -882,6 +882,8 @@ async function exportZipGroups(){
   URL.revokeObjectURL(url);
 
   alert("✅ Export ZIP généré avec succès.");
+}
+
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
 /* ============================= */
@@ -916,7 +918,3 @@ Object.assign(window, {
 
 // Lancement
 init();
-</script>
-</main>
-</body>
-</html>
