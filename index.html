@@ -41,7 +41,7 @@ window.addEventListener('error', (e) => {
   if (el) el.innerHTML = `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
 });
   // SMOKE TEST : si tu vois ce bloc, le JS démarre
-document.getElementById('app').innerHTML = `<div class="card">JS chargé ✅</div>`;
+// document.getElementById('app').innerHTML = `<div class="card">JS chargé ✅</div>`;
   /* ============================= */
 /* CHAPITRE 4 : ÉTAT & HELPERS UI */
 /* ============================= */
@@ -620,22 +620,18 @@ function exportText(){
 }
 
 /* ============================= */
-/* INIT SAFE */
+/* CHAPITRE 8 : DÉMARRAGE */
 /* ============================= */
-function initSafe(){
-  try {
-    if (typeof loadLocal === 'function') loadLocal();
-    if (typeof pageHome === 'function') pageHome();
-    else {
-      const el = document.getElementById('app');
-      if (el) el.innerHTML = `<div class="card"><h2>Manque pageHome()</h2><p>Je ne trouve pas la fonction.</p></div>`;
-    }
-  } catch (err) {
+function init(){
+  try{
+    loadLocal();   // restaure si dispo
+    pageMain();    // ⬅️ démarre sur le menu principal
+  }catch(err){
     const el = document.getElementById('app');
     if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
   }
 }
-initSafe();
+init();
 </script>
 </main>
 </body>
