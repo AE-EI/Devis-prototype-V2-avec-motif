@@ -15,7 +15,6 @@
     main{ max-width:980px; margin:0 auto; padding:16px; }
     h2{ margin:8px 0 12px; }
     .row{ display:flex; gap:8px; flex-wrap:wrap; }
-    .grid-2{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
     .grid-qty{ display:grid; grid-template-columns:repeat(6,56px); gap:8px; }
     .btn{ padding:10px 14px; font-size:16px; background:#eee; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
     .btn.primary{ background:#111; color:#fff; border-color:#000; }
@@ -33,16 +32,11 @@
 <body>
 <header>MiniDevis — V2</header>
 <main id="app"></main>
-// Forcer un cache-busting automatique à chaque build
-(function(){
-  const s = document.currentScript;
-  if(s && !location.search.includes("nocache")){
-    const ver = Date.now(); // numéro unique à chaque déploiement
-    location.href = location.pathname + "?nocache=" + ver;
-  }
-})();
+
 <script>
-  // DEBUG : afficher la première erreur JS en plein écran
+/* ============================= */
+/* DEBUG : SURFACE L’ERREUR SI JS PLANTE */
+/* ============================= */
 window.addEventListener('error', (e) => {
   const el = document.getElementById('app');
   if (el) el.innerHTML = `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
@@ -52,20 +46,21 @@ window.addEventListener('error', (e) => {
 /* CHAPITRE 2 : ÉTAT & HELPERS UI */
 /* ============================= */
 
-// État global
-let devis = {}; // { [piece]: { items:[{...}], note:"" } }
+// État global courant (un devis en cours d’édition)
+let devis = {}; // contiendra aussi des meta: __id, __name, __updated
 let ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
+
+// Génère un ID stable pour un devis
+function genId(){ return 'dv_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 
 // Helpers DOM
 const $app = () => document.getElementById('app');
 
-function view(html, withFooter = true){
-  // Sécurité : si le contenu demande explicitement "pas de footer", on le masque
-  const noFooterMarker = html.includes('data-nofooter');
-
+// view(html, noFooter=false) : footer Accueil/Sauvegarder caché si noFooter=true
+function view(html, noFooter=false){
   let out = html;
-
-  if (withFooter && !noFooterMarker) {
+  if(!noFooter){
     out += `
       <div class="row" style="margin-top:16px; gap:12px;">
         ${b("⬅️ Accueil","confirmBackHome()","btn back")}
@@ -73,22 +68,22 @@ function view(html, withFooter = true){
       </div>
     `;
   }
-
   $app().innerHTML = out;
 }
 
 // Bouton "Accueil" avec confirmation
 function confirmBackHome(){
-  const ok = confirm(
-    "Revenir au menu principal ?\n\n⚠️ Les modifications non sauvegardées seront perdues."
-  );
-  if (ok) pageMain();
+  const hasData = Object.keys(devis).some(k => !k.startsWith('__') && (devis[k]?.items?.length||0)>0);
+  if(!hasData || confirm("Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.")){
+    pageMain();
+  }
 }
 
+// Bouton HTML
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
 function euro(n){ return `${(+n).toFixed(2)} €`; }
 
-// Persistance locale
+// Persistance locale rapide (état courant uniquement)
 function ensureSection(piece){
   if(!devis[piece]) devis[piece] = { items:[], note:"" };
 }
@@ -96,14 +91,12 @@ function saveLocal(){
   try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
 }
 function loadLocal(){
-  try {
-    const raw = localStorage.getItem('devis');
-    if (raw) devis = JSON.parse(raw) || {};
-  } catch(e){ devis = {}; }
+  try { devis = JSON.parse(localStorage.getItem('devis')||'{}') || {}; }
+  catch(e){ devis = {}; }
 }
+
 /* ============================= */
-/* CHAPITRE 3 : DONNÉES & CONSTANTES
-   Rôle : listes de pièces, poses, catégories, tarifs de base            */
+/* CHAPITRE 3 : DONNÉES & CONSTANTES */
 /* ============================= */
 const PIECES_PREDEFINIES = [
   "Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
@@ -111,41 +104,27 @@ const PIECES_PREDEFINIES = [
   "Buanderie","Garage","Couloir","Terrasse","Balcon","Jardin",
   "Débarras","Extérieur","Grenier/Combles"
 ];
-
 const CATEGORIES = ["Prises","Éclairage","Circuit spécialisé"];
-
 const POSES = [
-  "Encastré maçonnerie",
-  "Placo",
-  "Semi-encastré",
-  "Sur-mesure",
-  "Saillie avec moulure",
-  "Sous tube IRL"
+  "Encastré maçonnerie","Placo","Semi-encastré",
+  "Sur-mesure","Saillie avec moulure","Sous tube IRL"
 ];
-
 const DESIGNATIONS_PAR_CATEGORIE = {
   "Prises": ["Prise"],
-
-  // ⬇️ Nouvelle séparation Éclairage :
   "Éclairage/Luminaires": ["Point de centre","Applique"],
   "Éclairage/Commandes": ["Interrupteur simple","Interrupteur double"],
-
-  // ⬇️ Si tu as déjà "Circuit spécialisé", garde-le tel quel :
   "Circuit spécialisé": [
     "Four","Plaque de cuisson","Lave-linge","Lave-vaisselle",
     "Sèche-linge","Cumulus","VMC","Chauffage",
     "Climatisation","Prise extérieure étanche","Autre circuit spécialisé"
   ]
 };
-
 const TARIFS = {
   "Prise": { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
   "Point de centre": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
   "Applique": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
   "Interrupteur simple": { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
   "Interrupteur double": { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
-
-  // Exemple de tarifs pour circuits spécialisés (à ajuster)
   "Four": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
   "Plaque de cuisson": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
   "Lave-linge": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
@@ -158,36 +137,33 @@ const TARIFS = {
   "Prise extérieure étanche": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
   "Autre circuit spécialisé": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
 };
-/* ============================= */
-/* CHAPITRE 4 : MENU PRINCIPAL */
-/* ============================= */
 
+/* ============================= */
+/* CHAPITRE 4 : MENU PRINCIPAL (sans footer) */
+/* ============================= */
 function pageMain(){
   view(`
-    <div class="card" data-nofooter>
+    <div class="card">
       <h2>Menu principal</h2>
       <div class="row">
         ${b("➕ Nouveau devis","actionNouveauDevis()","btn primary")}
         ${b("📂 Mes devis sauvegardés","pageSavedDevis()")}
       </div>
     </div>
-  `, false); // ⬅️ on force l'absence de footer
+  `, true); // ← noFooter = true
 }
-
 function actionNouveauDevis(){
-  devis = {}; // reset propre
-  pageHome(); // ↩️ lance le flux pièces
+  devis = { __id: genId(), __name:"" }; // reset propre avec ID
+  pageHome();
 }
-
 function pageSavedDevis(){
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
   if(!saved.length){
-    view(`<div class="card">
+    return view(`<div class="card">
       ${b("Retour","pageMain()","btn back")}
       <h2>Mes devis sauvegardés</h2>
       <p class="muted">Aucun devis sauvegardé.</p>
-    </div>`);
-    return;
+    </div>`, true);
   }
   const list = saved.map((d,i)=>`<div class="pill">
       <strong>${d.name}</strong> <small>${d.date}</small>
@@ -197,52 +173,69 @@ function pageSavedDevis(){
       ${b("Retour","pageMain()","btn back")}
       <h2>Mes devis sauvegardés</h2>
       <div class="list">${list}</div>
-  </div>`);
+  </div>`, true);
 }
-
-function saveCurrentDevis(){
-  const name = prompt("Nom du devis :","") || ("Devis " + new Date().toLocaleDateString());
-  const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
-  saved.push({ name, date:new Date().toLocaleDateString(), data:devis });
-  localStorage.setItem("savedDevisList", JSON.stringify(saved));
-  alert("Devis sauvegardé !");
-}
-
 function loadDevis(idx){
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
-  if(saved[idx]){ devis = saved[idx].data; pageHome(); }
+  if(!saved[idx]) return pageSavedDevis();
+  devis = saved[idx].data || {};
+  ensureId();                 // sécurité si ancien devis sans id
+  saveLocal();
+  pageHome();
 }
-
 function deleteDevis(idx){
-  if(!confirm("Supprimer ce devis ?")) return;
+  if(!confirm("Supprimer ce devis sauvegardé ?")) return;
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
   saved.splice(idx,1);
   localStorage.setItem("savedDevisList", JSON.stringify(saved));
   pageSavedDevis();
 }
+
+// Sauvegarde SANS doublons (remplace si même id, sinon propose d'écraser si même nom)
+function saveCurrentDevis(){
+  ensureId();
+  let saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
+
+  // 1) Si un devis avec le même ID existe → on remplace directement
+  let idx = saved.findIndex(d => d.data && d.data.__id === devis.__id);
+  if (idx >= 0) {
+    const name = devis.__name || saved[idx].name || ("Devis " + new Date().toLocaleDateString());
+    devis.__name = name;
+    saved[idx] = { name, date:new Date().toLocaleDateString(), data:devis };
+    localStorage.setItem("savedDevisList", JSON.stringify(saved));
+    alert("Devis mis à jour.");
+    return;
+  }
+
+  // 2) Sinon : c'est un nouveau devis → demander le nom
+  let name = (devis.__name || "").trim();
+  if(!name){
+    name = (prompt("Nom du devis :", "") || "").trim();
+    if(!name){ alert("Sauvegarde annulée."); return; }
+  }
+
+  // 3) Si un devis existe déjà avec le même NOM → proposer d'écraser
+  const byName = saved.findIndex(d => (d.name||"").toLowerCase() === name.toLowerCase());
+  if (byName >= 0) {
+    const ok = confirm(`Un devis nommé « ${name} » existe déjà.\nVoulez-vous l'écraser ?`);
+    if(!ok) return;
+    devis.__name = name;
+    saved[byName] = { name, date:new Date().toLocaleDateString(), data:devis };
+  } else {
+    devis.__name = name;
+    saved.push({ name, date:new Date().toLocaleDateString(), data:devis });
+  }
+  localStorage.setItem("savedDevisList", JSON.stringify(saved));
+  alert("Devis sauvegardé !");
+}
+
 /* ============================= */
-/* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
-   Rôle : ajouter/supprimer des pièces, puis dérouler : 
-   catégorie → intervention → pose → quantité → note */
+/* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.” */
 /* ============================= */
 
-// Helpers communs
-function ensureSection(piece){
-  if(!devis[piece]) devis[piece] = { items:[], note:"" };
-}
-function saveLocal(){
-  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
-}
-function loadLocal(){
-  try {
-    const raw = localStorage.getItem('devis');
-    if (raw) devis = JSON.parse(raw) || {};
-  } catch(e){ devis = {}; }
-}
-
-/* Accueil */
+// Accueil
 function pageHome(){
-  const listPieces = Object.keys(devis);
+  const listPieces = Object.keys(devis).filter(k=>!k.startsWith('__'));
   const listHtml = listPieces.length
     ? listPieces.map(p => `<div class="pill">
           <strong>${p}</strong>
@@ -273,7 +266,7 @@ function pageHome(){
   `);
 }
 
-/* Sélection / création de pièce */
+// Sélection / création de pièce
 function pageAddPiece(){
   const options =
     PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
@@ -298,26 +291,25 @@ function confirmPieceChoice(){
   let name = sel;
   if (sel === "__NEW__") {
     name = (prompt("Nom de la pièce :","") || "").trim();
-    if(!name) return; // annulé ou vide
+    if(!name) return;
   }
 
-  ensureSection(name);   // crée la section si nécessaire
-  goPiece(name);         // ouvre la pièce directement
+  ensureSection(name);
+  goPiece(name);
 }
 function removePiece(piece){
-  if(confirm(`Supprimer la pièce “${piece}” et toutes ses lignes ?`)){
+  if(confirm(`Supprimer la pièce « ${piece} » et toutes ses lignes ?`)){
     delete devis[piece];
-    saveLocal();              // ⬅️ Sauvegarde auto
+    saveLocal();
     pageHome();
   }
 }
 
-/* Page d’une pièce */
+// Page d’une pièce
 function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
 
-  // On filtre "Spécifique" au cas où il serait encore dans CATEGORIES
   const cats = CATEGORIES
     .filter(cat => cat !== "Spécifique")
     .map(cat => b(cat, `goCategory('${cat}')`))
@@ -363,18 +355,14 @@ function goPiece(piece){
 }
 function delLine(piece, idx){
   devis[piece].items.splice(idx,1);
-  saveLocal();                // ⬅️ Sauvegarde auto
+  saveLocal();
   goPiece(piece);
 }
 
-/* Catégorie → Intervention → Pose → Quantité */
+// Catégorie → Intervention → Pose → Quantité
 function goCategory(cat){
   ctx.category = cat;
-
-  // Cas spécial : Éclairage -> sous-menu
-  if (cat === "Éclairage") {
-    return goEclairageSub();
-  }
+  if (cat === "Éclairage") return goEclairageSub();
 
   let interventions = [];
   if (cat === "Prises" || cat === "Circuit spécialisé") {
@@ -399,7 +387,6 @@ function goCategory(cat){
     </div>
   `);
 }
-
 function goEclairageSub(){
   view(`
     <div class="card">
@@ -414,23 +401,9 @@ function goEclairageSub(){
 }
 function setEclairageBranch(branch){
   ctx.category = branch;
-
-  let interventions = [];
-  if (branch === "Éclairage/Luminaires") {
-    interventions = [
-      "Création",
-      "Remplacement luminaire",
-      "Recâblage avec remplacement luminaire",
-      "Recâblage sans remplacement luminaire"
-    ];
-  } else { // Commandes
-    interventions = [
-      "Création",
-      "Remplacement appareillage",
-      "Recâblage avec remplacement appareillage",
-      "Recâblage sans remplacement appareillage"
-    ];
-  }
+  let interventions = (branch === "Éclairage/Luminaires")
+    ? ["Création","Remplacement luminaire","Recâblage avec remplacement luminaire","Recâblage sans remplacement luminaire"]
+    : ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"];
 
   const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
   view(`
@@ -441,25 +414,19 @@ function setEclairageBranch(branch){
     </div>
   `);
 }
-
 function goIntervention(interv){
   ctx.intervention = interv;
 
-  // Cas spécifique (saisie libre)
   if (ctx.category === "Spécifique") {
     const label = prompt("Nom de la prestation spécifique :","");
     if(!label){ return goCategory("Spécifique"); }
     const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
     ensureSection(ctx.piece);
-    devis[ctx.piece].items.push({
-      category:"Spécifique", intervention:"", pose:"",
-      designation:label, qty:1, prixU:prix
-    });
+    devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
     saveLocal();
     return goPiece(ctx.piece);
   }
 
-  // Pose obligatoire pour Création
   const needsPoseOnCreation =
     (ctx.category === "Prises") ||
     (ctx.category === "Circuit spécialisé") ||
@@ -480,23 +447,14 @@ function goIntervention(interv){
     goDesignation(null);
   }
 }
-
 function goDesignation(pose){
-  ctx.pose = pose; // peut être null (hors Création)
-
+  ctx.pose = pose;
   const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
-
-  // 🔧 Auto-skip si une seule désignation (ex: Prises → "Prise")
-  if (list.length === 1) {
-    return pageQuantite(list[0]);
-  }
-
+  if (list.length === 1) return pageQuantite(list[0]);
   const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
   view(`
     <div class="card">
-      ${b("Retour", ctx.intervention==="Création" 
-                  ? `goIntervention('${ctx.intervention}')` 
-                  : `goCategory('${ctx.category}')`,"btn back")}
+      ${b("Retour", ctx.intervention==="Création" ? `goIntervention('${ctx.intervention}')` : `goCategory('${ctx.category}')`,"btn back")}
       <h2>Désignation</h2>
       <div class="row">${btns}</div>
     </div>
@@ -513,7 +471,6 @@ function pageQuantite(designation){
     </div>
   `);
 }
-
 function getPrix(designation, intervention){
   const base = TARIFS[designation] || {};
   if(intervention==="Création") return base.creation||0;
@@ -522,36 +479,24 @@ function getPrix(designation, intervention){
   if(intervention.startsWith("Remplacement")) return base.remplacement||0;
   return 0;
 }
-
 function saveItem(qty){
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
-    category: ctx.category,
-    intervention: ctx.intervention,
-    pose: ctx.pose,
-    designation: ctx.designation,
-    qty: qty,
-    prixU: getPrix(ctx.designation, ctx.intervention)
+    category: ctx.category, intervention: ctx.intervention, pose: ctx.pose,
+    designation: ctx.designation, qty, prixU: getPrix(ctx.designation, ctx.intervention)
   });
   saveLocal();
   goPiece(ctx.piece);
 }
-
-/* Spécifique (raccourci) */
 function pagePieceSpecifique(){
   const label = prompt("Nom de la prestation spécifique :","");
   if(!label){ return goPiece(ctx.piece); }
   const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
   ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({
-    category:"Spécifique", intervention:"", pose:"",
-    designation:label, qty:1, prixU:prix
-  });
+  devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
   saveLocal();
   goPiece(ctx.piece);
 }
-
-/* Note */
 function editPieceNote(){
   ensureSection(ctx.piece);
   const cur = devis[ctx.piece].note || "";
@@ -560,36 +505,29 @@ function editPieceNote(){
   saveLocal();
   goPiece(ctx.piece);
 }
-/* ============================= */
-/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder)
-   Rôle : écran “IS” simple qui ne casse rien au flux validé.
-   (On branchera Terre / Ventilation / Tableau plus tard.) */
-/* ============================= */
 
+/* ============================= */
+/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder) */
+/* ============================= */
 function pageISHome(){
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Installations spécifiques</h2>
       <p class="muted">Module détaillé à réintégrer (Mise à la terre, Ventilation, Distribution tableau).</p>
-
       <div class="row" style="margin-top:10px;">
         ${b("Mise à la terre","isSoon('Mise à la terre')")}
         ${b("Ventilation","isSoon('Ventilation')")}
         ${b("Distribution tableau","isSoon('Distribution tableau')")}
       </div>
-
-      <p class="muted" style="margin-top:10px;">
-        Astuce : tu peux continuer à saisir tes pièces normalement depuis l’écran Accueil.
-      </p>
     </div>
   `);
 }
-
 function isSoon(feature){
-  alert(`${feature} : à venir (ce bouton est un placeholder).`);
+  alert(`${feature} : à venir (placeholder).`);
   pageISHome();
 }
+
 /* ============================= */
 /* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
 /* ============================= */
@@ -597,13 +535,13 @@ function pageEstimatif(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
   let totalGlobal = 0;
   for (const section in devis) {
+    if (section.startsWith('__')) continue;
     if (!devis[section] || devis[section].items.length === 0) continue;
     let sectionTotal = 0;
     html += `<h3><strong>${section}</strong></h3><ul>`;
     devis[section].items.forEach((item) => {
       const prixTotal = (item.prixU||0) * (item.qty||0);
-      sectionTotal += prixTotal;
-      totalGlobal += prixTotal;
+      sectionTotal += prixTotal; totalGlobal += prixTotal;
       const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
       const unitTxt = item.unit ? item.unit : "u";
       const left = item.intervention ? `${item.intervention} — ` : "";
@@ -620,6 +558,7 @@ function pageTotaux(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par section</h2>`;
   let totalGlobal = 0;
   for (const section in devis) {
+    if (section.startsWith('__')) continue;
     if (!devis[section] || devis[section].items.length === 0) continue;
     const sectionTotal = devis[section].items.reduce((sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0);
     totalGlobal += sectionTotal;
@@ -633,13 +572,13 @@ function exportText(){
   let lines = [];
   let totalGlobal = 0;
   for (const section in devis) {
+    if (section.startsWith('__')) continue;
     if (!devis[section] || devis[section].items.length === 0) continue;
     lines.push(`${section} :`);
     let sectionTotal = 0;
     devis[section].items.forEach(item => {
       const prixTotal = (item.prixU||0) * (item.qty||0);
-      sectionTotal += prixTotal;
-      totalGlobal += prixTotal;
+      sectionTotal += prixTotal; totalGlobal += prixTotal;
       const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
       const unitTxt = item.unit ? item.unit : "u";
       lines.push(`-${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
@@ -652,7 +591,7 @@ function exportText(){
   const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "devis.txt"; a.click();
+  a.href = url; a.download = (devis.__name ? `devis-${devis.__name}.txt` : "devis.txt"); a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -661,8 +600,8 @@ function exportText(){
 /* ============================= */
 function init(){
   try{
-    if (typeof loadLocal === 'function') loadLocal(); // restaure l’état si besoin
-    pageMain(); // ⬅️ on affiche le menu principal au lancement
+    loadLocal();   // restaure l’état en cours si présent
+    pageMain();    // affiche le menu principal au lancement
   }catch(err){
     const el = document.getElementById('app');
     if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
