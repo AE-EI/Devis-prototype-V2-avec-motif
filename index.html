@@ -36,44 +36,6 @@
 
 <script>
 /* ============================= */
-/* CHAPITRE 2 : DONNÉES & CONSTANTES */
-/* ============================= */
-const PIECES_PREDEFINIES = ["Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
-  "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau","Buanderie","Garage","Couloir",
-  "Terrasse","Balcon","Jardin","Débarras","Extérieur","Grenier/Combles"];
-
-// ➕ Ajout d'une nouvelle catégorie "Circuit spécialisé"
-const CATEGORIES = ["Prises","Circuit spécialisé","Éclairage","Spécifique"];
-const POSES = [
-  "Encastré maçonnerie",
-  "Placo",
-  "Semi-encastré",
-  "Sur-mesure",
-  "Saillie avec moulure",
-  "Pose câble sous tube IRL"
-];
-const DESIGNATIONS_PAR_CATEGORIE = {
-  "Prises": ["Prise"],
-  "Circuit spécialisé": ["Four","Lave-linge","Cumulus","VMC","Plaques de cuisson","Sèche-serviettes"],
-  "Éclairage": ["Point de centre","Applique","Interrupteur simple","Interrupteur double"]
-};
-const TARIFS = {
-  "Prise": { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
-  "Point de centre": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
-  "Applique": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
-  "Interrupteur simple": { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
-  "Interrupteur double": { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
-
-  // ➕ Circuits spécialisés (tarifs uniformes)
-  "Four": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
-  "Lave-linge": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
-  "Cumulus": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
-  "VMC": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
-  "Plaques de cuisson": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
-  "Sèche-serviettes": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 }
-};
-
-/* ============================= */
 /* CHAPITRE 3 : DONNÉES & CONSTANTES
    Rôle : listes de pièces, poses, catégories, tarifs de base            */
 /* ============================= */
@@ -191,7 +153,19 @@ function deleteDevis(idx){
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
    Rôle : ajouter/supprimer des pièces, puis dérouler : catégorie → intervention → pose → quantité → note */
 /* ============================= */
-
+// Helpers communs
+function ensureSection(piece){
+  if(!devis[piece]) devis[piece] = { items:[], note:"" };
+}
+function saveLocal(){
+  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
+}
+function loadLocal(){
+  try {
+    const raw = localStorage.getItem('devis');
+    if (raw) devis = JSON.parse(raw) || {};
+  } catch(e){ devis = {}; }
+}
 /* Accueil */
 function pageHome(){
   const listPieces = Object.keys(devis);
@@ -259,6 +233,7 @@ function confirmPieceChoice(){
 function removePiece(piece){
   if(confirm(`Supprimer la pièce “${piece}” et toutes ses lignes ?`)){
     delete devis[piece];
+    saveLocal();              // ⬅️ Sauvegarde auto
     pageHome();
   }
 }
@@ -316,6 +291,7 @@ function goPiece(piece){
 }
 function delLine(piece, idx){
   devis[piece].items.splice(idx,1);
+  saveLocal();                // ⬅️ Sauvegarde auto
   goPiece(piece);
 }
 
@@ -491,6 +467,7 @@ function saveItem(qty){
     qty: qty,
     prixU: getPrix(ctx.designation, ctx.intervention)
   });
+  saveLocal();                // ⬅️ Sauvegarde auto
   goPiece(ctx.piece);
 }
 /* ============================= */
