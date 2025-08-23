@@ -678,6 +678,27 @@ function init(){
     if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
   }
 }
+
+// Rendre les fonctions accessibles depuis les boutons HTML
+Object.assign(window, {
+  // Menu principal
+  pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
+
+  // Gestion des pièces
+  pageHome, pageAddPiece, confirmPieceChoice, removePiece,
+  goPiece, delLine, editPieceNote, pagePieceSpecifique,
+
+  // Catégories / interventions
+  goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
+
+  // Estimatif / exports
+  pageEstimatif, pageTotaux, exportText, exportZipGroups,
+
+  // Navigation / sécurité
+  confirmBackHome
+});
+
+// Lancement
 init();
 </script>
 </main>
