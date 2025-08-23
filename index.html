@@ -47,9 +47,7 @@ window.addEventListener('error', (e) => {
   const el = document.getElementById('app');
   if (el) el.innerHTML = `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
 });
-  // SMOKE TEST : si tu vois ce bloc, le JS démarre
-// document.getElementById('app').innerHTML = `<div class="card">JS chargé ✅</div>`;
-  /* ============================= */
+
 /* CHAPITRE 4 : ÉTAT & HELPERS UI */
 /* ============================= */
 
@@ -627,12 +625,12 @@ function exportText(){
 }
 
 /* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE */
+/* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
 /* ============================= */
 function init(){
   try{
-    loadLocal();   // restaure si dispo
-    pageMain();    // ⬅️ démarre sur le menu principal
+    if (typeof loadLocal === 'function') loadLocal(); // restaure l’état si besoin
+    pageMain(); // ⬅️ on affiche le menu principal au lancement
   }catch(err){
     const el = document.getElementById('app');
     if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
