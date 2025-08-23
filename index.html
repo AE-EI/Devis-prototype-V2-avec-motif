@@ -58,11 +58,12 @@ let ctx = { piece:null, category:null, intervention:null, pose:null, designation
 
 // Helpers DOM
 const $app = () => document.getElementById('app');
-function view(html, withFooter=true){ 
-  // On insère le contenu
+
+function view(html, withFooter = true){
+  // Contenu principal
   let out = html;
 
-  // Si withFooter est vrai → ajouter Accueil + Sauvegarde
+  // Footer (Accueil + Sauvegarder) UNIQUEMENT si withFooter = true
   if (withFooter) {
     out += `
       <div class="row" style="margin-top:16px; gap:12px;">
@@ -78,7 +79,7 @@ function view(html, withFooter=true){
 // Bouton "Accueil" avec confirmation
 function confirmBackHome(){
   if (confirm("Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.")) {
-    pageMain();
+    pageMain();            // retour menu principal
   }
 }
 
@@ -156,8 +157,9 @@ const TARIFS = {
   "Autre circuit spécialisé": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
 };
 /* ============================= */
-/* CHAPITRE 4 : MENU PRINCIPAL (ne remplace rien, il coiffe le flux existant) */
+/* CHAPITRE 4 : MENU PRINCIPAL */
 /* ============================= */
+
 function pageMain(){
   view(`
     <div class="card">
@@ -167,12 +169,14 @@ function pageMain(){
         ${b("📂 Mes devis sauvegardés","pageSavedDevis()")}
       </div>
     </div>
-  `);
+  `, false); // ⬅️ false pour masquer Accueil/Sauvegarder sur le menu principal
 }
+
 function actionNouveauDevis(){
   devis = {}; // reset propre
-  pageHome(); // ↩️ on lance le FLUX VALIDÉ (petits carrés) tel quel
+  pageHome(); // ↩️ lance le flux pièces
 }
+
 function pageSavedDevis(){
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
   if(!saved.length){
@@ -193,6 +197,7 @@ function pageSavedDevis(){
       <div class="list">${list}</div>
   </div>`);
 }
+
 function saveCurrentDevis(){
   const name = prompt("Nom du devis :","") || ("Devis " + new Date().toLocaleDateString());
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
@@ -200,10 +205,12 @@ function saveCurrentDevis(){
   localStorage.setItem("savedDevisList", JSON.stringify(saved));
   alert("Devis sauvegardé !");
 }
+
 function loadDevis(idx){
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
   if(saved[idx]){ devis = saved[idx].data; pageHome(); }
 }
+
 function deleteDevis(idx){
   if(!confirm("Supprimer ce devis ?")) return;
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
@@ -211,7 +218,6 @@ function deleteDevis(idx){
   localStorage.setItem("savedDevisList", JSON.stringify(saved));
   pageSavedDevis();
 }
-
 /* ============================= */
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
    Rôle : ajouter/supprimer des pièces, puis dérouler : 
