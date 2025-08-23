@@ -48,7 +48,8 @@ window.addEventListener('error', (e) => {
   if (el) el.innerHTML = `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
 });
 
-/* CHAPITRE 4 : ÉTAT & HELPERS UI */
+/* ============================= */
+/* CHAPITRE 2 : ÉTAT & HELPERS UI */
 /* ============================= */
 
 // État global
@@ -57,7 +58,14 @@ let ctx = { piece:null, category:null, intervention:null, pose:null, designation
 
 // Helpers DOM
 const $app = () => document.getElementById('app');
-function view(html){ $app().innerHTML = html; }
+function view(html){ 
+  $app().innerHTML = html + `
+    <div class="row" style="margin-top:16px; gap:12px;">
+      ${b("⬅️ Accueil","pageMain()","btn back")}
+      ${b("💾 Sauvegarder devis","saveCurrentDevis()","btn primary")}
+    </div>
+  `;
+}
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
 function euro(n){ return `${(+n).toFixed(2)} €`; }
 
