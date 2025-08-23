@@ -58,14 +58,30 @@ let ctx = { piece:null, category:null, intervention:null, pose:null, designation
 
 // Helpers DOM
 const $app = () => document.getElementById('app');
-function view(html){ 
-  $app().innerHTML = html + `
-    <div class="row" style="margin-top:16px; gap:12px;">
-      ${b("⬅️ Accueil","pageMain()","btn back")}
-      ${b("💾 Sauvegarder devis","saveCurrentDevis()","btn primary")}
-    </div>
-  `;
+function view(html, withFooter=true){ 
+  // On insère le contenu
+  let out = html;
+
+  // Si withFooter est vrai → ajouter Accueil + Sauvegarde
+  if (withFooter) {
+    out += `
+      <div class="row" style="margin-top:16px; gap:12px;">
+        ${b("⬅️ Accueil","confirmBackHome()","btn back")}
+        ${b("💾 Sauvegarder devis","saveCurrentDevis()","btn primary")}
+      </div>
+    `;
+  }
+
+  $app().innerHTML = out;
 }
+
+// Bouton "Accueil" avec confirmation
+function confirmBackHome(){
+  if (confirm("Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.")) {
+    pageMain();
+  }
+}
+
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
 function euro(n){ return `${(+n).toFixed(2)} €`; }
 
