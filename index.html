@@ -6,7 +6,7 @@
   <!-- ============================= -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V2 (menu + flux validé)</title>
+  <title>MiniDevis — V2 (menu + groupes + export ZIP)</title>
   <style>
     :root { --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666; --line:#e8e8e8; --primary:#111; }
     *{ box-sizing:border-box }
@@ -27,21 +27,29 @@
     .list{ display:flex; flex-direction:column; gap:8px; }
     .pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--line); border-radius:999px; background:#fff; }
     .pill small{ color:var(--muted); }
+    .badge{ display:inline-block; padding:2px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:#444; background:#fafafa; }
   </style>
+
+  <!-- CHARGEMENT DE JSZip (export ZIP) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <!-- Cache-busting automatique : ajoute ?v=timestamp si absent -->
+  <script>
+  (function(){
+    try{
+      var u = new URL(location.href);
+      if(!u.searchParams.has('v')){
+        u.searchParams.set('v', Date.now());
+        location.replace(u.toString());
+      }
+    }catch(e){}
+  })();
+  </script>
 </head>
 <body>
 <header>MiniDevis — V2</header>
 <main id="app"></main>
-<script>
-(function(){
-  // Si pas déjà un paramètre "nocache" dans l'URL
-  if(!location.search.includes("nocache")){
-    const ver = Date.now(); // numéro unique basé sur l'heure
-    location.href = location.pathname + "?nocache=" + ver;
-  }
-})();
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-</script>
+
 <script>
 /* ============================= */
 /* DEBUG : SURFACE L’ERREUR SI JS PLANTE */
@@ -56,17 +64,19 @@ window.addEventListener('error', (e) => {
 /* ============================= */
 
 // État global courant (un devis en cours d’édition)
-let devis = {}; // contiendra aussi des meta: __id, __name, __updated
+let devis = {}; // contiendra aussi __id, __name
 let ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
 
-// Génère un ID stable pour un devis
+// ID stable pour le devis
 function genId(){ return 'dv_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 
-// Helpers DOM
+// DOM helpers
 const $app = () => document.getElementById('app');
+function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
+function euro(n){ return `${(+n).toFixed(2)} €`; }
 
-// view(html, noFooter=false) : footer Accueil/Sauvegarder caché si noFooter=true
+// view(html, noFooter=false): footer Accueil/Sauvegarder caché si noFooter=true
 function view(html, noFooter=false){
   let out = html;
   if(!noFooter){
@@ -80,7 +90,7 @@ function view(html, noFooter=false){
   $app().innerHTML = out;
 }
 
-// Bouton "Accueil" avec confirmation
+// Confirmation retour accueil
 function confirmBackHome(){
   const hasData = Object.keys(devis).some(k => !k.startsWith('__') && (devis[k]?.items?.length||0)>0);
   if(!hasData || confirm("Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.")){
@@ -88,21 +98,10 @@ function confirmBackHome(){
   }
 }
 
-// Bouton HTML
-function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
-function euro(n){ return `${(+n).toFixed(2)} €`; }
-
-// Persistance locale rapide (état courant uniquement)
-function ensureSection(piece){
-  if(!devis[piece]) devis[piece] = { items:[], note:"" };
-}
-function saveLocal(){
-  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
-}
-function loadLocal(){
-  try { devis = JSON.parse(localStorage.getItem('devis')||'{}') || {}; }
-  catch(e){ devis = {}; }
-}
+// Persistance locale rapide
+function ensureSection(piece){ if(!devis[piece]) devis[piece] = { items:[], note:"" }; }
+function saveLocal(){ try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){} }
+function loadLocal(){ try { devis = JSON.parse(localStorage.getItem('devis')||'{}') || {}; } catch(e){ devis = {}; } }
 
 /* ============================= */
 /* CHAPITRE 3 : DONNÉES & CONSTANTES */
@@ -111,21 +110,17 @@ const PIECES_PREDEFINIES = [
   "Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
   "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau",
   "Buanderie","Garage","Couloir","Terrasse","Balcon","Jardin",
-  "Débarras","Extérieur","Grenier/Combles"
+  "Débarras","Extérieur","Grenier/Combles","Atelier","Abri de jardin","Entrée","Bibliothèque"
 ];
 const CATEGORIES = ["Prises","Éclairage","Circuit spécialisé"];
-const POSES = [
-  "Encastré maçonnerie","Placo","Semi-encastré",
-  "Sur-mesure","Saillie avec moulure","Sous tube IRL"
-];
+const POSES = ["Encastré maçonnerie","Placo","Semi-encastré","Sur-mesure","Saillie avec moulure","Sous tube IRL"];
 const DESIGNATIONS_PAR_CATEGORIE = {
   "Prises": ["Prise"],
   "Éclairage/Luminaires": ["Point de centre","Applique"],
   "Éclairage/Commandes": ["Interrupteur simple","Interrupteur double"],
   "Circuit spécialisé": [
-    "Four","Plaque de cuisson","Lave-linge","Lave-vaisselle",
-    "Sèche-linge","Cumulus","VMC","Chauffage",
-    "Climatisation","Prise extérieure étanche","Autre circuit spécialisé"
+    "Four","Plaque de cuisson","Lave-linge","Lave-vaisselle","Sèche-linge","Cumulus",
+    "VMC","Chauffage","Climatisation","Prise extérieure étanche","Autre circuit spécialisé"
   ]
 };
 const TARIFS = {
@@ -159,10 +154,10 @@ function pageMain(){
         ${b("📂 Mes devis sauvegardés","pageSavedDevis()")}
       </div>
     </div>
-  `, true); // ← noFooter = true
+  `, true);
 }
 function actionNouveauDevis(){
-  devis = { __id: genId(), __name:"" }; // reset propre avec ID
+  devis = { __id: genId(), __name:"" }; // reset avec ID
   pageHome();
 }
 function pageSavedDevis(){
@@ -188,7 +183,7 @@ function loadDevis(idx){
   const saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
   if(!saved[idx]) return pageSavedDevis();
   devis = saved[idx].data || {};
-  ensureId();                 // sécurité si ancien devis sans id
+  ensureId();
   saveLocal();
   pageHome();
 }
@@ -199,13 +194,12 @@ function deleteDevis(idx){
   localStorage.setItem("savedDevisList", JSON.stringify(saved));
   pageSavedDevis();
 }
-
-// Sauvegarde SANS doublons (remplace si même id, sinon propose d'écraser si même nom)
+// Sauvegarde sans doublons
 function saveCurrentDevis(){
   ensureId();
   let saved = JSON.parse(localStorage.getItem("savedDevisList")||"[]");
 
-  // 1) Si un devis avec le même ID existe → on remplace directement
+  // Remplacement par ID si déjà existant
   let idx = saved.findIndex(d => d.data && d.data.__id === devis.__id);
   if (idx >= 0) {
     const name = devis.__name || saved[idx].name || ("Devis " + new Date().toLocaleDateString());
@@ -215,23 +209,18 @@ function saveCurrentDevis(){
     alert("Devis mis à jour.");
     return;
   }
-
-  // 2) Sinon : c'est un nouveau devis → demander le nom
+  // Nouveau devis → demander nom puis écraser par NOM si besoin
   let name = (devis.__name || "").trim();
   if(!name){
     name = (prompt("Nom du devis :", "") || "").trim();
     if(!name){ alert("Sauvegarde annulée."); return; }
   }
-
-  // 3) Si un devis existe déjà avec le même NOM → proposer d'écraser
   const byName = saved.findIndex(d => (d.name||"").toLowerCase() === name.toLowerCase());
+  devis.__name = name;
   if (byName >= 0) {
-    const ok = confirm(`Un devis nommé « ${name} » existe déjà.\nVoulez-vous l'écraser ?`);
-    if(!ok) return;
-    devis.__name = name;
+    if(!confirm(`Un devis nommé « ${name} » existe déjà.\nVoulez-vous l'écraser ?`)) return;
     saved[byName] = { name, date:new Date().toLocaleDateString(), data:devis };
   } else {
-    devis.__name = name;
     saved.push({ name, date:new Date().toLocaleDateString(), data:devis });
   }
   localStorage.setItem("savedDevisList", JSON.stringify(saved));
@@ -241,8 +230,6 @@ function saveCurrentDevis(){
 /* ============================= */
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.” */
 /* ============================= */
-
-// Accueil
 function pageHome(){
   const listPieces = Object.keys(devis).filter(k=>!k.startsWith('__'));
   const listHtml = listPieces.length
@@ -274,8 +261,6 @@ function pageHome(){
     </div>
   `);
 }
-
-// Sélection / création de pièce
 function pageAddPiece(){
   const options =
     PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
@@ -296,13 +281,11 @@ function pageAddPiece(){
 function confirmPieceChoice(){
   const sel = document.getElementById('piece-choice').value;
   if(!sel) return;
-
   let name = sel;
   if (sel === "__NEW__") {
     name = (prompt("Nom de la pièce :","") || "").trim();
     if(!name) return;
   }
-
   ensureSection(name);
   goPiece(name);
 }
@@ -313,8 +296,6 @@ function removePiece(piece){
     pageHome();
   }
 }
-
-// Page d’une pièce
 function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
@@ -367,8 +348,6 @@ function delLine(piece, idx){
   saveLocal();
   goPiece(piece);
 }
-
-// Catégorie → Intervention → Pose → Quantité
 function goCategory(cat){
   ctx.category = cat;
   if (cat === "Éclairage") return goEclairageSub();
@@ -386,7 +365,6 @@ function goCategory(cat){
   } else {
     interventions = ["Création"];
   }
-
   const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
   view(`
     <div class="card">
@@ -516,32 +494,10 @@ function editPieceNote(){
 }
 
 /* ============================= */
-/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder) */
-/* ============================= */
-function pageISHome(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>Installations spécifiques</h2>
-      <p class="muted">Module détaillé à réintégrer (Mise à la terre, Ventilation, Distribution tableau).</p>
-      <div class="row" style="margin-top:10px;">
-        ${b("Mise à la terre","isSoon('Mise à la terre')")}
-        ${b("Ventilation","isSoon('Ventilation')")}
-        ${b("Distribution tableau","isSoon('Distribution tableau')")}
-      </div>
-    </div>
-  `);
-}
-function isSoon(feature){
-  alert(`${feature} : à venir (placeholder).`);
-  pageISHome();
-}
-
-/* ============================= */
-/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT (ZIP) */
+/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT ZIP */
 /* ============================= */
 
-/* Groupes de pièces (tu peux ajuster à volonté) */
+// Groupes de pièces
 const PIECE_GROUPS = {
   // Pièces techniques
   "Buanderie": "Pièces techniques",
@@ -563,12 +519,12 @@ const PIECE_GROUPS = {
   "Couloir": "Pièces de vie",
   "Entrée": "Pièces de vie",
 
-  // Pièces d’eau
+  // Pièces d'eau
   "Salle de bain": "Pièces d'eau",
   "Salle d'eau": "Pièces d'eau",
   "Toilettes": "Pièces d'eau",
 
-  // Chambres & bureau
+  // Chambres & Bureau
   "Chambre 1": "Chambres & Bureau",
   "Chambre 2": "Chambres & Bureau",
   "Chambre 3": "Chambres & Bureau",
@@ -581,60 +537,44 @@ const PIECE_GROUPS = {
   "Mise à la terre": "Mise à la terre",
   "VMC": "VMC"
 };
-
-/* Helpers locaux au chapitre 7 */
-function slug(s){
-  return String(s)
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // accents
-    .replace(/[^a-z0-9]+/gi,'_')                     // non alphanum -> _
-    .replace(/^_+|_+$/g,'')                          // trim _
-    .toLowerCase();
-}
-
-function groupPieces(){
-  const grouped = {};
-  for (const piece of Object.keys(devis)) {
-    if (piece.startsWith('__')) continue; // ignore les meta (__id, __name…)
-    const section = devis[piece];
-    if (!section || !Array.isArray(section.items) || section.items.length === 0) continue;
-
-    const group = PIECE_GROUPS[piece] || "Divers";
-    if (!grouped[group]) grouped[group] = {};
-    grouped[group][piece] = section;
+function groupForPiece(name){ return PIECE_GROUPS[name] || "Divers"; }
+function groupDevisByGroups(d){
+  const g = {};
+  for (const piece in d){
+    if(piece.startsWith('__')) continue;
+    const grp = groupForPiece(piece);
+    if(!g[grp]) g[grp] = {};
+    g[grp][piece] = d[piece];
   }
-  return grouped;
+  return g;
 }
 
-/* Estimatif détaillé (affichage par groupes) */
 function pageEstimatif(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
   let totalGlobal = 0;
 
-  const grouped = groupPieces();
+  const grouped = groupDevisByGroups(devis);
 
-  for (const group of Object.keys(grouped)) {
+  for (const group in grouped) {
     html += `<h2 style="border-top:2px solid #000; padding-top:8px;">${group}</h2>`;
     let groupTotal = 0;
 
-    for (const piece of Object.keys(grouped[group])) {
+    for (const piece in grouped[group]) {
       const section = grouped[group][piece];
+      if (!section || section.items.length === 0) continue;
+
       let sectionTotal = 0;
-
-      // Titre pièce avec “trait au-dessus” façon Abby (border-top)
       html += `<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">${piece}</h3><ul>`;
-
       section.items.forEach((item) => {
         const prixTotal = (item.prixU||0) * (item.qty||0);
         sectionTotal += prixTotal;
-        groupTotal   += prixTotal;
-        totalGlobal  += prixTotal;
-
+        groupTotal += prixTotal;
+        totalGlobal += prixTotal;
         const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
         const unitTxt = item.unit || "u";
-        const left    = item.intervention ? `${item.intervention} — ` : "";
+        const left = item.intervention ? `${item.intervention} — ` : "";
         html += `<li>${left}${item.designation}${poseTxt} (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
       });
-
       if (section.note) html += `<li><em>Note : ${section.note}</em></li>`;
       html += `</ul><p><strong>Total ${piece} : ${euro(sectionTotal)}</strong></p>`;
     }
@@ -643,99 +583,90 @@ function pageEstimatif(){
   }
 
   html += `<h3>Total global : ${euro(totalGlobal)}</h3>
-           <div class="row" style="margin-top:10px;">
-             ${b("Exporter en ZIP (1 .txt par groupe)","exportTextZip()")}
-           </div></div>`;
+           <div class="row" style="margin-top:10px;">${b("Exporter en ZIP (1 .txt par groupe)","exportZip()")}</div></div>`;
   view(html);
 }
-
-/* Totaux simplifiés par groupe */
 function pageTotaux(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par groupe</h2>`;
   let totalGlobal = 0;
+  const grouped = groupDevisByGroups(devis);
 
-  const grouped = groupPieces();
-
-  for (const group of Object.keys(grouped)) {
+  for (const group in grouped) {
     let groupTotal = 0;
-    for (const piece of Object.keys(grouped[group])) {
+    for (const piece in grouped[group]) {
       const section = grouped[group][piece];
-      const sectionTotal = section.items.reduce((sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0);
-      groupTotal  += sectionTotal;
-      totalGlobal += sectionTotal;
+      if (!section || section.items.length === 0) continue;
+      const sectionTotal = section.items.reduce((s,it)=> s + ((it.prixU||0)*(it.qty||0)), 0);
+      groupTotal += sectionTotal; totalGlobal += sectionTotal;
     }
     html += `<p><strong>${group}</strong> : ${euro(groupTotal)}</p>`;
   }
-
   html += `<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
-           <div class="row" style="margin-top:10px;">
-             ${b("Exporter en ZIP (1 .txt par groupe)","exportTextZip()")}
-           </div></div>`;
+           <div class="row" style="margin-top:10px;">${b("Exporter en ZIP (1 .txt par groupe)","exportZip()")}</div></div>`;
   view(html);
 }
 
-/* Export ZIP (un .txt par groupe) — nécessite JSZip chargé dans le <head> */
-async function exportTextZip(){
-  try{
-    if (typeof JSZip !== 'function') {
-      alert("JSZip n'est pas chargé. Vérifie le <script> CDN dans le <head>.");
-      return;
-    }
-
-    const grouped = groupPieces();
-    const zip = new JSZip();
-
-    for (const group of Object.keys(grouped)) {
-      let lines = [];
-      lines.push(`=== ${group} ===`, ""); // titre groupe + ligne vide
-      let groupTotal = 0;
-
-      for (const piece of Object.keys(grouped[group])) {
-        const section = grouped[group][piece];
-        if (!section || !section.items || !section.items.length) continue;
-
-        lines.push(`--- ${piece} ---`); // titre pièce (le “trait au-dessus” est visuel en HTML; ici on garde le séparateur)
-        let sectionTotal = 0;
-
-        section.items.forEach(item => {
-          const prixTotal = (item.prixU||0) * (item.qty||0);
-          sectionTotal += prixTotal;
-          groupTotal   += prixTotal;
-
-          const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
-          const unitTxt = item.unit || "u";
-          lines.push(`- ${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
-        });
-
-        if (section.note) lines.push(`Note : ${section.note}`);
-        lines.push(`Total ${piece} : ${sectionTotal}€`, ""); // ligne vide après chaque pièce
-      }
-
-      lines.push(`Total ${group} : ${groupTotal}€`);
-
-      // Ajoute un fichier texte par groupe dans le ZIP
-      zip.file(`devis_${slug(group)}.txt`, lines.join("\n"));
-    }
-
-    const blob = await zip.generateAsync({ type:"blob" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url;
-    a.download = `devis_groupes_${new Date().toISOString().slice(0,10)}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }catch(err){
-    alert("Erreur export ZIP : " + (err && err.message ? err.message : err));
-    console.error(err);
+// Export ZIP (un .txt par groupe, dans un seul zip)
+async function exportZip(){
+  if(typeof JSZip === "undefined"){
+    alert("JSZip n'est pas chargé. Vérifie le <script> CDN dans le <head>.");
+    return;
   }
+  const zip = new JSZip();
+  const grouped = groupDevisByGroups(devis);
+
+  let totalGlobal = 0;
+
+  for (const group in grouped) {
+    const lines = [];
+    lines.push(`=== ${group} ===\n`);
+    let groupTotal = 0;
+
+    for (const piece in grouped[group]) {
+      const section = grouped[group][piece];
+      if (!section || section.items.length === 0) continue;
+
+      lines.push(`--- ${piece} ---`);
+      let sectionTotal = 0;
+
+      section.items.forEach(item => {
+        const prixTotal = (item.prixU||0) * (item.qty||0);
+        sectionTotal += prixTotal;
+        groupTotal += prixTotal;
+        totalGlobal += prixTotal;
+        const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
+        const unitTxt = item.unit || "u";
+        lines.push(`- ${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
+      });
+
+      if (section.note) lines.push(`Note : ${section.note}`);
+      lines.push(`Total ${piece} : ${sectionTotal}€\n`);
+    }
+
+    lines.push(`Total ${group} : ${groupTotal}€\n`);
+    zip.file(`devis_${group}.txt`, lines.join("\n"));
+  }
+
+  // Optionnel : fichier récap global
+  zip.file(`devis_TOTAL.txt`, `Total global : ${totalGlobal}€\n`);
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const name = (devis.__name && devis.__name.trim()) ? devis.__name.trim().replace(/\s+/g,'_') : 'devis';
+  a.download = `${name}_par_groupes.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
+
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
 /* ============================= */
 function init(){
   try{
     loadLocal();   // restaure l’état en cours si présent
-    pageMain();    // affiche le menu principal au lancement
+    pageMain();    // menu principal au lancement
   }catch(err){
     const el = document.getElementById('app');
     if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
