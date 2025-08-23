@@ -33,7 +33,14 @@
 <body>
 <header>MiniDevis — V2</header>
 <main id="app"></main>
-
+// Forcer un cache-busting automatique à chaque build
+(function(){
+  const s = document.currentScript;
+  if(s && !location.search.includes("nocache")){
+    const ver = Date.now(); // numéro unique à chaque déploiement
+    location.href = location.pathname + "?nocache=" + ver;
+  }
+})();
 <script>
   // DEBUG : afficher la première erreur JS en plein écran
 window.addEventListener('error', (e) => {
