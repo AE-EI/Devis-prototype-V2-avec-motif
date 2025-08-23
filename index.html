@@ -32,7 +32,15 @@
 <body>
 <header>MiniDevis — V2</header>
 <main id="app"></main>
-
+<script>
+(function(){
+  // Si pas déjà un paramètre "nocache" dans l'URL
+  if(!location.search.includes("nocache")){
+    const ver = Date.now(); // numéro unique basé sur l'heure
+    location.href = location.pathname + "?nocache=" + ver;
+  }
+})();
+</script>
 <script>
 /* ============================= */
 /* DEBUG : SURFACE L’ERREUR SI JS PLANTE */
