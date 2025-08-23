@@ -265,15 +265,26 @@ function saveCurrentDevis(){
 /* ============================= */
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.” */
 /* ============================= */
+
+// Accueil
 function pageHome(){
   const listPieces = Object.keys(devis).filter(k=>!k.startsWith('__'));
+
   const listHtml = listPieces.length
-    ? listPieces.map(p => `<div class="pill">
+    ? listPieces.map(p => {
+        const s = devis[p] || {};
+        const badges = [
+          (s.qualificatif && s.qualificatif.trim()) ? `<span class="badge">${s.qualificatif.trim()}</span>` : "",
+          (s.etage && s.etage.trim()) ? `<span class="badge">${s.etage.trim()}</span>` : ""
+        ].filter(Boolean).join(' ');
+        return `<div class="pill">
           <strong>${p}</strong>
-          <small>${devis[p].items.length} ligne(s)</small>
+          ${badges ? `<span style="margin-left:6px">${badges}</span>` : ""}
+          <small>${(s.items?.length||0)} ligne(s)</small>
           ${b("Ouvrir", `goPiece('${p}')`,"btn")}
           ${b("Supprimer", `removePiece('${p}')`,"btn")}
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : `<p class="muted">Aucune pièce ajoutée pour l’instant.</p>`;
 
   view(`
@@ -296,6 +307,8 @@ function pageHome(){
     </div>
   `);
 }
+
+// Sélection / création de pièce
 function pageAddPiece(){
   const options =
     PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
@@ -307,6 +320,7 @@ function pageAddPiece(){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
+
       <label>Choisir une pièce</label>
       <select id="piece-choice">${options}</select>
 
@@ -324,9 +338,9 @@ function pageAddPiece(){
 }
 
 function confirmPieceChoice(){
-  const sel = document.getElementById('piece-choice').value;
+  const sel    = document.getElementById('piece-choice').value;
   const qualif = (document.getElementById('piece-qualif').value || "").trim();
-  const etage = document.getElementById('piece-etage').value;
+  const etage  = document.getElementById('piece-etage').value;
   if(!sel) return;
 
   let name = sel;
@@ -339,30 +353,23 @@ function confirmPieceChoice(){
   devis[name].qualificatif = qualif || null;
   devis[name].etage = (etage && etage !== "(aucun)") ? etage : null;
 
+  saveLocal();      // 🔐 persiste immédiatement
   goPiece(name);
 }
-function confirmPieceChoice(){
-  const sel = document.getElementById('piece-choice').value;
-  if(!sel) return;
-  let name = sel;
-  if (sel === "__NEW__") {
-    name = (prompt("Nom de la pièce :","") || "").trim();
-    if(!name) return;
-  }
-  ensureSection(name);
-  goPiece(name);
-}
+
 function removePiece(piece){
   if(confirm(`Supprimer la pièce « ${piece} » et toutes ses lignes ?`)){
     delete devis[piece];
     saveLocal();
     pageHome();
   }
-}function goPiece(piece){
+}
+
+// Page d’une pièce
+function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
 
-  // On filtre "Spécifique" au cas où il serait encore dans CATEGORIES
   const cats = CATEGORIES
     .filter(cat => cat !== "Spécifique")
     .map(cat => b(cat, `goCategory('${cat}')`))
@@ -406,11 +413,14 @@ function removePiece(piece){
     </div>
   `);
 }
+
 function delLine(piece, idx){
   devis[piece].items.splice(idx,1);
   saveLocal();
   goPiece(piece);
 }
+
+// Catégorie → Intervention → Pose → Quantité
 function goCategory(cat){
   ctx.category = cat;
   if (cat === "Éclairage") return goEclairageSub();
@@ -428,6 +438,7 @@ function goCategory(cat){
   } else {
     interventions = ["Création"];
   }
+
   const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
   view(`
     <div class="card">
@@ -437,6 +448,7 @@ function goCategory(cat){
     </div>
   `);
 }
+
 function goEclairageSub(){
   view(`
     <div class="card">
@@ -449,6 +461,7 @@ function goEclairageSub(){
     </div>
   `);
 }
+
 function setEclairageBranch(branch){
   ctx.category = branch;
   let interventions = (branch === "Éclairage/Luminaires")
@@ -464,6 +477,7 @@ function setEclairageBranch(branch){
     </div>
   `);
 }
+
 function goIntervention(interv){
   ctx.intervention = interv;
 
@@ -497,10 +511,12 @@ function goIntervention(interv){
     goDesignation(null);
   }
 }
+
 function goDesignation(pose){
   ctx.pose = pose;
   const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
   if (list.length === 1) return pageQuantite(list[0]);
+
   const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
   view(`
     <div class="card">
@@ -510,6 +526,7 @@ function goDesignation(pose){
     </div>
   `);
 }
+
 function pageQuantite(designation){
   ctx.designation = designation;
   const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
@@ -521,6 +538,7 @@ function pageQuantite(designation){
     </div>
   `);
 }
+
 function getPrix(designation, intervention){
   const base = TARIFS[designation] || {};
   if(intervention==="Création") return base.creation||0;
@@ -529,6 +547,7 @@ function getPrix(designation, intervention){
   if(intervention.startsWith("Remplacement")) return base.remplacement||0;
   return 0;
 }
+
 function saveItem(qty){
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
@@ -538,6 +557,7 @@ function saveItem(qty){
   saveLocal();
   goPiece(ctx.piece);
 }
+
 function pagePieceSpecifique(){
   const label = prompt("Nom de la prestation spécifique :","");
   if(!label){ return goPiece(ctx.piece); }
@@ -547,15 +567,15 @@ function pagePieceSpecifique(){
   saveLocal();
   goPiece(ctx.piece);
 }
+
 function editPieceNote(){
   ensureSection(ctx.piece);
-  const cur = devis[ctx.piece].note || "";
-  const n = prompt(`Note pour ${ctx.piece}`, cur);
-  if(n!==null) devis[ctx.piece].note = n.trim();
+  const cur = devis[piece].note || "";
+  const n = prompt(`Note pour ${piece}`, cur);
+  if(n!==null) devis[piece].note = n.trim();
   saveLocal();
-  goPiece(ctx.piece);
+  goPiece(piece);
 }
-
 /* ============================= */
 /* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
 /* ============================= */
