@@ -84,7 +84,7 @@ const PIECES_PREDEFINIES = [
   "Débarras","Extérieur","Grenier/Combles"
 ];
 
-const CATEGORIES = ["Prises","Circuit spécialisé","Éclairage","Spécifique"];
+const CATEGORIES = ["Prises","Éclairage","Circuit spécialisé"];
 
 const POSES = [
   "Encastré maçonnerie",
@@ -97,24 +97,16 @@ const POSES = [
 
 const DESIGNATIONS_PAR_CATEGORIE = {
   "Prises": ["Prise"],
+
+  // ⬇️ Nouvelle séparation Éclairage :
+  "Éclairage/Luminaires": ["Point de centre","Applique"],
+  "Éclairage/Commandes": ["Interrupteur simple","Interrupteur double"],
+
+  // ⬇️ Si tu as déjà "Circuit spécialisé", garde-le tel quel :
   "Circuit spécialisé": [
-    "Four",
-    "Plaque de cuisson",
-    "Lave-linge",
-    "Lave-vaisselle",
-    "Sèche-linge",
-    "Cumulus",
-    "VMC",
-    "Chauffage",
-    "Climatisation",
-    "Prise extérieure étanche",
-    "Autre circuit spécialisé"
-  ],
-  "Éclairage": [
-    "Point de centre",
-    "Applique",
-    "Interrupteur simple",
-    "Interrupteur double"
+    "Four","Plaque de cuisson","Lave-linge","Lave-vaisselle",
+    "Sèche-linge","Cumulus","VMC","Chauffage",
+    "Climatisation","Prise extérieure étanche","Autre circuit spécialisé"
   ]
 };
 
@@ -272,17 +264,31 @@ function removePiece(piece){
 }
 
 /* Page d’une pièce */
+/* CHAPITRE 5 — goPiece : version avec un seul bouton "Spécifique" (rapide) */
 function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
 
-  const cats = CATEGORIES.map(cat => b(cat, `goCategory('${cat}')`)).join('');
+  // On filtre "Spécifique" au cas où il serait encore dans CATEGORIES
+  const cats = CATEGORIES
+    .filter(cat => cat !== "Spécifique")
+    .map(cat => b(cat, `goCategory('${cat}')`))
+    .join('');
+
+  const noteTxt = devis[piece].note
+    ? `<em class="muted">Note : ${devis[piece].note}</em>`
+    : `<span class="muted">Aucune note</span>`;
+
   const lignes = devis[piece].items.length
     ? `<ul>` + devis[piece].items.map((it,i)=>{
         const total = (it.prixU||0) * (it.qty||0);
         const poseTxt = (it.intervention==="Création" && it.pose) ? ` — ${it.pose.toLowerCase()}` : "";
         const unitTxt = it.unit || "u";
-        return `<li>${it.intervention?it.intervention+" — ":""}${it.designation}${poseTxt} (${it.qty} ${unitTxt} × ${euro(it.prixU)} = ${euro(total)}) ${b("×",`delLine('${piece}',${i})`,"btn")}</li>`;
+        return `<li>
+          ${it.intervention ? it.intervention + " — " : ""}${it.designation}${poseTxt}
+          (${it.qty} ${unitTxt} × ${euro(it.prixU)} = ${euro(total)})
+          ${b("×",`delLine('${piece}',${i})`,"btn")}
+        </li>`;
       }).join('') + `</ul>`
     : `<p class="muted">Aucune ligne pour l’instant.</p>`;
 
@@ -290,12 +296,21 @@ function goPiece(piece){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>${piece}</h2>
-      <div class="row">${cats}</div>
+      <!-- Catégories standards + bouton "Spécifique" rapide -->
+      <div class="row">
+        ${cats}
+        ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        ${b("Ajouter / modifier la note","editPieceNote()")}
+      </div>
     </div>
 
     <div class="card" style="margin-top:12px;">
       <h2>Lignes de la pièce</h2>
       ${lignes}
+      <p style="margin-top:8px;">${noteTxt}</p>
     </div>
   `);
 }
@@ -307,33 +322,24 @@ function delLine(piece, idx){
 /* Catégorie → Intervention → Pose → Quantité */
 function goCategory(cat){
   ctx.category = cat;
-  let interventions = [];
 
-  if (cat==="Prises") {
+  // Cas spécial : Éclairage -> sous-menu "Luminaires" / "Commandes"
+  if (cat === "Éclairage") {
+    return goEclairageSub();
+  }
+
+  let interventions = [];
+  if (cat === "Prises" || cat === "Circuit spécialisé") {
     interventions = [
       "Création",
       "Remplacement appareillage",
       "Recâblage avec remplacement appareillage",
       "Recâblage sans remplacement appareillage"
     ];
-  } 
-  else if (cat==="Circuit spécialisé") {
-    interventions = [
-      "Création",
-      "Recâblage avec remplacement appareillage",
-      "Recâblage sans remplacement appareillage"
-    ];
-  }
-  else if (cat==="Éclairage") {
-    interventions = [
-      "Création",
-      "Remplacement luminaire",
-      "Recâblage avec remplacement luminaire",
-      "Recâblage sans remplacement luminaire"
-    ];
-  } 
-  else {
+  } else if (cat === "Spécifique") {
     interventions = ["Saisie libre avec prix"];
+  } else {
+    interventions = ["Création"];
   }
 
   const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
@@ -345,10 +351,57 @@ function goCategory(cat){
     </div>
   `);
 }
+  function goEclairageSub(){
+  view(`
+    <div class="card">
+      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
+      <h2>Éclairage — ${ctx.piece}</h2>
+      <div class="row">
+        ${b("Luminaires", `setEclairageBranch('Éclairage/Luminaires')`)}
+        ${b("Commandes", `setEclairageBranch('Éclairage/Commandes')`)}
+      </div>
+    </div>
+  `);
+}
 
+function setEclairageBranch(branch){
+  // On redirige la "catégorie" vers une branche interne puis on propose les interventions
+  ctx.category = branch;
+
+  // Interventions :
+  // - Luminaires : les 4 options demandées
+  // - Commandes : même logique que l’appareillage (on garde ces libellés)
+  let interventions = [];
+  if (branch === "Éclairage/Luminaires") {
+    interventions = [
+      "Création",
+      "Remplacement luminaire",
+      "Recâblage avec remplacement luminaire",
+      "Recâblage sans remplacement luminaire"
+    ];
+  } else { // "Éclairage/Commandes"
+    interventions = [
+      "Création",
+      "Remplacement appareillage",
+      "Recâblage avec remplacement appareillage",
+      "Recâblage sans remplacement appareillage"
+    ];
+  }
+
+  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour","goEclairageSub()","btn back")}
+      <h2>${branch} — ${ctx.piece}</h2>
+      <div class="row">${btns}</div>
+    </div>
+  `);
+}
 function goIntervention(interv){
   ctx.intervention = interv;
-  if(ctx.category==="Spécifique"){
+
+  // Saisie libre "Spécifique" (dans la pièce)
+  if (ctx.category === "Spécifique") {
     const label = prompt("Nom de la prestation spécifique :","");
     if(!label){ return goCategory("Spécifique"); }
     const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
@@ -357,6 +410,27 @@ function goIntervention(interv){
     goPiece(ctx.piece);
     return;
   }
+
+  // Catégories qui demandent un type de pose en Création
+  const needsPoseOnCreation =
+    (ctx.category === "Prises") ||
+    (ctx.category === "Circuit spécialisé") ||
+    (ctx.category === "Éclairage/Luminaires") ||
+    (ctx.category === "Éclairage/Commandes");
+
+  if (interv === "Création" && needsPoseOnCreation) {
+    const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
+    view(`
+      <div class="card">
+        ${b("Retour",`goCategory('${ (ctx.category.startsWith("Éclairage/") ? "Éclairage" : ctx.category) }')`,"btn back")}
+        <h2>Type de pose</h2>
+        <div class="row">${poses}</div>
+      </div>
+    `);
+  } else {
+    goDesignation(null);
+  }
+}
 
   // Cas création (Prises ou Circuit spécialisé)
   if(interv==="Création" && (ctx.category==="Prises" || ctx.category==="Circuit spécialisé")){
