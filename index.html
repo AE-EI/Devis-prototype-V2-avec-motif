@@ -531,70 +531,169 @@ function isSoon(feature){
 /* ============================= */
 /* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
 /* ============================= */
+
+// Définition des groupes de pièces
+const PIECE_GROUPS = {
+  // Pièces techniques
+  "Buanderie": "Pièces techniques",
+  "Garage": "Pièces techniques",
+  "Atelier": "Pièces techniques",
+
+  // Extérieur
+  "Jardin": "Extérieur",
+  "Terrasse": "Extérieur",
+  "Balcon": "Extérieur",
+  "Abri de jardin": "Extérieur",
+
+  // Cuisine
+  "Cuisine": "Cuisine",
+
+  // Pièces de vie
+  "Salon": "Pièces de vie",
+  "Salle à manger": "Pièces de vie",
+  "Couloir": "Pièces de vie",
+  "Entrée": "Pièces de vie",
+
+  // Pièces d’eau
+  "Salle de bain": "Pièces d’eau",
+  "Salle d'eau": "Pièces d’eau",
+  "Toilettes": "Pièces d’eau",
+
+  // Chambres & bureau
+  "Chambre 1": "Chambres & Bureau",
+  "Chambre 2": "Chambres & Bureau",
+  "Chambre 3": "Chambres & Bureau",
+  "Bureau": "Chambres & Bureau",
+  "Bibliothèque": "Chambres & Bureau",
+
+  // Spécifiques
+  "Tableau": "Tableau & distribution",
+  "Distribution": "Tableau & distribution",
+  "Mise à la terre": "Mise à la terre",
+  "VMC": "VMC"
+};
+
 function pageEstimatif(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
   let totalGlobal = 0;
-  for (const section in devis) {
-    if (section.startsWith('__')) continue;
-    if (!devis[section] || devis[section].items.length === 0) continue;
-    let sectionTotal = 0;
-    html += `<h3><strong>${section}</strong></h3><ul>`;
-    devis[section].items.forEach((item) => {
-      const prixTotal = (item.prixU||0) * (item.qty||0);
-      sectionTotal += prixTotal; totalGlobal += prixTotal;
-      const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
-      const unitTxt = item.unit ? item.unit : "u";
-      const left = item.intervention ? `${item.intervention} — ` : "";
-      html += `<li>${left}${item.designation}${poseTxt} (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
-    });
-    if (devis[section].note) html += `<li><em>Note : ${devis[section].note}</em></li>`;
-    html += `</ul><p><strong>Total ${section} : ${euro(sectionTotal)}</strong></p><hr>`;
+
+  // Regroupement par groupes
+  let grouped = {};
+  for (const piece in devis) {
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
   }
+
+  // Affichage
+  for (const group in grouped) {
+    html += `<h2 style="border-top:2px solid #000; padding-top:8px;">${group}</h2>`;
+    let groupTotal = 0;
+
+    for (const piece in grouped[group]) {
+      const section = grouped[group][piece];
+      if (!section || section.items.length === 0) continue;
+
+      let sectionTotal = 0;
+      html += `<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">${piece}</h3><ul>`;
+      section.items.forEach((item) => {
+        const prixTotal = (item.prixU||0) * (item.qty||0);
+        sectionTotal += prixTotal;
+        groupTotal += prixTotal;
+        totalGlobal += prixTotal;
+        const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
+        const unitTxt = item.unit || "u";
+        const left = item.intervention ? `${item.intervention} — ` : "";
+        html += `<li>${left}${item.designation}${poseTxt} (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
+      });
+      if (section.note) html += `<li><em>Note : ${section.note}</em></li>`;
+      html += `</ul><p><strong>Total ${piece} : ${euro(sectionTotal)}</strong></p>`;
+    }
+
+    html += `<p><strong>Total ${group} : ${euro(groupTotal)}</strong></p><hr>`;
+  }
+
   html += `<h3>Total global : ${euro(totalGlobal)}</h3>
            <div class="row" style="margin-top:10px;">${b("Exporter en .txt","exportText()")}</div></div>`;
   view(html);
 }
+
 function pageTotaux(){
-  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par section</h2>`;
+  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par groupe</h2>`;
   let totalGlobal = 0;
-  for (const section in devis) {
-    if (section.startsWith('__')) continue;
-    if (!devis[section] || devis[section].items.length === 0) continue;
-    const sectionTotal = devis[section].items.reduce((sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0);
-    totalGlobal += sectionTotal;
-    html += `<p><strong>${section}</strong> : ${euro(sectionTotal)}</p>`;
+
+  let grouped = {};
+  for (const piece in devis) {
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
   }
+
+  for (const group in grouped) {
+    let groupTotal = 0;
+    for (const piece in grouped[group]) {
+      const section = grouped[group][piece];
+      if (!section || section.items.length === 0) continue;
+      const sectionTotal = section.items.reduce((sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0);
+      groupTotal += sectionTotal;
+      totalGlobal += sectionTotal;
+    }
+    html += `<p><strong>${group}</strong> : ${euro(groupTotal)}</p>`;
+  }
+
   html += `<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
            <div class="row" style="margin-top:10px;">${b("Exporter en .txt","exportText()")}</div></div>`;
   view(html);
 }
+
 function exportText(){
   let lines = [];
   let totalGlobal = 0;
-  for (const section in devis) {
-    if (section.startsWith('__')) continue;
-    if (!devis[section] || devis[section].items.length === 0) continue;
-    lines.push(`${section} :`);
-    let sectionTotal = 0;
-    devis[section].items.forEach(item => {
-      const prixTotal = (item.prixU||0) * (item.qty||0);
-      sectionTotal += prixTotal; totalGlobal += prixTotal;
-      const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
-      const unitTxt = item.unit ? item.unit : "u";
-      lines.push(`-${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
-    });
-    if (devis[section].note) lines.push(`_Note : ${devis[section].note}_`);
-    lines.push(`Total ${section} : ${sectionTotal}€`);
-    lines.push("");
+
+  let grouped = {};
+  for (const piece in devis) {
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
   }
-  lines.push(`Total global : ${totalGlobal}€`);
+
+  for (const group in grouped) {
+    lines.push(`\n=== ${group} ===\n`);
+    let groupTotal = 0;
+
+    for (const piece in grouped[group]) {
+      const section = grouped[group][piece];
+      if (!section || section.items.length === 0) continue;
+
+      lines.push(`\n--- ${piece} ---`);
+      let sectionTotal = 0;
+
+      section.items.forEach(item => {
+        const prixTotal = (item.prixU||0) * (item.qty||0);
+        sectionTotal += prixTotal;
+        groupTotal += prixTotal;
+        totalGlobal += prixTotal;
+        const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
+        const unitTxt = item.unit ? item.unit : "u";
+        const left = item.intervention ? `${item.intervention} — ` : "";
+        lines.push(`${left}${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt}) = ${prixTotal}€`);
+      });
+
+      if (section.note) lines.push(`_Note : ${section.note}_`);
+      lines.push(`Total ${piece} : ${sectionTotal}€\n`);
+    }
+
+    lines.push(`Total ${group} : ${groupTotal}€\n`);
+  }
+
+  lines.push(`TOTAL GLOBAL : ${totalGlobal}€`);
+
   const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = (devis.__name ? `devis-${devis.__name}.txt` : "devis.txt"); a.click();
+  a.href = url; a.download = "devis.txt"; a.click();
   URL.revokeObjectURL(url);
 }
-
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
 /* ============================= */
