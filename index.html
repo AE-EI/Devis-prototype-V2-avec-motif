@@ -75,6 +75,13 @@ function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 const $app = () => document.getElementById('app');
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
 function euro(n){ return `${(+n).toFixed(2)} €`; }
+  // Formate le nom affiché d'une pièce avec qualificatif + étage si présents
+function formatPieceLabel(piece){
+  const data = devis[piece] || {};
+  const q = data.qualificatif ? ` (${data.qualificatif})` : "";
+  const e = data.etage ? ` — ${data.etage}` : "";
+  return piece + q + e;
+}
 
 // view(html, noFooter=false): footer Accueil/Sauvegarder caché si noFooter=true
 function view(html, noFooter=false){
@@ -99,7 +106,20 @@ function confirmBackHome(){
 }
 
 // Persistance locale rapide
-function ensureSection(piece){ if(!devis[piece]) devis[piece] = { items:[], note:"" }; }
+function ensureSection(piece){
+  if(!devis[piece]) devis[piece] = { items:[], note:"", qualifier:"", floor:"" };
+  if(typeof devis[piece].qualifier === "undefined") devis[piece].qualifier = "";
+  if(typeof devis[piece].floor === "undefined") devis[piece].floor = "";
+}
+
+function formatPieceLabel(name){
+  const sec = devis[name];
+  if(!sec) return name;
+  const parts = [];
+  if (sec.qualifier) parts.push(sec.qualifier);
+  if (sec.floor) parts.push(sec.floor);
+  return parts.length ? `${name} — ${parts.join(' · ')}` : name;
+}
 function saveLocal(){ try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){} }
 function loadLocal(){ try { devis = JSON.parse(localStorage.getItem('devis')||'{}') || {}; } catch(e){ devis = {}; } }
 
@@ -141,7 +161,15 @@ const TARIFS = {
   "Prise extérieure étanche": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
   "Autre circuit spécialisé": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
 };
-
+// Étages proposés dans une maison
+const ETAGES = [
+  "Rez-de-chaussée",
+  "1er étage",
+  "2e étage",
+  "Sous-sol",
+  "Combles",
+  "Annexe"
+];
 /* ============================= */
 /* CHAPITRE 4 : MENU PRINCIPAL (sans footer) */
 /* ============================= */
@@ -266,17 +294,45 @@ function pageAddPiece(){
     PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
     `<option value="__NEW__">➕ Créer une nouvelle pièce…</option>`;
 
+  const etageOptions = ["(aucun)", ...ETAGES].map(e=>`<option value="${e}">${e}</option>`).join('');
+
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
       <label>Choisir une pièce</label>
       <select id="piece-choice">${options}</select>
+
+      <label style="margin-top:10px;">Qualificatif (optionnel)</label>
+      <input id="piece-qualif" placeholder="ex: Parents, RDC, gauche" />
+
+      <label style="margin-top:10px;">Étage (optionnel)</label>
+      <select id="piece-etage">${etageOptions}</select>
+
       <div class="row" style="margin-top:10px;">
         ${b("Valider","confirmPieceChoice()","btn primary")}
       </div>
     </div>
   `);
+}
+
+function confirmPieceChoice(){
+  const sel = document.getElementById('piece-choice').value;
+  const qualif = (document.getElementById('piece-qualif').value || "").trim();
+  const etage = document.getElementById('piece-etage').value;
+  if(!sel) return;
+
+  let name = sel;
+  if (sel === "__NEW__") {
+    name = (prompt("Nom de la pièce :","") || "").trim();
+    if(!name) return;
+  }
+
+  ensureSection(name);
+  devis[name].qualificatif = qualif || null;
+  devis[name].etage = (etage && etage !== "(aucun)") ? etage : null;
+
+  goPiece(name);
 }
 function confirmPieceChoice(){
   const sel = document.getElementById('piece-choice').value;
@@ -295,11 +351,11 @@ function removePiece(piece){
     saveLocal();
     pageHome();
   }
-}
-function goPiece(piece){
+}function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
 
+  // On filtre "Spécifique" au cas où il serait encore dans CATEGORIES
   const cats = CATEGORIES
     .filter(cat => cat !== "Spécifique")
     .map(cat => b(cat, `goCategory('${cat}')`))
@@ -325,7 +381,7 @@ function goPiece(piece){
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
-      <h2>${piece}</h2>
+      <h2>${formatPieceLabel(piece)}</h2>
       <div class="row">
         ${cats}
         ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}
