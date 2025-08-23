@@ -269,20 +269,21 @@ function saveCurrentDevis(){
 // Accueil
 function pageHome(){
   const listPieces = Object.keys(devis).filter(k=>!k.startsWith('__'));
+
   const listHtml = listPieces.length
     ? listPieces.map(p => {
-        const section = devis[p] || {};
+        const s = devis[p] || {};
         const badges = [
-          section.qualificatif && section.qualificatif.trim(),
-          section.etage && section.etage.trim()
-        ].filter(Boolean).map(txt=>`<span class="badge">${txt}</span>`).join(" ");
+          (s.qualificatif && s.qualificatif.trim()) ? `<span class="badge">${s.qualificatif}</span>` : "",
+          (s.etage && s.etage.trim()) ? `<span class="badge">${s.etage}</span>` : ""
+        ].filter(Boolean).join(" ");
 
         return `<div class="pill">
-          <strong>${formatPieceLabel(p)}</strong>
-          ${badges ? `<small>${badges}</small>` : ""}
-          <small>${(section.items?.length||0)} ligne(s)</small>
-          ${b("Ouvrir", `goPiece('${p}')`,"btn")}
-          ${b("Supprimer", `removePiece('${p}')`,"btn")}
+          <strong>${p}</strong>
+          <small>${(s.items||[]).length} ligne(s)</small>
+          ${badges}
+          ${b("Ouvrir", `goPiece('${p}')`, "btn")}
+          ${b("Supprimer", `removePiece('${p}')`, "btn")}
         </div>`;
       }).join('')
     : `<p class="muted">Aucune pièce ajoutée pour l’instant.</p>`;
@@ -308,7 +309,7 @@ function pageHome(){
   `);
 }
 
-// Sélection / création de pièce
+// Sélection / création de pièce (avec qualificatif & étage optionnels)
 function pageAddPiece(){
   const options =
     PIECES_PREDEFINIES.map(p=>`<option value="${p}">${p}</option>`).join('') +
@@ -320,11 +321,12 @@ function pageAddPiece(){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
+
       <label>Choisir une pièce</label>
       <select id="piece-choice">${options}</select>
 
       <label style="margin-top:10px;">Qualificatif (optionnel)</label>
-      <input id="piece-qualif" placeholder="ex: Parents, RDC, gauche" />
+      <input id="piece-qualif" placeholder="ex : Parents, RDC, gauche" />
 
       <label style="margin-top:10px;">Étage (optionnel)</label>
       <select id="piece-etage">${etageOptions}</select>
@@ -349,10 +351,10 @@ function confirmPieceChoice(){
   }
 
   ensureSection(name);
-  devis[name].qualificatif = qualif || null;
-  devis[name].etage = (etage && etage !== "(aucun)") ? etage : null;
-
+  devis[name].qualificatif = qualif || "";
+  devis[name].etage = (etage && etage !== "(aucun)") ? etage : "";
   saveLocal();
+
   goPiece(name);
 }
 
@@ -369,6 +371,7 @@ function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
 
+  // Boutons catégories (on exclut "Spécifique")
   const cats = CATEGORIES
     .filter(cat => cat !== "Spécifique")
     .map(cat => b(cat, `goCategory('${cat}')`))
@@ -378,7 +381,7 @@ function goPiece(piece){
     ? `<em class="muted">Note : ${devis[piece].note}</em>`
     : `<span class="muted">Aucune note</span>`;
 
-  const lignes = devis[piece].items.length
+  const lignes = (devis[piece].items||[]).length
     ? `<ul>` + devis[piece].items.map((it,i)=>{
         const total = (it.prixU||0) * (it.qty||0);
         const poseTxt = (it.intervention==="Création" && it.pose) ? ` — ${it.pose.toLowerCase()}` : "";
@@ -395,6 +398,7 @@ function goPiece(piece){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>${formatPieceLabel(piece)}</h2>
+
       <div class="row">
         ${cats}
         ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}
@@ -414,11 +418,181 @@ function goPiece(piece){
 }
 
 function delLine(piece, idx){
-  devis[piece].items.splice(idx,1);
+  (devis[piece].items||[]).splice(idx,1);
   saveLocal();
   goPiece(piece);
 }
 
+// Catégorie → Intervention → Pose → Quantité
+function goCategory(cat){
+  ctx.category = cat;
+  if (cat === "Éclairage") return goEclairageSub();
+
+  let interventions = [];
+  if (cat === "Prises" || cat === "Circuit spécialisé") {
+    interventions = [
+      "Création",
+      "Remplacement appareillage",
+      "Recâblage avec remplacement appareillage",
+      "Recâblage sans remplacement appareillage"
+    ];
+  } else if (cat === "Spécifique") {
+    interventions = ["Saisie libre avec prix"];
+  } else {
+    interventions = ["Création"];
+  }
+
+  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
+      <h2>${ctx.category} — ${ctx.piece}</h2>
+      <div class="row">${btns}</div>
+    </div>
+  `);
+}
+
+function goEclairageSub(){
+  view(`
+    <div class="card">
+      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
+      <h2>Éclairage — ${ctx.piece}</h2>
+      <div class="row">
+        ${b("Luminaires", `setEclairageBranch('Éclairage/Luminaires')`)}
+        ${b("Commandes", `setEclairageBranch('Éclairage/Commandes')`)}
+      </div>
+    </div>
+  `);
+}
+
+function setEclairageBranch(branch){
+  ctx.category = branch;
+
+  const interventions = (branch === "Éclairage/Luminaires")
+    ? ["Création","Remplacement luminaire","Recâblage avec remplacement luminaire","Recâblage sans remplacement luminaire"]
+    : ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"];
+
+  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour","goEclairageSub()","btn back")}
+      <h2>${branch} — ${ctx.piece}</h2>
+      <div class="row">${btns}</div>
+    </div>
+  `);
+}
+
+function goIntervention(interv){
+  ctx.intervention = interv;
+
+  // Saisie libre
+  if (ctx.category === "Spécifique") {
+    const label = prompt("Nom de la prestation spécifique :","");
+    if(!label){ return goCategory("Spécifique"); }
+    const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
+    ensureSection(ctx.piece);
+    devis[ctx.piece].items.push({
+      category:"Spécifique", intervention:"", pose:"",
+      designation:label, qty:1, prixU:prix
+    });
+    saveLocal();
+    return goPiece(ctx.piece);
+  }
+
+  // Création → oblige à choisir la pose
+  const needsPoseOnCreation =
+    (ctx.category === "Prises") ||
+    (ctx.category === "Circuit spécialisé") ||
+    (ctx.category === "Éclairage/Luminaires") ||
+    (ctx.category === "Éclairage/Commandes");
+
+  if (interv === "Création" && needsPoseOnCreation) {
+    const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
+    const backCat = (ctx.category.startsWith("Éclairage/") ? "Éclairage" : ctx.category);
+    view(`
+      <div class="card">
+        ${b("Retour",`goCategory('${backCat}')`,"btn back")}
+        <h2>Type de pose</h2>
+        <div class="row">${poses}</div>
+      </div>
+    `);
+  } else {
+    goDesignation(null);
+  }
+}
+
+function goDesignation(pose){
+  ctx.pose = pose; // peut être null
+
+  const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
+
+  // Auto-skip si une seule désignation (ex: Prises → "Prise")
+  if (list.length === 1) {
+    return pageQuantite(list[0]);
+  }
+
+  const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour", ctx.intervention==="Création" 
+                  ? `goIntervention('${ctx.intervention}')` 
+                  : `goCategory('${ctx.category}')`,"btn back")}
+      <h2>Désignation</h2>
+      <div class="row">${btns}</div>
+    </div>
+  `);
+}
+
+function pageQuantite(designation){
+  ctx.designation = designation;
+  const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
+  view(`
+    <div class="card">
+      ${b("Retour",`goDesignation('${ctx.pose}')`,"btn back")}
+      <h2>Quantité</h2>
+      <div class="grid-qty">${qtyBtns}</div>
+    </div>
+  `);
+}
+
+function getPrix(designation, intervention){
+  const base = TARIFS[designation] || {};
+  if(intervention==="Création") return base.creation||0;
+  if(intervention?.includes("sans remplacement")) return base.recablage_sans||0;
+  if(intervention?.includes("avec remplacement")) return base.recablage_avec||0;
+  if(intervention?.startsWith("Remplacement")) return base.remplacement||0;
+  return 0;
+}
+
+function saveItem(qty){
+  ensureSection(ctx.piece);
+  devis[ctx.piece].items.push({
+    category: ctx.category,
+    intervention: ctx.intervention,
+    pose: ctx.pose,
+    designation: ctx.designation,
+    qty,
+    prixU: getPrix(ctx.designation, ctx.intervention)
+  });
+  saveLocal();
+  goPiece(ctx.piece);
+}
+
+// Spécifique (raccourci)
+function pagePieceSpecifique(){
+  const label = prompt("Nom de la prestation spécifique :","");
+  if(!label){ return goPiece(ctx.piece); }
+  const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
+  ensureSection(ctx.piece);
+  devis[ctx.piece].items.push({
+    category:"Spécifique", intervention:"", pose:"",
+    designation:label, qty:1, prixU:prix
+  });
+  saveLocal();
+  goPiece(ctx.piece);
+}
+
+// Note
 function editPieceNote(){
   ensureSection(ctx.piece);
   const cur = devis[ctx.piece].note || "";
@@ -665,14 +839,13 @@ async function exportZipGroups(){
   URL.revokeObjectURL(url);
 
   alert("✅ Export ZIP généré avec succès.");
-}
-/* ============================= */
+}/* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
 /* ============================= */
 function init(){
   try{
-    loadLocal();   // restaure l’état en cours si présent
-    pageMain();    // menu principal au lancement
+    loadLocal();          // restaure l’état en cours si présent
+    pageMain();           // menu principal au lancement
   }catch(err){
     const el = document.getElementById('app');
     if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
@@ -681,20 +854,20 @@ function init(){
 
 // Rendre les fonctions accessibles depuis les boutons HTML
 Object.assign(window, {
-  // Menu principal
+  // Menu principal (Chapitre 4)
   pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
 
-  // Gestion des pièces
+  // Gestion des pièces (Chapitre 5)
   pageHome, pageAddPiece, confirmPieceChoice, removePiece,
   goPiece, delLine, editPieceNote, pagePieceSpecifique,
 
-  // Catégories / interventions
+  // Catégories / interventions (Chapitre 5)
   goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
 
-  // Estimatif / exports
+  // Estimatif / exports (Chapitre 7)
   pageEstimatif, pageTotaux, exportText, exportZipGroups,
 
-  // Navigation / sécurité
+  // Navigation / sécurité (Chapitre 2)
   confirmBackHome
 });
 
