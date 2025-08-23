@@ -35,6 +35,33 @@
 <main id="app"></main>
 
 <script>
+  /* ============================= */
+/* CHAPITRE 4 : ÉTAT & HELPERS UI */
+/* ============================= */
+
+// État global
+let devis = {}; // { [piece]: { items:[{...}], note:"" } }
+let ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
+
+// Helpers DOM
+const $app = () => document.getElementById('app');
+function view(html){ $app().innerHTML = html; }
+function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
+function euro(n){ return `${(+n).toFixed(2)} €`; }
+
+// Persistance locale
+function ensureSection(piece){
+  if(!devis[piece]) devis[piece] = { items:[], note:"" };
+}
+function saveLocal(){
+  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
+}
+function loadLocal(){
+  try {
+    const raw = localStorage.getItem('devis');
+    if (raw) devis = JSON.parse(raw) || {};
+  } catch(e){ devis = {}; }
+}
 /* ============================= */
 /* CHAPITRE 3 : DONNÉES & CONSTANTES
    Rôle : listes de pièces, poses, catégories, tarifs de base            */
@@ -470,6 +497,33 @@ function saveItem(qty){
   saveLocal();                // ⬅️ Sauvegarde auto
   goPiece(ctx.piece);
 }
+  /* Spécifique dans la pièce (saisie rapide) */
+function pagePieceSpecifique(){
+  const label = prompt("Nom de la prestation spécifique :","");
+  if(!label){ return goPiece(ctx.piece); }
+  const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
+  ensureSection(ctx.piece);
+  devis[ctx.piece].items.push({
+    category:"Spécifique",
+    intervention:"",
+    pose:"",
+    designation:label,
+    qty:1,
+    prixU:prix
+  });
+  saveLocal(); // sauvegarde auto
+  goPiece(ctx.piece);
+}
+
+/* Note de pièce */
+function editPieceNote(){
+  ensureSection(ctx.piece);
+  const cur = devis[ctx.piece].note || "";
+  const n = prompt(`Note pour ${ctx.piece}`, cur);
+  if(n!==null) devis[ctx.piece].note = n.trim();
+  saveLocal();
+  goPiece(ctx.piece);
+}
 /* ============================= */
 /* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder pour l’instant) */
 /* ============================= */
@@ -550,11 +604,11 @@ function exportText(){
 }
 
 /* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE (menu → flux validé) */
+/* CHAPITRE 8 : DÉMARRAGE */
 /* ============================= */
 function init(){
-  // loadLocal(); // ← désactivé pour l’instant
-  pageHome();
+  loadLocal();   // restaure le dernier devis en cours
+  pageHome();    // ouvre l’accueil (flux validé)
 }
 init();
 </script>
