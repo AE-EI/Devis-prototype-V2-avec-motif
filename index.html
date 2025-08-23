@@ -42,10 +42,19 @@ const PIECES_PREDEFINIES = ["Salon","Cuisine","Salle à manger","Salle de bain",
   "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau","Buanderie","Garage","Couloir",
   "Terrasse","Balcon","Jardin","Débarras","Extérieur","Grenier/Combles"];
 
-const CATEGORIES = ["Prises","Éclairage","Spécifique"]; // “Spécifique” = saisie libre dans la pièce
-const POSES = ["Encastré maçonnerie","Placo","Semi-encastré","Sur-mesure"];
+// ➕ Ajout d'une nouvelle catégorie "Circuit spécialisé"
+const CATEGORIES = ["Prises","Circuit spécialisé","Éclairage","Spécifique"];
+const POSES = [
+  "Encastré maçonnerie",
+  "Placo",
+  "Semi-encastré",
+  "Sur-mesure",
+  "Saillie avec moulure",
+  "Pose câble sous tube IRL"
+];
 const DESIGNATIONS_PAR_CATEGORIE = {
   "Prises": ["Prise"],
+  "Circuit spécialisé": ["Four","Lave-linge","Cumulus","VMC","Plaques de cuisson","Sèche-serviettes"],
   "Éclairage": ["Point de centre","Applique","Interrupteur simple","Interrupteur double"]
 };
 const TARIFS = {
@@ -53,21 +62,82 @@ const TARIFS = {
   "Point de centre": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
   "Applique": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
   "Interrupteur simple": { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
-  "Interrupteur double": { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 }
+  "Interrupteur double": { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
+
+  // ➕ Circuits spécialisés (tarifs uniformes)
+  "Four": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
+  "Lave-linge": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
+  "Cumulus": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
+  "VMC": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
+  "Plaques de cuisson": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 },
+  "Sèche-serviettes": { creation:140, recablage_sans:80, recablage_avec:100, remplacement:50 }
 };
 
 /* ============================= */
-/* CHAPITRE 3 : ÉTAT & HELPERS UI */
+/* CHAPITRE 3 : DONNÉES & CONSTANTES
+   Rôle : listes de pièces, poses, catégories, tarifs de base            */
 /* ============================= */
-let devis = {}; // { [piece]: { items:[{...}], note:"" } }
-let ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
+const PIECES_PREDEFINIES = [
+  "Salon","Cuisine","Salle à manger","Salle de bain","Salle d'eau",
+  "Chambre 1","Chambre 2","Chambre 3","Toilettes","Bureau",
+  "Buanderie","Garage","Couloir","Terrasse","Balcon","Jardin",
+  "Débarras","Extérieur","Grenier/Combles"
+];
 
-const $app = () => document.getElementById('app');
-function view(html){ $app().innerHTML = html; }
-function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
-function euro(n){ return `${(+n).toFixed(2)} €`; }
-function ensureSection(piece){ if(!devis[piece]) devis[piece] = { items:[], note:"" }; }
+const CATEGORIES = ["Prises","Circuit spécialisé","Éclairage","Spécifique"];
 
+const POSES = [
+  "Encastré maçonnerie",
+  "Placo",
+  "Semi-encastré",
+  "Sur-mesure",
+  "Saillie avec moulure",
+  "Sous tube IRL"
+];
+
+const DESIGNATIONS_PAR_CATEGORIE = {
+  "Prises": ["Prise"],
+  "Circuit spécialisé": [
+    "Four",
+    "Plaque de cuisson",
+    "Lave-linge",
+    "Lave-vaisselle",
+    "Sèche-linge",
+    "Cumulus",
+    "VMC",
+    "Chauffage",
+    "Climatisation",
+    "Prise extérieure étanche",
+    "Autre circuit spécialisé"
+  ],
+  "Éclairage": [
+    "Point de centre",
+    "Applique",
+    "Interrupteur simple",
+    "Interrupteur double"
+  ]
+};
+
+const TARIFS = {
+  "Prise": { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
+  "Point de centre": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
+  "Applique": { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
+  "Interrupteur simple": { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
+  "Interrupteur double": { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
+
+  // Exemple de tarifs pour circuits spécialisés (à ajuster)
+  "Four": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Plaque de cuisson": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Lave-linge": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Lave-vaisselle": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Sèche-linge": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Cumulus": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "VMC": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Chauffage": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Climatisation": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Prise extérieure étanche": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  "Autre circuit spécialisé": { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
+};
 /* ============================= */
 /* CHAPITRE 4 : MENU PRINCIPAL (ne remplace rien, il coiffe le flux existant) */
 /* ============================= */
@@ -126,8 +196,11 @@ function deleteDevis(idx){
 }
 
 /* ============================= */
-/* CHAPITRE 5 : FLUX VALIDÉ — ACCUEIL DU DEVIS & PIÈCES */
+/* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
+   Rôle : ajouter/supprimer des pièces, puis dérouler : catégorie → intervention → pose → quantité → note */
 /* ============================= */
+
+/* Accueil */
 function pageHome(){
   const listPieces = Object.keys(devis);
   const listHtml = listPieces.length
@@ -141,23 +214,21 @@ function pageHome(){
 
   view(`
     <div class="card">
-      ${b("Retour menu","pageMain()","btn back")}
-      <h2>Accueil du devis</h2>
+      <h2>Accueil</h2>
       <div class="row">
         ${b("Ajouter une pièce","pageAddPiece()","btn primary")}
         ${b("Installations spécifiques","pageISHome()","btn")}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="margin-top:12px;">
       <h2>Pièces ajoutées</h2>
       <div class="list">${listHtml}</div>
     </div>
 
-    <div class="row">
+    <div class="row" style="margin-top:12px;">
       ${b("Voir l’estimatif","pageEstimatif()")}
       ${b("Voir les totaux","pageTotaux()")}
-      ${b("💾 Sauvegarder ce devis","saveCurrentDevis()")}
     </div>
   `);
 }
@@ -172,22 +243,26 @@ function pageAddPiece(){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Ajouter une pièce</h2>
+      <label>Choisir une pièce</label>
       <select id="piece-choice">${options}</select>
-      <div class="row" style="margin-top:10px;">${b("Valider","confirmPieceChoice()","btn primary")}</div>
-      <p class="muted" style="margin-top:10px;">L’option “Créer une nouvelle pièce…” n’est pas mémorisée pour les prochaines fois.</p>
+      <div class="row" style="margin-top:10px;">
+        ${b("Valider","confirmPieceChoice()","btn primary")}
+      </div>
     </div>
   `);
 }
 function confirmPieceChoice(){
   const sel = document.getElementById('piece-choice').value;
   if(!sel) return;
+
   let name = sel;
   if (sel === "__NEW__") {
     name = (prompt("Nom de la pièce :","") || "").trim();
     if(!name) return; // annulé ou vide
   }
-  ensureSection(name);
-  goPiece(name);
+
+  ensureSection(name);   // crée la section si nécessaire
+  goPiece(name);         // ouvre la pièce directement
 }
 function removePiece(piece){
   if(confirm(`Supprimer la pièce “${piece}” et toutes ses lignes ?`)){
@@ -202,7 +277,6 @@ function goPiece(piece){
   ensureSection(piece);
 
   const cats = CATEGORIES.map(cat => b(cat, `goCategory('${cat}')`)).join('');
-  const noteTxt = devis[piece].note ? `<em class="muted">Note : ${devis[piece].note}</em>` : `<span class="muted">Aucune note</span>`;
   const lignes = devis[piece].items.length
     ? `<ul>` + devis[piece].items.map((it,i)=>{
         const total = (it.prixU||0) * (it.qty||0);
@@ -216,14 +290,12 @@ function goPiece(piece){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>${piece}</h2>
-      <div class="row">${cats} ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}</div>
-      <div class="row" style="margin-top:10px;">${b("Ajouter / modifier la note","editPieceNote()")}</div>
+      <div class="row">${cats}</div>
     </div>
 
-    <div class="card">
+    <div class="card" style="margin-top:12px;">
       <h2>Lignes de la pièce</h2>
       ${lignes}
-      <p style="margin-top:8px;">${noteTxt}</p>
     </div>
   `);
 }
@@ -231,21 +303,38 @@ function delLine(piece, idx){
   devis[piece].items.splice(idx,1);
   goPiece(piece);
 }
-function editPieceNote(){
-  const cur = devis[ctx.piece].note || "";
-  const n = prompt(`Note pour ${ctx.piece}`, cur);
-  if(n!==null) devis[ctx.piece].note = n.trim();
-  goPiece(ctx.piece);
-}
 
 /* Catégorie → Intervention → Pose → Quantité */
 function goCategory(cat){
   ctx.category = cat;
-  const interventions = (cat==="Prises")
-    ? ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"]
-    : (cat==="Éclairage")
-      ? ["Création","Remplacement luminaire","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"]
-      : ["Saisie libre avec prix"]; // “Spécifique” (dans la pièce)
+  let interventions = [];
+
+  if (cat==="Prises") {
+    interventions = [
+      "Création",
+      "Remplacement appareillage",
+      "Recâblage avec remplacement appareillage",
+      "Recâblage sans remplacement appareillage"
+    ];
+  } 
+  else if (cat==="Circuit spécialisé") {
+    interventions = [
+      "Création",
+      "Recâblage avec remplacement appareillage",
+      "Recâblage sans remplacement appareillage"
+    ];
+  }
+  else if (cat==="Éclairage") {
+    interventions = [
+      "Création",
+      "Remplacement luminaire",
+      "Recâblage avec remplacement luminaire",
+      "Recâblage sans remplacement luminaire"
+    ];
+  } 
+  else {
+    interventions = ["Saisie libre avec prix"];
+  }
 
   const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
   view(`
@@ -256,6 +345,7 @@ function goCategory(cat){
     </div>
   `);
 }
+
 function goIntervention(interv){
   ctx.intervention = interv;
   if(ctx.category==="Spécifique"){
@@ -267,7 +357,9 @@ function goIntervention(interv){
     goPiece(ctx.piece);
     return;
   }
-  if(interv==="Création"){
+
+  // Cas création (Prises ou Circuit spécialisé)
+  if(interv==="Création" && (ctx.category==="Prises" || ctx.category==="Circuit spécialisé")){
     const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
     view(`
       <div class="card">
@@ -280,6 +372,7 @@ function goIntervention(interv){
     goDesignation(null);
   }
 }
+
 function goDesignation(pose){
   ctx.pose = pose; // peut être null (hors Création)
   const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
@@ -292,6 +385,7 @@ function goDesignation(pose){
     </div>
   `);
 }
+
 function pageQuantite(designation){
   ctx.designation = designation;
   const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
@@ -300,14 +394,10 @@ function pageQuantite(designation){
       ${b("Retour",`goDesignation('${ctx.pose}')`,"btn back")}
       <h2>Quantité</h2>
       <div class="grid-qty">${qtyBtns}</div>
-      <div class="row" style="margin-top:10px;">
-        ${b("1","saveItem(1)")}
-        ${b("5","saveItem(5)")}
-        ${b("10","saveItem(10)")}
-      </div>
     </div>
   `);
 }
+
 function getPrix(designation, intervention){
   const base = TARIFS[designation] || {};
   if(intervention==="Création") return base.creation||0;
@@ -316,6 +406,7 @@ function getPrix(designation, intervention){
   if(intervention.startsWith("Remplacement")) return base.remplacement||0;
   return 0;
 }
+
 function saveItem(qty){
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
@@ -326,20 +417,8 @@ function saveItem(qty){
     qty: qty,
     prixU: getPrix(ctx.designation, ctx.intervention)
   });
-  // rester sur la pièce pour enchaîner
   goPiece(ctx.piece);
 }
-
-/* Spécifique dans la pièce (saisie rapide) */
-function pagePieceSpecifique(){
-  const label = prompt("Nom de la prestation spécifique :","");
-  if(!label){ return goPiece(ctx.piece); }
-  const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
-  ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
-  goPiece(ctx.piece);
-}
-
 /* ============================= */
 /* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder pour l’instant) */
 /* ============================= */
