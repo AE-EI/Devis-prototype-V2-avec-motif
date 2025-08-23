@@ -445,8 +445,15 @@ function goIntervention(interv){
 }
 
 function goDesignation(pose){
-  ctx.pose = pose;
+  ctx.pose = pose; // peut être null (hors Création)
+
   const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
+
+  // 🔧 Auto-skip si une seule désignation (ex: Prises → "Prise")
+  if (list.length === 1) {
+    return pageQuantite(list[0]);
+  }
+
   const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
   view(`
     <div class="card">
@@ -458,7 +465,6 @@ function goDesignation(pose){
     </div>
   `);
 }
-
 function pageQuantite(designation){
   ctx.designation = designation;
   const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
