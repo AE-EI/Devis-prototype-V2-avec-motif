@@ -178,8 +178,10 @@ function deleteDevis(idx){
 
 /* ============================= */
 /* CHAPITRE 5 : ACCUEIL & FLUX “PIÈCES DYN.”
-   Rôle : ajouter/supprimer des pièces, puis dérouler : catégorie → intervention → pose → quantité → note */
+   Rôle : ajouter/supprimer des pièces, puis dérouler : 
+   catégorie → intervention → pose → quantité → note */
 /* ============================= */
+
 // Helpers communs
 function ensureSection(piece){
   if(!devis[piece]) devis[piece] = { items:[], note:"" };
@@ -193,6 +195,7 @@ function loadLocal(){
     if (raw) devis = JSON.parse(raw) || {};
   } catch(e){ devis = {}; }
 }
+
 /* Accueil */
 function pageHome(){
   const listPieces = Object.keys(devis);
@@ -266,7 +269,6 @@ function removePiece(piece){
 }
 
 /* Page d’une pièce */
-/* CHAPITRE 5 — goPiece : version avec un seul bouton "Spécifique" (rapide) */
 function goPiece(piece){
   ctx = { piece, category:null, intervention:null, pose:null, designation:null };
   ensureSection(piece);
@@ -298,7 +300,6 @@ function goPiece(piece){
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>${piece}</h2>
-      <!-- Catégories standards + bouton "Spécifique" rapide -->
       <div class="row">
         ${cats}
         ${b("Spécifique",`pagePieceSpecifique()`,"btn ghost")}
@@ -326,7 +327,7 @@ function delLine(piece, idx){
 function goCategory(cat){
   ctx.category = cat;
 
-  // Cas spécial : Éclairage -> sous-menu "Luminaires" / "Commandes"
+  // Cas spécial : Éclairage -> sous-menu
   if (cat === "Éclairage") {
     return goEclairageSub();
   }
@@ -354,7 +355,8 @@ function goCategory(cat){
     </div>
   `);
 }
-  function goEclairageSub(){
+
+function goEclairageSub(){
   view(`
     <div class="card">
       ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
@@ -366,14 +368,9 @@ function goCategory(cat){
     </div>
   `);
 }
-
 function setEclairageBranch(branch){
-  // On redirige la "catégorie" vers une branche interne puis on propose les interventions
   ctx.category = branch;
 
-  // Interventions :
-  // - Luminaires : les 4 options demandées
-  // - Commandes : même logique que l’appareillage (on garde ces libellés)
   let interventions = [];
   if (branch === "Éclairage/Luminaires") {
     interventions = [
@@ -382,7 +379,7 @@ function setEclairageBranch(branch){
       "Recâblage avec remplacement luminaire",
       "Recâblage sans remplacement luminaire"
     ];
-  } else { // "Éclairage/Commandes"
+  } else { // Commandes
     interventions = [
       "Création",
       "Remplacement appareillage",
@@ -400,21 +397,25 @@ function setEclairageBranch(branch){
     </div>
   `);
 }
+
 function goIntervention(interv){
   ctx.intervention = interv;
 
-  // Saisie libre "Spécifique" (dans la pièce)
+  // Cas spécifique (saisie libre)
   if (ctx.category === "Spécifique") {
     const label = prompt("Nom de la prestation spécifique :","");
     if(!label){ return goCategory("Spécifique"); }
     const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
     ensureSection(ctx.piece);
-    devis[ctx.piece].items.push({ category:"Spécifique", intervention:"", pose:"", designation:label, qty:1, prixU:prix });
-    goPiece(ctx.piece);
-    return;
+    devis[ctx.piece].items.push({
+      category:"Spécifique", intervention:"", pose:"",
+      designation:label, qty:1, prixU:prix
+    });
+    saveLocal();
+    return goPiece(ctx.piece);
   }
 
-  // Catégories qui demandent un type de pose en Création
+  // Pose obligatoire pour Création
   const needsPoseOnCreation =
     (ctx.category === "Prises") ||
     (ctx.category === "Circuit spécialisé") ||
@@ -423,24 +424,10 @@ function goIntervention(interv){
 
   if (interv === "Création" && needsPoseOnCreation) {
     const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
+    const backCat = (ctx.category.startsWith("Éclairage/") ? "Éclairage" : ctx.category);
     view(`
       <div class="card">
-        ${b("Retour",`goCategory('${ (ctx.category.startsWith("Éclairage/") ? "Éclairage" : ctx.category) }')`,"btn back")}
-        <h2>Type de pose</h2>
-        <div class="row">${poses}</div>
-      </div>
-    `);
-  } else {
-    goDesignation(null);
-  }
-}
-
-  // Cas création (Prises ou Circuit spécialisé)
-  if(interv==="Création" && (ctx.category==="Prises" || ctx.category==="Circuit spécialisé")){
-    const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
-    view(`
-      <div class="card">
-        ${b("Retour",`goCategory('${ctx.category}')`,"btn back")}
+        ${b("Retour",`goCategory('${backCat}')`,"btn back")}
         <h2>Type de pose</h2>
         <div class="row">${poses}</div>
       </div>
@@ -451,12 +438,14 @@ function goIntervention(interv){
 }
 
 function goDesignation(pose){
-  ctx.pose = pose; // peut être null (hors Création)
+  ctx.pose = pose;
   const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
   const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
   view(`
     <div class="card">
-      ${b("Retour", ctx.intervention==="Création" ? `goIntervention('${ctx.intervention}')` : `goCategory('${ctx.category}')`,"btn back")}
+      ${b("Retour", ctx.intervention==="Création" 
+                  ? `goIntervention('${ctx.intervention}')` 
+                  : `goCategory('${ctx.category}')`,"btn back")}
       <h2>Désignation</h2>
       <div class="row">${btns}</div>
     </div>
@@ -494,28 +483,25 @@ function saveItem(qty){
     qty: qty,
     prixU: getPrix(ctx.designation, ctx.intervention)
   });
-  saveLocal();                // ⬅️ Sauvegarde auto
+  saveLocal();
   goPiece(ctx.piece);
 }
-  /* Spécifique dans la pièce (saisie rapide) */
+
+/* Spécifique (raccourci) */
 function pagePieceSpecifique(){
   const label = prompt("Nom de la prestation spécifique :","");
   if(!label){ return goPiece(ctx.piece); }
   const prix = parseFloat(prompt("Prix estimé (€) :","0"))||0;
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
-    category:"Spécifique",
-    intervention:"",
-    pose:"",
-    designation:label,
-    qty:1,
-    prixU:prix
+    category:"Spécifique", intervention:"", pose:"",
+    designation:label, qty:1, prixU:prix
   });
-  saveLocal(); // sauvegarde auto
+  saveLocal();
   goPiece(ctx.piece);
 }
 
-/* Note de pièce */
+/* Note */
 function editPieceNote(){
   ensureSection(ctx.piece);
   const cur = devis[ctx.piece].note || "";
@@ -525,18 +511,35 @@ function editPieceNote(){
   goPiece(ctx.piece);
 }
 /* ============================= */
-/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder pour l’instant) */
+/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholder)
+   Rôle : écran “IS” simple qui ne casse rien au flux validé.
+   (On branchera Terre / Ventilation / Tableau plus tard.) */
 /* ============================= */
+
 function pageISHome(){
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Installations spécifiques</h2>
-      <p class="muted">Module détaillé à réintégrer (Terre / Ventilation / Tableau) — on l’ajoute ensuite sans toucher au flux validé.</p>
+      <p class="muted">Module détaillé à réintégrer (Mise à la terre, Ventilation, Distribution tableau).</p>
+
+      <div class="row" style="margin-top:10px;">
+        ${b("Mise à la terre","isSoon('Mise à la terre')")}
+        ${b("Ventilation","isSoon('Ventilation')")}
+        ${b("Distribution tableau","isSoon('Distribution tableau')")}
+      </div>
+
+      <p class="muted" style="margin-top:10px;">
+        Astuce : tu peux continuer à saisir tes pièces normalement depuis l’écran Accueil.
+      </p>
     </div>
   `);
 }
 
+function isSoon(feature){
+  alert(`${feature} : à venir (ce bouton est un placeholder).`);
+  pageISHome();
+}
 /* ============================= */
 /* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
 /* ============================= */
