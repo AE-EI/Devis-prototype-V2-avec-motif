@@ -35,6 +35,13 @@
 <main id="app"></main>
 
 <script>
+  // DEBUG : afficher la première erreur JS en plein écran
+window.addEventListener('error', (e) => {
+  const el = document.getElementById('app');
+  if (el) el.innerHTML = `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
+});
+  // SMOKE TEST : si tu vois ce bloc, le JS démarre
+document.getElementById('app').innerHTML = `<div class="card">JS chargé ✅</div>`;
   /* ============================= */
 /* CHAPITRE 4 : ÉTAT & HELPERS UI */
 /* ============================= */
@@ -607,13 +614,22 @@ function exportText(){
 }
 
 /* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE */
+/* INIT SAFE */
 /* ============================= */
-function init(){
-  loadLocal();   // restaure le dernier devis en cours
-  pageHome();    // ouvre l’accueil (flux validé)
+function initSafe(){
+  try {
+    if (typeof loadLocal === 'function') loadLocal();
+    if (typeof pageHome === 'function') pageHome();
+    else {
+      const el = document.getElementById('app');
+      if (el) el.innerHTML = `<div class="card"><h2>Manque pageHome()</h2><p>Je ne trouve pas la fonction.</p></div>`;
+    }
+  } catch (err) {
+    const el = document.getElementById('app');
+    if (el) el.innerHTML = `<div class="card"><h2>Erreur pendant init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
+  }
 }
-init();
+initSafe();
 </script>
 </main>
 </body>
