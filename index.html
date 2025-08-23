@@ -550,10 +550,10 @@ function editPieceNote(){
 }
 
 /* ============================= */
-/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT ZIP */
+/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORT */
 /* ============================= */
 
-// Groupes de pièces
+// Définition des groupes de pièces
 const PIECE_GROUPS = {
   // Pièces techniques
   "Buanderie": "Pièces techniques",
@@ -575,12 +575,12 @@ const PIECE_GROUPS = {
   "Couloir": "Pièces de vie",
   "Entrée": "Pièces de vie",
 
-  // Pièces d'eau
+  // Pièces d’eau
   "Salle de bain": "Pièces d'eau",
   "Salle d'eau": "Pièces d'eau",
   "Toilettes": "Pièces d'eau",
 
-  // Chambres & Bureau
+  // Chambres & bureau
   "Chambre 1": "Chambres & Bureau",
   "Chambre 2": "Chambres & Bureau",
   "Chambre 3": "Chambres & Bureau",
@@ -593,24 +593,23 @@ const PIECE_GROUPS = {
   "Mise à la terre": "Mise à la terre",
   "VMC": "VMC"
 };
-function groupForPiece(name){ return PIECE_GROUPS[name] || "Divers"; }
-function groupDevisByGroups(d){
-  const g = {};
-  for (const piece in d){
-    if(piece.startsWith('__')) continue;
-    const grp = groupForPiece(piece);
-    if(!g[grp]) g[grp] = {};
-    g[grp][piece] = d[piece];
-  }
-  return g;
-}
 
+// Estimatif détaillé
 function pageEstimatif(){
-  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
+  let html = `<div class="card">${b("Retour","pageHome()","btn back")}
+                <h2>Estimatif détaillé</h2>`;
   let totalGlobal = 0;
 
-  const grouped = groupDevisByGroups(devis);
+  // Regrouper les pièces par groupes
+  let grouped = {};
+  for (const piece in devis) {
+    if (piece.startsWith('__')) continue; // ignore meta (__id, __name…)
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
+  }
 
+  // Affichage par groupes
   for (const group in grouped) {
     html += `<h2 style="border-top:2px solid #000; padding-top:8px;">${group}</h2>`;
     let groupTotal = 0;
@@ -619,62 +618,89 @@ function pageEstimatif(){
       const section = grouped[group][piece];
       if (!section || section.items.length === 0) continue;
 
+      const pieceLabel = formatPieceLabel(piece); // 👈 nom enrichi
       let sectionTotal = 0;
-      html += `<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">${piece}</h3><ul>`;
+
+      html += `<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">
+                 ${pieceLabel}
+               </h3><ul>`;
+
       section.items.forEach((item) => {
         const prixTotal = (item.prixU||0) * (item.qty||0);
         sectionTotal += prixTotal;
         groupTotal += prixTotal;
         totalGlobal += prixTotal;
-        const poseTxt = (item.intervention==="Création" && item.pose) ? ` ${item.pose.toLowerCase()}` : "";
+        const poseTxt = (item.intervention==="Création" && item.pose) ? 
+                        ` ${item.pose.toLowerCase()}` : "";
         const unitTxt = item.unit || "u";
         const left = item.intervention ? `${item.intervention} — ` : "";
-        html += `<li>${left}${item.designation}${poseTxt} (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
+        html += `<li>${left}${item.designation}${poseTxt} 
+                   (${item.qty} ${unitTxt} × ${euro(item.prixU)} = ${euro(prixTotal)})</li>`;
       });
+
       if (section.note) html += `<li><em>Note : ${section.note}</em></li>`;
-      html += `</ul><p><strong>Total ${piece} : ${euro(sectionTotal)}</strong></p>`;
+      html += `</ul><p><strong>Total ${pieceLabel} : ${euro(sectionTotal)}</strong></p>`;
     }
 
     html += `<p><strong>Total ${group} : ${euro(groupTotal)}</strong></p><hr>`;
   }
 
   html += `<h3>Total global : ${euro(totalGlobal)}</h3>
-           <div class="row" style="margin-top:10px;">${b("Exporter en ZIP (1 .txt par groupe)","exportZip()")}</div></div>`;
+           <div class="row" style="margin-top:10px;">
+             ${b("Exporter en .txt (par groupe)","exportText()")}
+             ${b("Exporter en .zip","exportZipGroups()")}
+           </div></div>`;
   view(html);
 }
+
+// Totaux simplifiés par groupe
 function pageTotaux(){
-  let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par groupe</h2>`;
+  let html = `<div class="card">${b("Retour","pageHome()","btn back")}
+                <h2>Totaux par groupe</h2>`;
   let totalGlobal = 0;
-  const grouped = groupDevisByGroups(devis);
+
+  let grouped = {};
+  for (const piece in devis) {
+    if (piece.startsWith('__')) continue;
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
+  }
 
   for (const group in grouped) {
     let groupTotal = 0;
     for (const piece in grouped[group]) {
       const section = grouped[group][piece];
       if (!section || section.items.length === 0) continue;
-      const sectionTotal = section.items.reduce((s,it)=> s + ((it.prixU||0)*(it.qty||0)), 0);
-      groupTotal += sectionTotal; totalGlobal += sectionTotal;
+      const sectionTotal = section.items.reduce(
+        (sum, it) => sum + ((it.prixU||0) * (it.qty||0)), 0
+      );
+      groupTotal += sectionTotal;
+      totalGlobal += sectionTotal;
     }
     html += `<p><strong>${group}</strong> : ${euro(groupTotal)}</p>`;
   }
+
   html += `<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
-           <div class="row" style="margin-top:10px;">${b("Exporter en ZIP (1 .txt par groupe)","exportZip()")}</div></div>`;
+           <div class="row" style="margin-top:10px;">
+             ${b("Exporter en .txt (par groupe)","exportText()")}
+             ${b("Exporter en .zip","exportZipGroups()")}
+           </div></div>`;
   view(html);
 }
 
-// Export ZIP (un .txt par groupe, dans un seul zip)
-async function exportZip(){
-  if(typeof JSZip === "undefined"){
-    alert("JSZip n'est pas chargé. Vérifie le <script> CDN dans le <head>.");
-    return;
+// Export multi-fichiers TXT
+function exportText(){
+  let grouped = {};
+  for (const piece in devis) {
+    if (piece.startsWith('__')) continue;
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
   }
-  const zip = new JSZip();
-  const grouped = groupDevisByGroups(devis);
-
-  let totalGlobal = 0;
 
   for (const group in grouped) {
-    const lines = [];
+    let lines = [];
     lines.push(`=== ${group} ===\n`);
     let groupTotal = 0;
 
@@ -682,40 +708,97 @@ async function exportZip(){
       const section = grouped[group][piece];
       if (!section || section.items.length === 0) continue;
 
-      lines.push(`--- ${piece} ---`);
+      const pieceLabel = formatPieceLabel(piece); // 👈 enrichi
+      lines.push(`--- ${pieceLabel} ---`);
       let sectionTotal = 0;
 
       section.items.forEach(item => {
         const prixTotal = (item.prixU||0) * (item.qty||0);
         sectionTotal += prixTotal;
         groupTotal += prixTotal;
-        totalGlobal += prixTotal;
-        const poseTxt = (item.intervention==="Création" && item.pose) ? ` - ${item.pose.toLowerCase()}` : "";
+        const poseTxt = (item.intervention==="Création" && item.pose) ? 
+                        ` - ${item.pose.toLowerCase()}` : "";
         const unitTxt = item.unit || "u";
         lines.push(`- ${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
       });
 
       if (section.note) lines.push(`Note : ${section.note}`);
-      lines.push(`Total ${piece} : ${sectionTotal}€\n`);
+      lines.push(`Total ${pieceLabel} : ${sectionTotal}€\n`);
     }
 
-    lines.push(`Total ${group} : ${groupTotal}€\n`);
-    zip.file(`devis_${group}.txt`, lines.join("\n"));
+    lines.push(`Total ${group} : ${groupTotal}€`);
+
+    // Générer un fichier TXT pour ce groupe
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `devis_${group}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
-  // Optionnel : fichier récap global
-  zip.file(`devis_TOTAL.txt`, `Total global : ${totalGlobal}€\n`);
+  alert("✅ Export terminé : un fichier .txt par groupe a été généré.");
+}
+
+// Export ZIP global
+async function exportZipGroups(){
+  if (typeof JSZip === "undefined") {
+    alert("JSZip non chargé. Ajoute : <script src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'></script>");
+    return;
+  }
+
+  let grouped = {};
+  for (const piece in devis) {
+    if (piece.startsWith('__')) continue;
+    const group = PIECE_GROUPS[piece] || "Divers";
+    if (!grouped[group]) grouped[group] = {};
+    grouped[group][piece] = devis[piece];
+  }
+
+  const zip = new JSZip();
+
+  for (const group in grouped) {
+    let lines = [];
+    lines.push(`=== ${group} ===\n`);
+    let groupTotal = 0;
+
+    for (const piece in grouped[group]) {
+      const section = grouped[group][piece];
+      if (!section || section.items.length === 0) continue;
+
+      const pieceLabel = formatPieceLabel(piece); // 👈 enrichi
+      lines.push(`--- ${pieceLabel} ---`);
+      let sectionTotal = 0;
+
+      section.items.forEach(item => {
+        const prixTotal = (item.prixU||0) * (item.qty||0);
+        sectionTotal += prixTotal;
+        groupTotal += prixTotal;
+        const poseTxt = (item.intervention==="Création" && item.pose) ? 
+                        ` - ${item.pose.toLowerCase()}` : "";
+        const unitTxt = item.unit || "u";
+        lines.push(`- ${item.qty} ${item.designation}${poseTxt} (${item.prixU}€/ ${unitTxt})`);
+      });
+
+      if (section.note) lines.push(`Note : ${section.note}`);
+      lines.push(`Total ${pieceLabel} : ${sectionTotal}€\n`);
+    }
+
+    lines.push(`Total ${group} : ${groupTotal}€`);
+    zip.file(`devis_${group}.txt`, lines.join("\n"));
+  }
 
   const blob = await zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const name = (devis.__name && devis.__name.trim()) ? devis.__name.trim().replace(/\s+/g,'_') : 'devis';
-  a.download = `${name}_par_groupes.zip`;
+  a.download = `devis_groupes.zip`;
   a.click();
   URL.revokeObjectURL(url);
-}
 
+  alert("✅ Export ZIP généré avec succès.");
+}
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE (ouvre le menu principal) */
 /* ============================= */
