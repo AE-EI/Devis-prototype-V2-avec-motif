@@ -941,24 +941,78 @@ async function exportZipFull(){
   alert('✅ Export .zip complet généré.');
 }
 
-// =============================
-// CHAP.8 : DÉMARRAGE & EXPOSE
-// =============================
-function init(){ try{ loadLocal(); pageMain(); }catch(err){
-  var el=document.getElementById('app'); if(el){ el.innerHTML='<div class="card"><h2>Erreur init()</h2><pre>'+((err&&err.stack)||err)+'</pre></div>'; }
-}}
-Object.assign(window,{
-  pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
-  pageHome, pageAddPiece, confirmPieceChoice, removePiece, goPiece, delLine,
-  editPieceNote, pagePieceSpecifique, goCategory, goEclairageSub, setEclairageBranch,
-  goIntervention, goDesignation, pageQuantite, saveItem,
-  pageISHome, isSoon, pageTabHome, pageTabPose, addTabPose,
-  pageTabModulaire, pageTabMod_ID, submitTabMod_ID, pageTabMod_Disj, pageTabMod_DisjDetails,
-  submitTabMod_DisjDetails, submitTabMod_Disj, pageTabMod_Commandes, submitTabMod_Commandes, pageTabMod_Specifique,
-  pageEstimatif, pageTotaux, exportText, exportZipGroups, exportTextFull, exportZipFull,
+/* ============================= */
+/* CHAPITRE 8 : DÉMARRAGE & EXPOSE */
+/* ============================= */
+function init(){
+  try{
+    loadLocal();
+    pageMain();
+  }catch(err){
+    const el = document.getElementById('app');
+    if (el) el.innerHTML =
+      `<div class="card"><h2>Erreur init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
+  }
+}
+
+Object.assign(window, {
+  // Menu / sauvegardes
+  pageMain,
+  actionNouveauDevis,
+  pageSavedDevis,
+  loadDevis,
+  deleteDevis,
+  saveCurrentDevis,
+
+  // Pièces & flux (chap. 5)
+  pageHome,
+  pageAddPiece,
+  confirmPieceChoice,
+  removePiece,
+  goPiece,
+  delLine,
+  editPieceNote,
+  pagePieceSpecifique,
+  goCategory,
+  goEclairageSub,
+  setEclairageBranch,
+  goIntervention,
+  goDesignation,
+  pageQuantite,
+  saveItem,
+
+  // Installations spécifiques (chap. 6)
+  pageISHome,
+  isSoon,
+
+  // Tableau & distribution (chap. 6)
+  pageTabHome,
+  pageTabPose,
+  addTabPose,
+  pageTabModulaire,
+  pageTabMod_ID,
+  submitTabMod_ID,
+  // Nouvelle architecture Disjoncteurs
+  pageTab_Disjoncteurs,
+  pageTab_DisjDetails,
+  pageTab_DisjVider,
+  pageTab_DisjValider,
+  // Commandes & spécifique
+  pageTabMod_Commandes,
+  submitTabMod_Commandes,
+  pageTabMod_Specifique,
+
+  // Estimatif & exports (chap. 7)
+  pageEstimatif,
+  pageTotaux,
+  exportText,
+  exportZipGroups,
+  exportTextFull,
+  exportZipFull,
+
+  // Navigation / sécurité
   confirmBackHome
 });
+
+// Lancement
 init();
-</script>
-</body>
-</html>
