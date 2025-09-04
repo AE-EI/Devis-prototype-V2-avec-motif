@@ -367,10 +367,21 @@ function editPieceNote(){
 /* CHAPITRE 6 : TABLEAU & DISTRIBUTION (COMPLET) */
 /* ============================= */
 
-// Tout ce qui est ajouté ici est rangé dans la pièce "Tableau".
+// Tout ce qui concerne le tableau est stocké dans la pièce "Tableau"
 function ensureTableau(){ ensureSection("Tableau"); }
 
-/* ---------- HUB Installations spécifiques ---------- */
+// Petit état local pour la page Disjoncteurs (évite le clavier)
+let tabState = {
+  disj: {
+    2:  { qty:0, names:[] },
+    10: { qty:0, names:[] },
+    16: { qty:0, names:[] },
+    20: { qty:0, names:[] },
+    32: { qty:0, names:[] }
+  }
+};
+
+// -------- Hub “Installations spécifiques”
 function pageISHome(){
   view(`
     <div class="card">
@@ -385,9 +396,9 @@ function pageISHome(){
     </div>
   `);
 }
-function isSoon(x){ alert(x + " : module à venir."); }
+function isSoon(x){ alert(x+" : module à venir."); }
 
-/* ---------- HUB Tableau & distribution ---------- */
+// -------- Hub “Tableau & distribution”
 function pageTabHome(){
   view(`
     <div class="card">
@@ -395,15 +406,18 @@ function pageTabHome(){
       <h2>Tableau & distribution</h2>
       <div class="row" style="margin-top:10px;">
         ${b("1 · Pose tableau","pageTabPose()","btn primary")}
-        ${b("2 · Modulaire","pageTabModulaire()","btn")}
-        ${b("3 · Commande & pilotage modulaire","pageTabMod_Commandes()","btn")}
+        ${b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs()","btn")}
+        ${b("3 · Modulaire : Interrupteurs diff.","pageTab_ID()","btn")}
+        ${b("4 · Commande & pilotage","pageTabMod_Commandes()","btn")}
+        ${b("5 · Spécifique (libre + prix)","pageTabMod_Specifique()","btn ghost")}
       </div>
-      <p class="muted" style="margin-top:8px;">Tous les éléments ajoutés seront rangés dans la pièce « Tableau ».</p>
+      <p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans la pièce « Tableau ».</p>
     </div>
   `);
 }
 
 /* ========== (1) POSE TABLEAU ========== */
+
 function pageTabPose(){
   view(`
     <div class="card">
@@ -428,7 +442,7 @@ function pageTabPose(){
       <label style="margin-top:8px;">Type de pose</label>
       <select id="tp-pose">
         <option value="Saillie" selected>Saillie</option>
-        <option value="Encastre">Encastré</option>
+        <option value="Encastré">Encastré</option>
       </select>
 
       <label style="margin-top:8px;">Type d’intervention</label>
@@ -463,68 +477,36 @@ function addTabPose(){
   pageTabHome();
 }
 
-/* ========== (2) MODULAIRE ========== */
+/* ========== (2) MODULAIRE : INTER DIFF. ========== */
 
-/* --- État temporaire “Disjoncteurs” (on valide tout d’un coup) --- */
-let tabTmp = null;
-function tabTmpReset(){
-  tabTmp = {
-    dj: {       // par calibre
-      2:  { qty:0, detail:0 },
-      10: { qty:0, detail:0 },
-      16: { qty:0, detail:0 },
-      20: { qty:0, detail:0 },
-      32: { qty:0, detail:0 }
-    }
-  };
-}
-tabTmpReset();
-
-/* --- Menu Modulaire --- */
-function pageTabModulaire(){
+function pageTab_ID(){
   view(`
     <div class="card">
       ${b("Retour","pageTabHome()","btn back")}
-      <h2>Modulaire</h2>
-      <div class="row" style="margin-top:10px;">
-        ${b("A · Interrupteurs différentiels","pageTabMod_ID()","btn primary")}
-        ${b("B · Disjoncteurs (2A · 10A · 16A · 20A · 32A)","pageTab_Disjoncteurs()","btn")}
-        ${b("C · Commandes modulaires","pageTabMod_Commandes()","btn")}
-        ${b("Spécifique (libre + prix)","pageTabMod_Specifique()","btn ghost")}
-      </div>
-    </div>
-  `);
-}
-
-/* --- A. Interrupteurs différentiels --- */
-function pageTabMod_ID(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageTabModulaire()","btn back")}
       <h2>Interrupteurs différentiels</h2>
 
       <div class="list">
         <label>ID 30mA - 40A - Type A
-          <input id="id-a-40-30" type="number" min="0" value="0" />
+          <select id="id-a-40-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
         </label>
         <label>ID 30mA - 40A - Type AC
-          <input id="id-ac-40-30" type="number" min="0" value="0" />
+          <select id="id-ac-40-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
         </label>
         <label>ID 30mA - 63A - Type A
-          <input id="id-a-63-30" type="number" min="0" value="0" />
+          <select id="id-a-63-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
         </label>
         <label>ID 30mA - 63A - Type AC
-          <input id="id-ac-63-30" type="number" min="0" value="0" />
+          <select id="id-ac-63-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
         </label>
       </div>
 
       <div class="row" style="margin-top:12px;">
-        ${b("Ajouter au devis","submitTabMod_ID()","btn primary")}
+        ${b("Ajouter au devis","submitTab_ID()","btn primary")}
       </div>
     </div>
   `);
 }
-function submitTabMod_ID(){
+function submitTab_ID(){
   const defs = [
     { id:"id-a-40-30",  name:"ID 30mA - 40A - Type A"  },
     { id:"id-ac-40-30", name:"ID 30mA - 40A - Type AC" },
@@ -550,150 +532,136 @@ function submitTabMod_ID(){
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal();
   alert("Interrupteurs différentiels ajoutés.");
-  pageTabModulaire();
+  pageTabHome();
 }
 
-/* --- B. Disjoncteurs (regroupés) --- */
-
-// helper <select> 0..max
-function qtySelect(id, max, current){
-  const opts = Array.from({length:max+1}, (_,i)=>`<option value="${i}" ${i==current?'selected':''}>${i}</option>`).join('');
-  return `<select id="${id}">${opts}</select>`;
-}
+/* ========== (3) MODULAIRE : DISJONCTEURS regroupés ========== */
 
 function pageTab_Disjoncteurs(){
-  if(!tabTmp) tabTmpReset();
-  const q2  = qtySelect('dj2',  20, tabTmp.dj[2].qty);
-  const q10 = qtySelect('dj10', 20, tabTmp.dj[10].qty);
-  const q16 = qtySelect('dj16', 20, tabTmp.dj[16].qty);
-  const q20 = qtySelect('dj20', 20, tabTmp.dj[20].qty);
-  const q32 = qtySelect('dj32', 20, tabTmp.dj[32].qty);
+  // helpers rendus sans clavier
+  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
 
   view(`
     <div class="card">
-      ${b("Retour","pageTabModulaire()","btn back")}
-      <h2>Disjoncteurs</h2>
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Disjoncteurs modulaires (2A / 10A / 16A / 20A / 32A)</h2>
 
       <div class="list">
-        <div class="pill">
-          <strong>Disjoncteurs 2 A</strong>
-          ${q2}
+        <label>2 A (Qté)
+          <select id="djq-2">${opts(30)}</select>
           ${b("Détail circuits","pageTab_DisjDetails(2)")}
-          <small class="muted">Détail: ${tabTmp.dj[2].detail}/${tabTmp.dj[2].qty}</small>
-        </div>
-        <div class="pill">
-          <strong>Disjoncteurs 10 A</strong>
-          ${q10}
+        </label>
+        <label>10 A (Qté)
+          <select id="djq-10">${opts(30)}</select>
           ${b("Détail circuits","pageTab_DisjDetails(10)")}
-          <small class="muted">Détail: ${tabTmp.dj[10].detail}/${tabTmp.dj[10].qty}</small>
-        </div>
-        <div class="pill">
-          <strong>Disjoncteurs 16 A</strong>
-          ${q16}
+        </label>
+        <label>16 A (Qté)
+          <select id="djq-16">${opts(30)}</select>
           ${b("Détail circuits","pageTab_DisjDetails(16)")}
-          <small class="muted">Détail: ${tabTmp.dj[16].detail}/${tabTmp.dj[16].qty}</small>
-        </div>
-        <div class="pill">
-          <strong>Disjoncteurs 20 A</strong>
-          ${q20}
+        </label>
+        <label>20 A (Qté)
+          <select id="djq-20">${opts(30)}</select>
           ${b("Détail circuits","pageTab_DisjDetails(20)")}
-          <small class="muted">Détail: ${tabTmp.dj[20].detail}/${tabTmp.dj[20].qty}</small>
-        </div>
-        <div class="pill">
-          <strong>Disjoncteurs 32 A</strong>
-          ${q32}
+        </label>
+        <label>32 A (Qté)
+          <select id="djq-32">${opts(30)}</select>
           ${b("Détail circuits","pageTab_DisjDetails(32)")}
-          <small class="muted">Détail: ${tabTmp.dj[32].detail}/${tabTmp.dj[32].qty}</small>
-        </div>
+        </label>
       </div>
 
       <div class="row" style="margin-top:12px;">
-        ${b("Valider l’ensemble","pageTab_DisjValider()","btn primary")}
-        ${b("Vider la sélection","pageTab_DisjVider()","btn")}
+        ${b("Vider la sélection","pageTab_DisjVider()")}
+        ${b("Valider ces disjoncteurs","pageTab_DisjValider()","btn primary")}
       </div>
+      <p class="muted" style="margin-top:6px;">Astuce : utilise « Détail circuits » pour générer automatiquement “Circuit 1, 2, …” sans clavier. Après validation, tu restes sur cette page pour ajouter d’autres calibres.</p>
     </div>
   `);
 
-  // synchronise les quantités tapées avec l'état temporaire
-  ['2','10','16','20','32'].forEach(a=>{
-    const el = document.getElementById('dj'+a);
-    el.addEventListener('change', ()=>{
-      tabTmp.dj[+a].qty = +el.value || 0;
-      // réduit le détail si > qty
-      if(tabTmp.dj[+a].detail > tabTmp.dj[+a].qty){
-        tabTmp.dj[+a].detail = tabTmp.dj[+a].qty;
-        // réaffiche l'info sans recharger la page
-        pageTab_Disjoncteurs();
-      }
-    });
-  });
+  // Re-appliquer l'état stocké
+  document.getElementById('djq-2').value  = tabState.disj[2].qty;
+  document.getElementById('djq-10').value = tabState.disj[10].qty;
+  document.getElementById('djq-16').value = tabState.disj[16].qty;
+  document.getElementById('djq-20').value = tabState.disj[20].qty;
+  document.getElementById('djq-32').value = tabState.disj[32].qty;
 }
 
 function pageTab_DisjDetails(rating){
-  // nombre de circuits détaillés via menu déroulant (0..qty)
-  const qty = tabTmp.dj[rating].qty || 0;
-  if(!qty){ alert("Définis d’abord une quantité > 0."); return; }
-
-  const sel = qtySelect('dj-det', qty, tabTmp.dj[rating].detail);
+  // quantité actuelle
+  const currentQty = tabState.disj[rating]?.qty || 0;
+  // options 0..30
+  const opts = (sel)=>[...Array(31)].map((_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join('');
+  // items “Circuit 1…N” visuels (pré-remplis, pas de clavier)
+  const preview = (n)=> n>0
+    ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
+    : `<p class="muted">Aucun circuit pour l’instant.</p>`;
 
   view(`
     <div class="card">
       ${b("Retour","pageTab_Disjoncteurs()","btn back")}
       <h2>Détail circuits — ${rating} A</h2>
-      <p class="muted">Choisis le nombre de circuits à détailler (sans clavier).</p>
-      <label>Nombre de circuits détaillés</label>
-      ${sel}
+
+      <label>Nombre de circuits
+        <select id="dj-detail-qty">${opts(currentQty)}</select>
+      </label>
+
+      <div id="dj-detail-preview" style="margin-top:8px;">
+        ${preview(currentQty)}
+      </div>
+
       <div class="row" style="margin-top:12px;">
-        ${b("Enregistrer","(function(){ tabTmp.dj["+rating+"].detail = +document.getElementById('dj-det').value||0; pageTab_Disjoncteurs(); })()","btn primary")}
+        ${b("Enregistrer et revenir","pageTab_DisjSaveDetails("+rating+")","btn primary")}
       </div>
     </div>
   `);
+
+  // live preview quand on change la quantité (sans clavier)
+  document.getElementById('dj-detail-qty').addEventListener('change', (e)=>{
+    const n = +e.target.value || 0;
+    document.getElementById('dj-detail-preview').innerHTML =
+      n>0 ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
+          : `<p class="muted">Aucun circuit pour l’instant.</p>`;
+  });
+}
+
+function pageTab_DisjSaveDetails(rating){
+  const qty = +document.getElementById('dj-detail-qty').value || 0;
+  tabState.disj[rating] = {
+    qty,
+    names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : []
+  };
+  alert(`Détails ${rating} A enregistrés (${qty} circuit(s)).`);
+  pageTab_Disjoncteurs();
 }
 
 function pageTab_DisjVider(){
-  tabTmpReset();
+  tabState.disj = {2:{qty:0,names:[]},10:{qty:0,names:[]},16:{qty:0,names:[]},20:{qty:0,names:[]},32:{qty:0,names:[]}};
   pageTab_Disjoncteurs();
 }
 
 function pageTab_DisjValider(){
+  // récupère les quantités visibles (au cas où l’utilisateur a changé sans passer par “Détail circuits”)
+  const readQty = (id)=> +document.getElementById(id).value || 0;
+  tabState.disj[2].qty  = readQty('djq-2');
+  tabState.disj[10].qty = readQty('djq-10');
+  tabState.disj[16].qty = readQty('djq-16');
+  tabState.disj[20].qty = readQty('djq-20');
+  tabState.disj[32].qty = readQty('djq-32');
+
+  let added = 0;
   ensureTableau();
 
-  const amps = [2,10,16,20,32];
-  let added = 0;
-
-  amps.forEach(a=>{
-    const q = tabTmp.dj[a].qty || 0;
-    const d = tabTmp.dj[a].detail || 0;
-    if(!q) return;
-
-    // Si des circuits détaillés : on scinde en 2 lignes
-    if(d>0){
+  [2,10,16,20,32].forEach(rating=>{
+    const { qty, names } = tabState.disj[rating];
+    if(qty>0){
+      const details = (names && names.length)
+        ? ` — circuits : ${names.join(', ')}`
+        : '';
       devis["Tableau"].items.push({
-        category:"Tableau/Modulaire",
-        intervention:"", pose:"",
-        designation:`Disjoncteur ${a} A — circuits détaillés (${d})`,
-        qty: d,
-        prixU: 0
-      });
-      added++;
-
-      if(q-d>0){
-        devis["Tableau"].items.push({
-          category:"Tableau/Modulaire",
-          intervention:"", pose:"",
-          designation:`Disjoncteur ${a} A`,
-          qty: q-d,
-          prixU: 0
-        });
-        added++;
-      }
-    }else{
-      // tout simple en une ligne
-      devis["Tableau"].items.push({
-        category:"Tableau/Modulaire",
-        intervention:"", pose:"",
-        designation:`Disjoncteur ${a} A`,
-        qty: q,
+        category: "Tableau/Modulaire",
+        intervention: "",
+        pose: "",
+        designation: `Disjoncteur ${rating} A${details}`,
+        qty,
         prixU: 0
       });
       added++;
@@ -702,14 +670,15 @@ function pageTab_DisjValider(){
 
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal();
-  tabTmpReset();
-  alert("Disjoncteurs ajoutés dans « Tableau ».");
-  // Retour direct à la page Disjoncteurs (pour enchaîner d'autres entrées)
+  alert("Disjoncteurs ajoutés au devis.");
+  // On reste sur la page Disjoncteurs pour pouvoir compléter d’autres calibres
   pageTab_Disjoncteurs();
 }
 
-/* ========== (3) COMMANDE & PILOTAGE MODULAIRE ========== */
+/* ========== (4) COMMANDE & PILOTAGE ========== */
+
 function pageTabMod_Commandes(){
+  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
   view(`
     <div class="card">
       ${b("Retour","pageTabHome()","btn back")}
@@ -717,16 +686,16 @@ function pageTabMod_Commandes(){
 
       <div class="list">
         <label>Télérupteur
-          <input id="cmd-telerup" type="number" min="0" value="0" />
+          <select id="cmd-telerup">${opts(20)}</select>
         </label>
         <label>Télérupteur silencieux
-          <input id="cmd-telerup-sil" type="number" min="0" value="0" />
+          <select id="cmd-telerup-sil">${opts(20)}</select>
         </label>
         <label>Horloge mécanique + Disjoncteur 2A
-          <input id="cmd-horloge-2a" type="number" min="0" value="0" />
+          <select id="cmd-horloge-2a">${opts(20)}</select>
         </label>
         <label>Horloge mécanique + contacteur HC + Disjoncteur 2A
-          <input id="cmd-horloge-hc-2a" type="number" min="0" value="0" />
+          <select id="cmd-horloge-hc-2a">${opts(20)}</select>
         </label>
       </div>
 
@@ -737,16 +706,17 @@ function pageTabMod_Commandes(){
   `);
 }
 function submitTabMod_Commandes(){
+  const pick = id => +document.getElementById(id).value || 0;
   const defs = [
-    { id:"cmd-telerup",        name:"Télérupteur" },
-    { id:"cmd-telerup-sil",    name:"Télérupteur silencieux" },
-    { id:"cmd-horloge-2a",     name:"Horloge mécanique + Disjoncteur 2A" },
-    { id:"cmd-horloge-hc-2a",  name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A" }
+    { id:"cmd-telerup",       name:"Télérupteur" },
+    { id:"cmd-telerup-sil",   name:"Télérupteur silencieux" },
+    { id:"cmd-horloge-2a",    name:"Horloge mécanique + Disjoncteur 2A" },
+    { id:"cmd-horloge-hc-2a", name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A" }
   ];
   let added=0;
   ensureTableau();
   defs.forEach(d=>{
-    const q=+document.getElementById(d.id).value||0;
+    const q = pick(d.id);
     if(q>0){
       devis["Tableau"].items.push({
         category: "Tableau/Commandes",
@@ -765,12 +735,13 @@ function submitTabMod_Commandes(){
   pageTabHome();
 }
 
-/* --- Spécifique (libre + prix) --- */
+/* ========== (5) SPÉCIFIQUE ========== */
+
 function pageTabMod_Specifique(){
-  const label = prompt("Intitulé de l’élément modulaire (libre) :","");
-  if(!label){ pageTabModulaire(); return; }
-  const prix  = parseFloat(prompt("Prix unitaire estimé (€) :","0")) || 0;
-  const qty   = Math.max(1, parseInt(prompt("Quantité :","1")||"1",10));
+  const label = prompt("Intitulé (libre) :", "");
+  if(!label){ pageTabHome(); return; }
+  const prix  = parseFloat(prompt("Prix unitaire estimé (€) :", "0")) || 0;
+  const qty   = Math.max(1, parseInt(prompt("Quantité :", "1")||"1", 10));
 
   ensureTableau();
   devis["Tableau"].items.push({
@@ -778,12 +749,12 @@ function pageTabMod_Specifique(){
     intervention: "",
     pose: "",
     designation: label,
-    qty: qty,
+    qty,
     prixU: prix
   });
   saveLocal();
   alert("Ajouté.");
-  pageTabModulaire();
+  pageTabHome();
 }
 
 // =============================
@@ -942,77 +913,395 @@ async function exportZipFull(){
 }
 
 /* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE & EXPOSE */
+/* CHAPITRE 6 : TABLEAU & DISTRIBUTION (COMPLET) */
 /* ============================= */
-function init(){
-  try{
-    loadLocal();
-    pageMain();
-  }catch(err){
-    const el = document.getElementById('app');
-    if (el) el.innerHTML =
-      `<div class="card"><h2>Erreur init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
+
+// Tout ce qui concerne le tableau est stocké dans la pièce "Tableau"
+function ensureTableau(){ ensureSection("Tableau"); }
+
+// Petit état local pour la page Disjoncteurs (évite le clavier)
+let tabState = {
+  disj: {
+    2:  { qty:0, names:[] },
+    10: { qty:0, names:[] },
+    16: { qty:0, names:[] },
+    20: { qty:0, names:[] },
+    32: { qty:0, names:[] }
   }
+};
+
+// -------- Hub “Installations spécifiques”
+function pageISHome(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageHome()","btn back")}
+      <h2>Installations spécifiques</h2>
+      <div class="row" style="margin-top:10px;">
+        ${b("Mise à la terre","isSoon('Mise à la terre')")}
+        ${b("VMC","isSoon('VMC')")}
+        ${b("Tableau / distribution","pageTabHome()","btn primary")}
+      </div>
+      <p class="muted" style="margin-top:8px;">Les modules “Mise à la terre” et “VMC” arrivent bientôt.</p>
+    </div>
+  `);
+}
+function isSoon(x){ alert(x+" : module à venir."); }
+
+// -------- Hub “Tableau & distribution”
+function pageTabHome(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageISHome()","btn back")}
+      <h2>Tableau & distribution</h2>
+      <div class="row" style="margin-top:10px;">
+        ${b("1 · Pose tableau","pageTabPose()","btn primary")}
+        ${b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs()","btn")}
+        ${b("3 · Modulaire : Interrupteurs diff.","pageTab_ID()","btn")}
+        ${b("4 · Commande & pilotage","pageTabMod_Commandes()","btn")}
+        ${b("5 · Spécifique (libre + prix)","pageTabMod_Specifique()","btn ghost")}
+      </div>
+      <p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans la pièce « Tableau ».</p>
+    </div>
+  `);
 }
 
-Object.assign(window, {
-  // Menu / sauvegardes
-  pageMain,
-  actionNouveauDevis,
-  pageSavedDevis,
-  loadDevis,
-  deleteDevis,
-  saveCurrentDevis,
+/* ========== (1) POSE TABLEAU ========== */
 
-  // Pièces & flux (chap. 5)
-  pageHome,
-  pageAddPiece,
-  confirmPieceChoice,
-  removePiece,
-  goPiece,
-  delLine,
-  editPieceNote,
-  pagePieceSpecifique,
-  goCategory,
-  goEclairageSub,
-  setEclairageBranch,
-  goIntervention,
-  goDesignation,
-  pageQuantite,
-  saveItem,
+function pageTabPose(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Pose tableau</h2>
 
-  // Installations spécifiques (chap. 6)
-  pageISHome,
-  isSoon,
+      <label>Nombre de rangées</label>
+      <select id="tp-rang">
+        <option value="1" selected>1 rangée</option>
+        <option value="2">2 rangées</option>
+        <option value="3">3 rangées</option>
+        <option value="4">4 rangées</option>
+      </select>
 
-  // Tableau & distribution (chap. 6)
-  pageTabHome,
-  pageTabPose,
-  addTabPose,
-  pageTabModulaire,
-  pageTabMod_ID,
-  submitTabMod_ID,
-  // Nouvelle architecture Disjoncteurs
-  pageTab_Disjoncteurs,
-  pageTab_DisjDetails,
-  pageTab_DisjVider,
-  pageTab_DisjValider,
-  // Commandes & spécifique
-  pageTabMod_Commandes,
-  submitTabMod_Commandes,
-  pageTabMod_Specifique,
+      <label style="margin-top:8px;">Nombre de modules</label>
+      <select id="tp-mod">
+        <option value="13" selected>13 modules</option>
+        <option value="18">18 modules</option>
+        <option value="24">24 modules</option>
+      </select>
 
-  // Estimatif & exports (chap. 7)
-  pageEstimatif,
-  pageTotaux,
-  exportText,
-  exportZipGroups,
-  exportTextFull,
-  exportZipFull,
+      <label style="margin-top:8px;">Type de pose</label>
+      <select id="tp-pose">
+        <option value="Saillie" selected>Saillie</option>
+        <option value="Encastré">Encastré</option>
+      </select>
 
-  // Navigation / sécurité
-  confirmBackHome
-});
+      <label style="margin-top:8px;">Type d’intervention</label>
+      <select id="tp-interv">
+        <option value="Création" selected>Création</option>
+        <option value="Avec dépose de l’existant">Avec dépose de l’existant</option>
+      </select>
 
-// Lancement
-init();
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","addTabPose()","btn primary")}
+      </div>
+    </div>
+  `);
+}
+function addTabPose(){
+  const r   = document.getElementById('tp-rang').value;
+  const m   = document.getElementById('tp-mod').value;
+  const pos = document.getElementById('tp-pose').value;
+  const itv = document.getElementById('tp-interv').value;
+
+  ensureTableau();
+  devis["Tableau"].items.push({
+    category: "Tableau & distribution",
+    intervention: itv,
+    pose: pos,
+    designation: `Pose tableau — ${r} rangée(s), ${m} modules`,
+    qty: 1,
+    prixU: 0
+  });
+  saveLocal();
+  alert("Élément ajouté à « Tableau ».");
+  pageTabHome();
+}
+
+/* ========== (2) MODULAIRE : INTER DIFF. ========== */
+
+function pageTab_ID(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Interrupteurs différentiels</h2>
+
+      <div class="list">
+        <label>ID 30mA - 40A - Type A
+          <select id="id-a-40-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
+        </label>
+        <label>ID 30mA - 40A - Type AC
+          <select id="id-ac-40-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
+        </label>
+        <label>ID 30mA - 63A - Type A
+          <select id="id-a-63-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
+        </label>
+        <label>ID 30mA - 63A - Type AC
+          <select id="id-ac-63-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","submitTab_ID()","btn primary")}
+      </div>
+    </div>
+  `);
+}
+function submitTab_ID(){
+  const defs = [
+    { id:"id-a-40-30",  name:"ID 30mA - 40A - Type A"  },
+    { id:"id-ac-40-30", name:"ID 30mA - 40A - Type AC" },
+    { id:"id-a-63-30",  name:"ID 30mA - 63A - Type A"  },
+    { id:"id-ac-63-30", name:"ID 30mA - 63A - Type AC" }
+  ];
+  let added = 0;
+  ensureTableau();
+  defs.forEach(d=>{
+    const q = +document.getElementById(d.id).value || 0;
+    if(q>0){
+      devis["Tableau"].items.push({
+        category: "Tableau/Modulaire",
+        intervention: "",
+        pose: "",
+        designation: d.name,
+        qty: q,
+        prixU: 0
+      });
+      added++;
+    }
+  });
+  if(!added){ alert("Rien à ajouter."); return; }
+  saveLocal();
+  alert("Interrupteurs différentiels ajoutés.");
+  pageTabHome();
+}
+
+/* ========== (3) MODULAIRE : DISJONCTEURS regroupés ========== */
+
+function pageTab_Disjoncteurs(){
+  // helpers rendus sans clavier
+  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
+
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Disjoncteurs modulaires (2A / 10A / 16A / 20A / 32A)</h2>
+
+      <div class="list">
+        <label>2 A (Qté)
+          <select id="djq-2">${opts(30)}</select>
+          ${b("Détail circuits","pageTab_DisjDetails(2)")}
+        </label>
+        <label>10 A (Qté)
+          <select id="djq-10">${opts(30)}</select>
+          ${b("Détail circuits","pageTab_DisjDetails(10)")}
+        </label>
+        <label>16 A (Qté)
+          <select id="djq-16">${opts(30)}</select>
+          ${b("Détail circuits","pageTab_DisjDetails(16)")}
+        </label>
+        <label>20 A (Qté)
+          <select id="djq-20">${opts(30)}</select>
+          ${b("Détail circuits","pageTab_DisjDetails(20)")}
+        </label>
+        <label>32 A (Qté)
+          <select id="djq-32">${opts(30)}</select>
+          ${b("Détail circuits","pageTab_DisjDetails(32)")}
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Vider la sélection","pageTab_DisjVider()")}
+        ${b("Valider ces disjoncteurs","pageTab_DisjValider()","btn primary")}
+      </div>
+      <p class="muted" style="margin-top:6px;">Astuce : utilise « Détail circuits » pour générer automatiquement “Circuit 1, 2, …” sans clavier. Après validation, tu restes sur cette page pour ajouter d’autres calibres.</p>
+    </div>
+  `);
+
+  // Re-appliquer l'état stocké
+  document.getElementById('djq-2').value  = tabState.disj[2].qty;
+  document.getElementById('djq-10').value = tabState.disj[10].qty;
+  document.getElementById('djq-16').value = tabState.disj[16].qty;
+  document.getElementById('djq-20').value = tabState.disj[20].qty;
+  document.getElementById('djq-32').value = tabState.disj[32].qty;
+}
+
+function pageTab_DisjDetails(rating){
+  // quantité actuelle
+  const currentQty = tabState.disj[rating]?.qty || 0;
+  // options 0..30
+  const opts = (sel)=>[...Array(31)].map((_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join('');
+  // items “Circuit 1…N” visuels (pré-remplis, pas de clavier)
+  const preview = (n)=> n>0
+    ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
+    : `<p class="muted">Aucun circuit pour l’instant.</p>`;
+
+  view(`
+    <div class="card">
+      ${b("Retour","pageTab_Disjoncteurs()","btn back")}
+      <h2>Détail circuits — ${rating} A</h2>
+
+      <label>Nombre de circuits
+        <select id="dj-detail-qty">${opts(currentQty)}</select>
+      </label>
+
+      <div id="dj-detail-preview" style="margin-top:8px;">
+        ${preview(currentQty)}
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Enregistrer et revenir","pageTab_DisjSaveDetails("+rating+")","btn primary")}
+      </div>
+    </div>
+  `);
+
+  // live preview quand on change la quantité (sans clavier)
+  document.getElementById('dj-detail-qty').addEventListener('change', (e)=>{
+    const n = +e.target.value || 0;
+    document.getElementById('dj-detail-preview').innerHTML =
+      n>0 ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
+          : `<p class="muted">Aucun circuit pour l’instant.</p>`;
+  });
+}
+
+function pageTab_DisjSaveDetails(rating){
+  const qty = +document.getElementById('dj-detail-qty').value || 0;
+  tabState.disj[rating] = {
+    qty,
+    names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : []
+  };
+  alert(`Détails ${rating} A enregistrés (${qty} circuit(s)).`);
+  pageTab_Disjoncteurs();
+}
+
+function pageTab_DisjVider(){
+  tabState.disj = {2:{qty:0,names:[]},10:{qty:0,names:[]},16:{qty:0,names:[]},20:{qty:0,names:[]},32:{qty:0,names:[]}};
+  pageTab_Disjoncteurs();
+}
+
+function pageTab_DisjValider(){
+  // récupère les quantités visibles (au cas où l’utilisateur a changé sans passer par “Détail circuits”)
+  const readQty = (id)=> +document.getElementById(id).value || 0;
+  tabState.disj[2].qty  = readQty('djq-2');
+  tabState.disj[10].qty = readQty('djq-10');
+  tabState.disj[16].qty = readQty('djq-16');
+  tabState.disj[20].qty = readQty('djq-20');
+  tabState.disj[32].qty = readQty('djq-32');
+
+  let added = 0;
+  ensureTableau();
+
+  [2,10,16,20,32].forEach(rating=>{
+    const { qty, names } = tabState.disj[rating];
+    if(qty>0){
+      const details = (names && names.length)
+        ? ` — circuits : ${names.join(', ')}`
+        : '';
+      devis["Tableau"].items.push({
+        category: "Tableau/Modulaire",
+        intervention: "",
+        pose: "",
+        designation: `Disjoncteur ${rating} A${details}`,
+        qty,
+        prixU: 0
+      });
+      added++;
+    }
+  });
+
+  if(!added){ alert("Rien à ajouter."); return; }
+  saveLocal();
+  alert("Disjoncteurs ajoutés au devis.");
+  // On reste sur la page Disjoncteurs pour pouvoir compléter d’autres calibres
+  pageTab_Disjoncteurs();
+}
+
+/* ========== (4) COMMANDE & PILOTAGE ========== */
+
+function pageTabMod_Commandes(){
+  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Commande & pilotage modulaire</h2>
+
+      <div class="list">
+        <label>Télérupteur
+          <select id="cmd-telerup">${opts(20)}</select>
+        </label>
+        <label>Télérupteur silencieux
+          <select id="cmd-telerup-sil">${opts(20)}</select>
+        </label>
+        <label>Horloge mécanique + Disjoncteur 2A
+          <select id="cmd-horloge-2a">${opts(20)}</select>
+        </label>
+        <label>Horloge mécanique + contacteur HC + Disjoncteur 2A
+          <select id="cmd-horloge-hc-2a">${opts(20)}</select>
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","submitTabMod_Commandes()","btn primary")}
+      </div>
+    </div>
+  `);
+}
+function submitTabMod_Commandes(){
+  const pick = id => +document.getElementById(id).value || 0;
+  const defs = [
+    { id:"cmd-telerup",       name:"Télérupteur" },
+    { id:"cmd-telerup-sil",   name:"Télérupteur silencieux" },
+    { id:"cmd-horloge-2a",    name:"Horloge mécanique + Disjoncteur 2A" },
+    { id:"cmd-horloge-hc-2a", name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A" }
+  ];
+  let added=0;
+  ensureTableau();
+  defs.forEach(d=>{
+    const q = pick(d.id);
+    if(q>0){
+      devis["Tableau"].items.push({
+        category: "Tableau/Commandes",
+        intervention: "",
+        pose: "",
+        designation: d.name,
+        qty: q,
+        prixU: 0
+      });
+      added++;
+    }
+  });
+  if(!added){ alert("Rien à ajouter."); return; }
+  saveLocal();
+  alert("Commandes modulaires ajoutées.");
+  pageTabHome();
+}
+
+/* ========== (5) SPÉCIFIQUE ========== */
+
+function pageTabMod_Specifique(){
+  const label = prompt("Intitulé (libre) :", "");
+  if(!label){ pageTabHome(); return; }
+  const prix  = parseFloat(prompt("Prix unitaire estimé (€) :", "0")) || 0;
+  const qty   = Math.max(1, parseInt(prompt("Quantité :", "1")||"1", 10));
+
+  ensureTableau();
+  devis["Tableau"].items.push({
+    category: "Tableau/Modulaire — Spécifique",
+    intervention: "",
+    pose: "",
+    designation: label,
+    qty,
+    prixU: prix
+  });
+  saveLocal();
+  alert("Ajouté.");
+  pageTabHome();
+}
