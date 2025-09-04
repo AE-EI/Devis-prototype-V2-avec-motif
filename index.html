@@ -714,109 +714,91 @@ function editPieceNote(){
 // Forcer la présence de la section Tableau
 function ensureTableau(){ ensureSection("Tableau"); }
 
-/* ----------------------------------------------------------------------------
-   État local Disjoncteurs
-   - qty : quantité demandée pour un calibre
-   - circuits[] : infos par circuit (créés quand on ouvre Détail)
-   - hasDetails : true seulement si l’utilisateur a ouvert « Détail circuits »
-                  ET cliqué « Enregistrer et revenir »
-   ---------------------------------------------------------------------------*/
+// État local pour garder les disjoncteurs (persistant pendant navigation)
 let tabState = {
   disj: {
-    2:  { qty:0, circuits:[], hasDetails:false },
-    10: { qty:0, circuits:[], hasDetails:false },
-    16: { qty:0, circuits:[], hasDetails:false },
-    20: { qty:0, circuits:[], hasDetails:false },
-    32: { qty:0, circuits:[], hasDetails:false }
+    2:  { qty:0, names:[] },
+    10: { qty:0, names:[] },
+    16: { qty:0, names:[] },
+    20: { qty:0, names:[] },
+    32: { qty:0, names:[] }
   }
 };
 
-// Initialiser circuits[] (uniquement quand on édite les détails)
-function ensureCircuitsArray(block){
-  const n = block.qty|0;
-  if(!Array.isArray(block.circuits)) block.circuits = [];
-  while(block.circuits.length < n){
-    block.circuits.push({ type:"prise", note:"", special:"" });
-  }
-  if(block.circuits.length > n){
-    block.circuits = block.circuits.slice(0, n);
-  }
-}
-
 // -------- Hub “Installations spécifiques”
 function pageISHome(){
-  view(
-    '<div class="card">'
-      + b("Retour","pageHome()","btn back")
-      + '<h2>Installations spécifiques</h2>'
-      + '<div class="row" style="margin-top:10px;">'
-        + b("Mise à la terre","isSoon(\'Mise à la terre\')","btn")
-        + b("VMC","isSoon(\'VMC\')","btn")
-        + b("Tableau / distribution","pageTabHome()","btn primary")
-      + '</div>'
-      + '<p class="muted" style="margin-top:8px;">Les modules “Mise à la terre” et “VMC” arrivent bientôt.</p>'
-    + '</div>'
-  );
+  view(`
+    <div class="card">
+      ${b("Retour","pageHome()","btn back")}
+      <h2>Installations spécifiques</h2>
+      <div class="row" style="margin-top:10px;">
+        ${b("Mise à la terre","isSoon('Mise à la terre')")}
+        ${b("VMC","isSoon('VMC')")}
+        ${b("Tableau / distribution","pageTabHome()","btn primary")}
+      </div>
+      <p class="muted" style="margin-top:8px;">Les modules “Mise à la terre” et “VMC” arrivent bientôt.</p>
+    </div>
+  `);
 }
 function isSoon(x){ alert(x+" : module à venir."); }
 
 // -------- Hub “Tableau & distribution”
 function pageTabHome(){
-  view(
-    '<div class="card">'
-      + b("Retour","pageISHome()","btn back")
-      + '<h2>Tableau & distribution</h2>'
-      + '<div class="row" style="margin-top:10px;">'
-        + b("1 · Pose tableau","pageTabPose()","btn primary")
-        + b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs()","btn")
-        + b("3 · Modulaire : Interrupteurs diff.","pageTab_ID()","btn")
-        + b("4 · Commande & pilotage","pageTabMod_Commandes()","btn")
-        + b("5 · Spécifique (libre + prix)","pageTabMod_Specifique()","btn ghost")
-      + '</div>'
-      + '<p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans la pièce « Tableau ».</p>'
-    + '</div>'
-  );
+  view(`
+    <div class="card">
+      ${b("Retour","pageISHome()","btn back")}
+      <h2>Tableau & distribution</h2>
+      <div class="row" style="margin-top:10px;">
+        ${b("1 · Pose tableau","pageTabPose()","btn primary")}
+        ${b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs()","btn")}
+        ${b("3 · Modulaire : Interrupteurs diff.","pageTab_ID()","btn")}
+        ${b("4 · Commande & pilotage","pageTabMod_Commandes()","btn")}
+        ${b("5 · Spécifique (libre + prix)","pageTabMod_Specifique()","btn ghost")}
+      </div>
+      <p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans la pièce « Tableau ».</p>
+    </div>
+  `);
 }
 
 /* ========== (1) POSE TABLEAU ========== */
 function pageTabPose(){
-  view(
-    '<div class="card">'
-      + b("Retour","pageTabHome()","btn back")
-      + '<h2>Pose tableau</h2>'
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Pose tableau</h2>
 
-      + '<label>Nombre de rangées</label>'
-      + '<select id="tp-rang">'
-        + '<option value="1" selected>1 rangée</option>'
-        + '<option value="2">2 rangées</option>'
-        + '<option value="3">3 rangées</option>'
-        + '<option value="4">4 rangées</option>'
-      + '</select>'
+      <label>Nombre de rangées</label>
+      <select id="tp-rang">
+        <option value="1" selected>1 rangée</option>
+        <option value="2">2 rangées</option>
+        <option value="3">3 rangées</option>
+        <option value="4">4 rangées</option>
+      </select>
 
-      + '<label style="margin-top:8px;">Nombre de modules</label>'
-      + '<select id="tp-mod">'
-        + '<option value="13" selected>13 modules</option>'
-        + '<option value="18">18 modules</option>'
-        + '<option value="24">24 modules</option>'
-      + '</select>'
+      <label style="margin-top:8px;">Nombre de modules</label>
+      <select id="tp-mod">
+        <option value="13" selected>13 modules</option>
+        <option value="18">18 modules</option>
+        <option value="24">24 modules</option>
+      </select>
 
-      + '<label style="margin-top:8px;">Type de pose</label>'
-      + '<select id="tp-pose">'
-        + '<option value="Saillie" selected>Saillie</option>'
-        + '<option value="Encastré">Encastré</option>'
-      + '</select>'
+      <label style="margin-top:8px;">Type de pose</label>
+      <select id="tp-pose">
+        <option value="Saillie" selected>Saillie</option>
+        <option value="Encastré">Encastré</option>
+      </select>
 
-      + '<label style="margin-top:8px;">Type d’intervention</label>'
-      + '<select id="tp-interv">'
-        + '<option value="Création" selected>Création</option>'
-        + '<option value="Avec dépose de l’existant">Avec dépose de l’existant</option>'
-      + '</select>'
+      <label style="margin-top:8px;">Type d’intervention</label>
+      <select id="tp-interv">
+        <option value="Création" selected>Création</option>
+        <option value="Avec dépose de l’existant">Avec dépose de l’existant</option>
+      </select>
 
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Ajouter au devis","addTabPose()","btn primary")
-      + '</div>'
-    + '</div>'
-  );
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","addTabPose()","btn primary")}
+      </div>
+    </div>
+  `);
 }
 function addTabPose(){
   const r   = document.getElementById('tp-rang').value;
@@ -824,14 +806,17 @@ function addTabPose(){
   const pos = document.getElementById('tp-pose').value;
   const itv = document.getElementById('tp-interv').value;
 
+  // Prix selon les règles définies au Chapitre 3
+  const pu = (typeof getTabPrice==='function') ? getTabPrice(+r, +m, pos, itv) : 0;
+
   ensureTableau();
   devis["Tableau"].items.push({
     category: "Tableau & distribution",
     intervention: itv,
     pose: pos,
-    designation: "Pose tableau — "+r+" rangée(s), "+m+" modules",
+    designation: `Pose tableau — ${r} rangée(s), ${m} modules`,
     qty: 1,
-    prixU: 0
+    prixU: pu
   });
   saveLocal();
   alert("Élément ajouté à « Tableau ».");
@@ -840,93 +825,91 @@ function addTabPose(){
 
 /* ========== (2) INTER DIFF. ========== */
 function pageTab_ID(){
-  const opts = max => Array.from({length:max+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
-  view(
-    '<div class="card">'
-      + b("Retour","pageTabHome()","btn back")
-      + '<h2>Interrupteurs différentiels</h2>'
-      + '<div class="list">'
-        + `<label>ID 30mA - 40A - Type A <select id="id-a-40-30">${opts(20)}</select></label>`
-        + `<label>ID 30mA - 40A - Type AC <select id="id-ac-40-30">${opts(20)}</select></label>`
-        + `<label>ID 30mA - 63A - Type A <select id="id-a-63-30">${opts(20)}</select></label>`
-        + `<label>ID 30mA - 63A - Type AC <select id="id-ac-63-30">${opts(20)}</select></label>`
-      + '</div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Ajouter au devis","submitTab_ID()","btn primary")
-      + '</div>'
-    + '</div>'
-  );
+  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Interrupteurs différentiels</h2>
+      <div class="list">
+        <label>ID 30mA - 40A - Type A <select id="id-a-40-30">${opts(20)}</select></label>
+        <label>ID 30mA - 40A - Type AC <select id="id-ac-40-30">${opts(20)}</select></label>
+        <label>ID 30mA - 63A - Type A <select id="id-a-63-30">${opts(20)}</select></label>
+        <label>ID 30mA - 63A - Type AC <select id="id-ac-63-30">${opts(20)}</select></label>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","submitTab_ID()","btn primary")}
+      </div>
+    </div>
+  `);
 }
 function submitTab_ID(){
-  const defs = [
-    { id:"id-a-40-30",  name:"ID 30mA - 40A - Type A"  },
-    { id:"id-ac-40-30", name:"ID 30mA - 40A - Type AC" },
-    { id:"id-a-63-30",  name:"ID 30mA - 63A - Type A"  },
-    { id:"id-ac-63-30", name:"ID 30mA - 63A - Type AC" }
-  ];
+  // Mapping ID → libellé → prix unitaire depuis TARIFS_TABLEAU.inter_diff
+  const PRICE_ID = TARIFS_TABLEAU && TARIFS_TABLEAU.inter_diff ? {
+    "id-a-40-30":  TARIFS_TABLEAU.inter_diff["40A-A"]   || 0,
+    "id-ac-40-30": TARIFS_TABLEAU.inter_diff["40A-AC"]  || 0,
+    "id-a-63-30":  TARIFS_TABLEAU.inter_diff["63A-A"]   || 0,
+    "id-ac-63-30": TARIFS_TABLEAU.inter_diff["63A-AC"]  || 0
+  } : {};
+
+  const NAME_ID = {
+    "id-a-40-30":  "ID 30mA - 40A - Type A",
+    "id-ac-40-30": "ID 30mA - 40A - Type AC",
+    "id-a-63-30":  "ID 30mA - 63A - Type A",
+    "id-ac-63-30": "ID 30mA - 63A - Type AC"
+  };
+
   let added = 0;
   ensureTableau();
-  defs.forEach(d=>{
-    const q = +document.getElementById(d.id).value || 0;
+
+  Object.keys(NAME_ID).forEach(key=>{
+    const q = +document.getElementById(key).value || 0;
     if(q>0){
       devis["Tableau"].items.push({
         category: "Tableau/Modulaire",
-        designation: d.name,
+        intervention: "",
+        pose: "",
+        designation: NAME_ID[key],
         qty: q,
-        prixU: 0
+        prixU: PRICE_ID[key] || 0
       });
       added++;
     }
   });
+
   if(!added){ alert("Rien à ajouter."); return; }
-  saveLocal();
-  alert("Interrupteurs différentiels ajoutés.");
-  pageTabHome();
+  saveLocal(); alert("Interrupteurs différentiels ajoutés."); pageTabHome();
 }
 
-/* ========== (3) DISJONCTEURS + DÉTAIL CIRCUITS ========== */
-
-// Types basiques + spécialisés (reprend les constantes du Chapitre 3)
-const CIRCUIT_TYPES = [
-  { value:"prise",     label:"Circuit prises" },
-  { value:"eclairage", label:"Circuit éclairage" }
-];
-const getSpecials = () =>
-  (DESIGNATIONS_PAR_CATEGORIE && DESIGNATIONS_PAR_CATEGORIE["Circuit spécialisé"]) || [];
-
-// Petit rendu d’aperçu des détails (affiché sous les sélecteurs sur la page principale)
-function previewDetails(block){
-  if(!block || !block.hasDetails || !block.qty) return "";
-  const names = block.circuits.slice(0, block.qty).map(c=>{
-    if(c.type==="special") return c.special||"Spécialisé";
-    if(c.type==="eclairage") return "éclairage"+(c.note?` (${c.note})`:"");
-    return "prise"+(c.note?` (${c.note})`:"");
-  }).filter(Boolean);
-  return names.length ? `<small class="muted">Détails : ${names.join(", ")}</small>` : "";
-}
-
+/* ========== (3) DISJONCTEURS regroupés ========== */
 function pageTab_Disjoncteurs(){
-  const opts = max => Array.from({length:max+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
-  view(
-    '<div class="card">'
-      + b("Retour","pageTabHome()","btn back")
-      + '<h2>Disjoncteurs modulaires (2A / 10A / 16A / 20A / 32A)</h2>'
-      + '<div class="list">'
-        + `<label>2 A (Qté)  <select id="djq-2">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(2)")}<br>${previewDetails(tabState.disj[2])}</label>`
-        + `<label>10 A (Qté) <select id="djq-10">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(10)")}<br>${previewDetails(tabState.disj[10])}</label>`
-        + `<label>16 A (Qté) <select id="djq-16">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(16)")}<br>${previewDetails(tabState.disj[16])}</label>`
-        + `<label>20 A (Qté) <select id="djq-20">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(20)")}<br>${previewDetails(tabState.disj[20])}</label>`
-        + `<label>32 A (Qté) <select id="djq-32">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(32)")}<br>${previewDetails(tabState.disj[32])}</label>`
-      + '</div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Vider la sélection","pageTab_DisjVider()","btn")
-        + b("Valider ces disjoncteurs","pageTab_DisjValider()","btn primary")
-      + '</div>'
-      + '<p class="muted" style="margin-top:6px;">Tu peux ouvrir « Détail circuits » à tout moment, sans valider.</p>'
-    + '</div>'
-  );
+  const opts = (max=30)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
+  // Construire l’aperçu des détails si existants
+  const preview = rating => {
+    const d = tabState.disj[rating];
+    if(!d || !d.qty) return '';
+    const details = (d.details && d.details.length && d.details.some(x=>x && (x.type || x.note)))
+      ? ` <small class="muted">— détails ajoutés</small>` : '';
+    return details;
+  };
 
-  // réappliquer l'état quantités
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Disjoncteurs modulaires (2A / 10A / 16A / 20A / 32A)</h2>
+      <div class="list">
+        <label>2 A (Qté) <select id="djq-2">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(2)")} ${preview(2)}</label>
+        <label>10 A (Qté) <select id="djq-10">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(10)")} ${preview(10)}</label>
+        <label>16 A (Qté) <select id="djq-16">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(16)")} ${preview(16)}</label>
+        <label>20 A (Qté) <select id="djq-20">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(20)")} ${preview(20)}</label>
+        <label>32 A (Qté) <select id="djq-32">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(32)")} ${preview(32)}</label>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        ${b("Vider la sélection","pageTab_DisjVider()")}
+        ${b("Valider ces disjoncteurs","pageTab_DisjValider()","btn primary")}
+      </div>
+      <p class="muted" style="margin-top:6px;">Astuce : ajoute des détails par calibre si nécessaire. Si tu n’en ajoutes pas, rien ne sera mentionné dans l’estimatif.</p>
+    </div>
+  `);
   document.getElementById('djq-2').value  = tabState.disj[2].qty;
   document.getElementById('djq-10').value = tabState.disj[10].qty;
   document.getElementById('djq-16').value = tabState.disj[16].qty;
@@ -934,154 +917,149 @@ function pageTab_Disjoncteurs(){
   document.getElementById('djq-32').value = tabState.disj[32].qty;
 }
 
+// Détail circuits — version avec choix type + note par circuit
 function pageTab_DisjDetails(rating){
-  const selOnMain = document.getElementById('djq-'+rating);
-  const fromMainQty = selOnMain ? (+selOnMain.value||0) : 0;
+  const state = tabState.disj[rating] || {qty:0,names:[],details:[]};
+  // Init si vide
+  if(!state.details) state.details = [];
+  const currentQty = state.qty || 0;
 
-  const block = tabState.disj[rating] || { qty:0, circuits:[], hasDetails:false };
-  // Si aucune qty déjà mémorisée, on prend celle de la page principale
-  if(!block.qty && fromMainQty) block.qty = fromMainQty;
-
-  ensureCircuitsArray(block);
-
-  const qtyOpts = Array.from({length:31},(_,i)=>`<option value="${i}" ${i===block.qty?'selected':''}>${i}</option>`).join('');
-  const specials = getSpecials();
-  const specialOptsAll = specials.map(s=>`<option value="${s}">${s}</option>`).join('');
-
-  function renderRow(c,i){
-    const typeOpts = [
-      ...CIRCUIT_TYPES.map(t=>`<option value="${t.value}" ${c.type===t.value?'selected':''}>${t.label}</option>`),
-      `<option value="special" ${c.type==="special"?'selected':''}>Circuit spécialisé…</option>`
-    ].join('');
-    const isBasic = (c.type!=="special");
-    const noteVal = (c.note||'').replace(/"/g,'&quot;');
-    const specialOpts = specialOptsAll.replace(`value="${c.special}"`,`value="${c.special}" selected`);
-
+  // Gabarit pour une ligne détail circuit
+  const row = (i, d) => {
+    const type = d?.type || '';
+    const note = d?.note || '';
     return `
-      <div class="card" style="padding:10px;">
-        <strong>Circuit ${i+1}</strong>
-        <div class="row" style="margin-top:6px;">
-          <label style="flex:1; min-width:220px;">
-            Type
-            <select data-role="type" data-idx="${i}">${typeOpts}</select>
-          </label>
-          <label style="flex:1; min-width:220px; ${isBasic?'':'display:none'}" data-wrap="note-${i}">
-            Nom / caractéristique (optionnel)
-            <input data-role="note" data-idx="${i}" value="${noteVal}" />
-          </label>
-          <label style="flex:1; min-width:220px; ${c.type==="special"?'':'display:none'}" data-wrap="special-${i}">
-            Spécialisé
-            <select data-role="special" data-idx="${i}">
-              <option value="" ${!c.special?'selected':''}>(choisir)</option>
-              ${specialOpts}
-            </select>
-          </label>
+      <div class="pill" style="width:100%;justify-content:space-between;">
+        <div style="flex:1 1 auto; display:flex; gap:8px; align-items:center;">
+          <strong>Circuit ${i+1}</strong>
+          <select data-idx="${i}" class="dj-type">
+            <option value="">(non défini)</option>
+            <option value="Circuit prise" ${type==='Circuit prise'?'selected':''}>Circuit prise</option>
+            <option value="Circuit éclairage" ${type==='Circuit éclairage'?'selected':''}>Circuit éclairage</option>
+            <optgroup label="Circuits spécialisés">
+              <option value="Four" ${type==='Four'?'selected':''}>Four</option>
+              <option value="Plaque de cuisson" ${type==='Plaque de cuisson'?'selected':''}>Plaque de cuisson</option>
+              <option value="Lave-linge" ${type==='Lave-linge'?'selected':''}>Lave-linge</option>
+              <option value="Lave-vaisselle" ${type==='Lave-vaisselle'?'selected':''}>Lave-vaisselle</option>
+              <option value="Sèche-linge" ${type==='Sèche-linge'?'selected':''}>Sèche-linge</option>
+              <option value="Cumulus" ${type==='Cumulus'?'selected':''}>Cumulus</option>
+              <option value="VMC" ${type==='VMC'?'selected':''}>VMC</option>
+              <option value="Chauffage" ${type==='Chauffage'?'selected':''}>Chauffage</option>
+              <option value="Climatisation" ${type==='Climatisation'?'selected':''}>Climatisation</option>
+              <option value="Prise extérieure étanche" ${type==='Prise extérieure étanche'?'selected':''}>Prise extérieure étanche</option>
+              <option value="Autre circuit spécialisé" ${type==='Autre circuit spécialisé'?'selected':''}>Autre circuit spécialisé</option>
+            </optgroup>
+          </select>
+          <input data-idx="${i}" class="dj-note" placeholder="Caractéristique / nom (facultatif)" value="${note.replace(/"/g,'&quot;')}" />
         </div>
-      </div>`;
-  }
+      </div>
+    `;
+  };
 
-  view(
-    '<div class="card">'
-      + b("Retour","pageTab_Disjoncteurs()","btn back")
-      + `<h2>Détail circuits — ${rating} A</h2>`
-      + `<label>Nombre de circuits <select id="dj-detail-qty">${qtyOpts}</select></label>`
-      + `<div id="dj-detail-rows" style="margin-top:10px;">${block.qty ? block.circuits.slice(0,block.qty).map(renderRow).join('') : '<p class="muted">Aucun circuit.</p>'}</div>`
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Enregistrer et revenir","pageTab_DisjSaveDetails("+rating+")","btn primary")
-      + '</div>'
-    + '</div>'
-  );
+  // Génére bloc détails selon quantité
+  const detailsBlock = (n, arr=[]) => {
+    if(n<=0) return `<p class="muted">Aucun circuit.</p>`;
+    let out = '';
+    for(let i=0;i<n;i++){
+      out += row(i, arr[i] || {});
+    }
+    return out;
+  };
 
-  const rowsEl = document.getElementById('dj-detail-rows');
-  const qtyEl  = document.getElementById('dj-detail-qty');
+  // UI
+  const optsQty = (sel)=>[...Array(31)].map((_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join('');
+  view(`
+    <div class="card">
+      ${b("Retour","pageTab_Disjoncteurs()","btn back")}
+      <h2>Détail circuits — ${rating} A</h2>
 
-  function attachRowListeners(){
-    rowsEl.querySelectorAll('[data-role="type"]').forEach(sel=>{
-      sel.addEventListener('change', ev=>{
-        const i = +ev.target.getAttribute('data-idx');
-        const val = ev.target.value;
-        block.circuits[i].type = val;
-        const noteWrap    = rowsEl.querySelector('[data-wrap="note-'+i+'"]');
-        const specialWrap = rowsEl.querySelector('[data-wrap="special-'+i+'"]');
-        if(val==="special"){ if(noteWrap) noteWrap.style.display="none"; if(specialWrap) specialWrap.style.display=""; }
-        else{ if(noteWrap) noteWrap.style.display=""; if(specialWrap) specialWrap.style.display="none"; }
-      });
-    });
-    rowsEl.querySelectorAll('[data-role="note"]').forEach(inp=>{
-      inp.addEventListener('input', ev=>{
-        const i = +ev.target.getAttribute('data-idx');
-        block.circuits[i].note = ev.target.value || "";
-      });
-    });
-    rowsEl.querySelectorAll('[data-role="special"]').forEach(sel=>{
-      sel.addEventListener('change', ev=>{
-        const i = +ev.target.getAttribute('data-idx');
-        block.circuits[i].special = ev.target.value || "";
-      });
-    });
-  }
-  attachRowListeners();
+      <label>Nombre de circuits
+        <select id="dj-detail-qty">${optsQty(currentQty)}</select>
+      </label>
 
-  qtyEl.addEventListener('change', e=>{
-    block.qty = +e.target.value || 0;
-    ensureCircuitsArray(block);
-    rowsEl.innerHTML = block.qty ? block.circuits.map(renderRow).join('') : '<p class="muted">Aucun circuit.</p>';
-    attachRowListeners();
+      <div id="dj-detail-container" style="margin-top:8px;">
+        ${detailsBlock(currentQty, state.details)}
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Enregistrer et revenir","pageTab_DisjSaveDetails("+rating+")","btn primary")}
+      </div>
+    </div>
+  `);
+
+  // Comportement dynamique
+  document.getElementById('dj-detail-qty').addEventListener('change', (e)=>{
+    const n = +e.target.value || 0;
+    // redessine
+    document.getElementById('dj-detail-container').innerHTML = detailsBlock(n, state.details);
   });
-
-  tabState.disj[rating] = block;
 }
 
 function pageTab_DisjSaveDetails(rating){
-  const block = tabState.disj[rating] || { qty:0, circuits:[], hasDetails:false };
-  ensureCircuitsArray(block);
-  block.hasDetails = (block.qty>0); // on ne considère “détails définis” que si l’utilisateur enregistre
-  tabState.disj[rating] = block;
-  alert(`Détails ${rating} A enregistrés (${block.qty} circuit(s)).`);
+  const qty = +document.getElementById('dj-detail-qty').value || 0;
+
+  // Récupère les lignes affichées
+  const types = Array.from(document.querySelectorAll('.dj-type'));
+  const notes = Array.from(document.querySelectorAll('.dj-note'));
+
+  const details = [];
+  for(let i=0;i<qty;i++){
+    const t = types[i]?.value || '';
+    const n = notes[i]?.value || '';
+    details.push({ type:t, note:n });
+  }
+
+  tabState.disj[rating] = {
+    qty,
+    names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : [],
+    details
+  };
+
+  alert(`Détails ${rating} A enregistrés (${qty} circuit(s)).`);
   pageTab_Disjoncteurs();
 }
 
 function pageTab_DisjVider(){
-  tabState.disj = {
-    2:{qty:0,circuits:[],hasDetails:false},
-    10:{qty:0,circuits:[],hasDetails:false},
-    16:{qty:0,circuits:[],hasDetails:false},
-    20:{qty:0,circuits:[],hasDetails:false},
-    32:{qty:0,circuits:[],hasDetails:false}
-  };
+  tabState.disj = {2:{qty:0,names:[],details:[]},10:{qty:0,names:[],details:[]},16:{qty:0,names:[],details:[]},20:{qty:0,names:[],details:[]},32:{qty:0,names:[],details:[]}};
   pageTab_Disjoncteurs();
 }
 
-// ➜ Estimatif : n’afficher les “— circuits : …” que si hasDetails = true
 function pageTab_DisjValider(){
-  const readQty = id => +document.getElementById(id).value || 0;
-  [2,10,16,20,32].forEach(r=>{
-    if(!tabState.disj[r]) tabState.disj[r] = { qty:0, circuits:[], hasDetails:false };
-    tabState.disj[r].qty = readQty('djq-'+r);
-    // NE PAS appeler ensureCircuitsArray ici, sinon on “créera” des détails par défaut
+  // Lit les quantités visibles (au cas où)
+  const readQty=id=>+document.getElementById(id).value||0;
+  [2,10,16,20,32].forEach(r=>{ 
+    const q = readQty('djq-'+r);
+    if(!tabState.disj[r]) tabState.disj[r]={qty:0,names:[],details:[]};
+    tabState.disj[r].qty = q;
   });
 
   let added = 0;
   ensureTableau();
 
+  // Prix unitaires par calibre depuis TARIFS_TABLEAU
+  const PU = (TARIFS_TABLEAU && TARIFS_TABLEAU.disjoncteurs) ? TARIFS_TABLEAU.disjoncteurs : {};
+
   [2,10,16,20,32].forEach(rating=>{
-    const block = tabState.disj[rating];
-    const qty   = block.qty|0;
+    const { qty, details } = tabState.disj[rating];
     if(qty>0){
-      let details = '';
-      if(block.hasDetails && block.circuits && block.circuits.length){
-        const names = block.circuits.slice(0, qty).map(c=>{
-          if(c.type==="special") return c.special||"Spécialisé";
-          if(c.type==="eclairage") return "éclairage"+(c.note?` (${c.note})`:"");
-          return "prise"+(c.note?` (${c.note})`:"");
-        }).filter(Boolean);
-        if(names.length) details = " — circuits : "+names.join(', ');
-      }
+      // Mention des détails uniquement s’il y en a
+      const hasDetail = Array.isArray(details) && details.some(d=>d && (d.type || d.note));
+      const detailText = hasDetail
+        ? ' — circuits : ' + details.map((d,i)=>{
+            if(!d) return `Circuit ${i+1}`;
+            const t = d.type || '';
+            const n = d.note ? ` (${d.note})` : '';
+            return (t ? t : `Circuit ${i+1}`) + n;
+          }).join(', ')
+        : '';
+
       devis["Tableau"].items.push({
         category: "Tableau/Modulaire",
-        designation: "Disjoncteur "+rating+" A"+details,
-        qty: qty,
-        prixU: 0
+        intervention: "",
+        pose: "",
+        designation: `Disjoncteur ${rating} A${detailText}`,
+        qty,
+        prixU: PU[rating] || 0
       });
       added++;
     }
@@ -1090,44 +1068,54 @@ function pageTab_DisjValider(){
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal();
   alert("Disjoncteurs ajoutés au devis.");
-  pageTab_Disjoncteurs(); // on reste ici pour compléter
+  pageTab_Disjoncteurs();
 }
 
-/* ========== (4) COMMANDES ========== */
+/* ========== (4) COMMANDES & PILOTAGE ========== */
 function pageTabMod_Commandes(){
-  const opts = max => Array.from({length:max+1},(_,i)=>`<option value="${i}">${i}</option>`).join('');
-  view(
-    '<div class="card">'
-      + b("Retour","pageTabHome()","btn back")
-      + '<h2>Commande & pilotage</h2>'
-      + '<div class="list">'
-        + `<label>Télérupteur <select id="cmd-telerup">${opts(20)}</select></label>`
-        + `<label>Télérupteur silencieux <select id="cmd-telerup-sil">${opts(20)}</select></label>`
-        + `<label>Horloge mécanique + Disj 2A <select id="cmd-horloge-2a">${opts(20)}</select></label>`
-        + `<label>Horloge mécanique + contacteur HC + Disj 2A <select id="cmd-horloge-hc-2a">${opts(20)}</select></label>`
-      + '</div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Ajouter au devis","submitTabMod_Commandes()","btn primary")
-      + '</div>'
-    + '</div>'
-  );
+  const opts=(max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Commande & pilotage</h2>
+      <div class="list">
+        <label>Télérupteur <select id="cmd-telerup">${opts(20)}</select></label>
+        <label>Télérupteur silencieux <select id="cmd-telerup-sil">${opts(20)}</select></label>
+        <label>Horloge mécanique + Disjoncteur 2A <select id="cmd-horloge-2a">${opts(20)}</select></label>
+        <label>Horloge mécanique + contacteur heures creuses + Disjoncteur 2A <select id="cmd-horloge-hc-2a">${opts(20)}</select></label>
+      </div>
+      <div class="row" style="margin-top:12px;">${b("Ajouter au devis","submitTabMod_Commandes()","btn primary")}</div>
+    </div>
+  `);
 }
 function submitTabMod_Commandes(){
+  // Prix unitaires depuis TARIFS_TABLEAU.commandes
+  const PC = TARIFS_TABLEAU && TARIFS_TABLEAU.commandes ? TARIFS_TABLEAU.commandes : {};
   const pick=id=>+document.getElementById(id).value||0;
-  const defs=[
-    { id:"cmd-telerup",     name:"Télérupteur" },
-    { id:"cmd-telerup-sil", name:"Télérupteur silencieux" },
-    { id:"cmd-horloge-2a",  name:"Horloge mécanique + Disj 2A" },
-    { id:"cmd-horloge-hc-2a", name:"Horloge mécanique + contacteur HC + Disj 2A" }
+
+  const defs = [
+    { id:"cmd-telerup",       name:"Télérupteur",                                                  pu: PC["Télérupteur"] || 0 },
+    { id:"cmd-telerup-sil",   name:"Télérupteur silencieux",                                       pu: PC["Télérupteur silencieux"] || 0 },
+    { id:"cmd-horloge-2a",    name:"Horloge mécanique + Disjoncteur 2A",                           pu: PC["Horloge mécanique + Disjoncteur 2A"] || 0 },
+    { id:"cmd-horloge-hc-2a", name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A", pu: PC["Horloge mécanique + contacteur heures creuses + Disjoncteur 2A"] || 0 }
   ];
+
   let added=0; ensureTableau();
   defs.forEach(d=>{
-    const q=pick(d.id);
+    const q = pick(d.id);
     if(q>0){
-      devis["Tableau"].items.push({ category:"Tableau/Commandes", designation:d.name, qty:q, prixU:0 });
+      devis["Tableau"].items.push({
+        category: "Tableau/Commandes",
+        intervention: "",
+        pose: "",
+        designation: d.name,
+        qty: q,
+        prixU: d.pu
+      });
       added++;
     }
   });
+
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal(); alert("Commandes ajoutées."); pageTabHome();
 }
@@ -1138,11 +1126,10 @@ function pageTabMod_Specifique(){
   const prix=parseFloat(prompt("Prix unitaire (€) :","0"))||0;
   const qty=Math.max(1,parseInt(prompt("Quantité :","1")||"1",10));
   ensureTableau();
-  devis["Tableau"].items.push({ category:"Tableau/Spécifique", designation:label, qty, prixU:prix });
+  devis["Tableau"].items.push({ category:"Tableau/Spécifique", intervention:"", pose:"", designation:label, qty, prixU:prix });
   saveLocal(); alert("Ajouté."); pageTabHome();
 }
 </script>
-
 <!-- =============================
      CHAPITRE 7 : ESTIMATIF & EXPORTS
      ============================= -->
