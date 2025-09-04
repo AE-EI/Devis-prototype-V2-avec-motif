@@ -6,7 +6,7 @@
   <!-- ============================= -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V2.3 (stable + exports complets)</title>
+  <title>MiniDevis — V2.4 (doublons pièces + tableau complet)</title>
   <style>
     :root { --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666; --line:#e8e8e8; --primary:#111; }
     *{ box-sizing:border-box }
@@ -47,19 +47,22 @@
   </script>
 </head>
 <body>
-<header>MiniDevis — V2.3</header>
+<header>MiniDevis — V2.4</header>
 <main id="app"></main>
 
 <script>
 /* ============================= */
-/* CHAPITRE 2 : ÉTAT & HELPERS UI */
+/* DEBUG GLOBAL : surface les erreurs au lieu d’un écran vide */
 /* ============================= */
-
-// Affiche proprement toute erreur JS
 window.addEventListener('error', (e) => {
   const el = document.getElementById('app');
-  if (el) el.innerHTML = `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
+  if (el) el.innerHTML =
+    `<div class="card"><h2>Erreur JS</h2><pre>${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre></div>`;
 });
+
+/* ============================= */
+/* CHAPITRE 2 : ÉTAT & HELPERS UI */
+/* ============================= */
 
 // État global
 let devis = {}; // contiendra aussi __id, __name
@@ -73,6 +76,39 @@ function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 const $app = () => document.getElementById('app');
 function b(label, fn, cls="btn"){ return `<button class="${cls}" onclick="${fn}">${label}</button>`; }
 function euro(n){ return `${(+n).toFixed(2)} €`; }
+
+// ---------------- DOUBLONS DE PIÈCES : clés uniques + base pour groupage ----------------
+// Construit le libellé d’affichage (sans suffixe auto)
+function buildPieceLabel(base, qualif, etage){
+  let lbl = base;
+  if (qualif && qualif.trim()) lbl += " (" + qualif.trim() + ")";
+  if (etage && etage.trim()) lbl += " — " + etage.trim();
+  return lbl;
+}
+// Trouve une clé libre en ajoutant (2), (3)... si nécessaire
+function nextFreeKey(label){
+  if (!devis[label]) return label;
+  let n = 2;
+  while (devis[`${label} (${n})`]) n++;
+  return `${label} (${n})`;
+}
+// Crée (ou récupère) une pièce distincte à partir du trio (base, qualif, étage)
+function createOrGetPiece(base, qualif, etage){
+  const wanted = buildPieceLabel(base, qualif, etage);
+  const key = nextFreeKey(wanted);
+  if (!devis[key]) {
+    devis[key] = { __base: base, qualificatif: (qualif||""), etage: (etage||""), items:[], note:"" };
+    saveLocal();
+  }
+  return key;
+}
+// Affichage du libellé enrichi à partir des métas (et non de la clé brute)
+function formatPieceLabel(pieceKey){
+  const s = devis[pieceKey];
+  if (!s) return pieceKey;
+  const base = s.__base || pieceKey; // fallback anciens devis
+  return buildPieceLabel(base, s.qualificatif, s.etage);
+}
 
 // Footer auto (peut être masqué)
 function view(html, noFooter=false){
@@ -98,19 +134,9 @@ function confirmBackHome(){
   }
 }
 
-// Libellé enrichi (Nom + (qualif) + — étage)
-function formatPieceLabel(piece){
-  const s = devis[piece];
-  if(!s) return piece;
-  let lbl = piece;
-  if (s.qualificatif && s.qualificatif.trim()) lbl += " (" + s.qualificatif.trim() + ")";
-  if (s.etage && s.etage.trim()) lbl += " — " + s.etage.trim();
-  return lbl;
-}
-
 // Persistance locale
-function ensureSection(piece){
-  if(!devis[piece]) devis[piece] = { items:[], note:"", qualificatif:"", etage:"" };
+function ensureSection(pieceKey){
+  if(!devis[pieceKey]) devis[pieceKey] = { items:[], note:"", qualificatif:"", etage:"" };
 }
 function saveLocal(){ try{ localStorage.setItem('devis', JSON.stringify(devis)); }catch(e){} }
 function loadLocal(){
@@ -188,7 +214,7 @@ function pageSavedDevis(){
   }
   const list = saved.map((d,i)=>`<div class="pill">
       <strong>${d.name}</strong> <small>${d.date}</small>
-      ${b("Ouvrir",`loadDevis(${i})`)} ${b("Supprimer",`deleteDevis(${i})`,"btn")}
+      ${b("Ouvrir",\`loadDevis(${i})\`)} ${b("Supprimer",\`deleteDevis(${i})\`,"btn")}
     </div>`).join('');
   view(`<div class="card">
       ${b("Retour","pageMain()","btn back")}
@@ -254,10 +280,11 @@ function pageHome(){
           (s.etage && s.etage.trim()) ? `<span class="badge">${s.etage}</span>` : ""
         ].filter(Boolean).join(" ");
         return `<div class="pill">
-          <strong>${p}</strong>
+          <strong>${formatPieceLabel(p)}</strong>
           <small>${(s.items||[]).length} ligne(s)</small>
           ${badges}
-          ${b("Ouvrir",`goPiece('${p}')`)} ${b("Supprimer",`removePiece('${p}')`,"btn")}
+          ${b("Ouvrir", \`goPiece("${p.replace(/"/g,'&quot;')}")\`)}
+          ${b("Supprimer", \`removePiece("${p.replace(/"/g,'&quot;')}")\`, "btn")}
         </div>`;
       }).join('')
     : `<p class="muted">Aucune pièce ajoutée pour l’instant.</p>`;
@@ -306,43 +333,43 @@ function confirmPieceChoice(){
   const qualif = (document.getElementById('piece-qualif').value || "").trim();
   const etage  = document.getElementById('piece-etage').value;
   if(!sel) return;
-  let name = sel;
+
+  let base = sel;
   if(sel==="__NEW__"){
-    name = (prompt("Nom de la pièce :","") || "").trim();
-    if(!name) return;
+    base = (prompt("Nom de la pièce :","") || "").trim();
+    if(!base) return;
   }
-  ensureSection(name);
-  devis[name].qualificatif = qualif || "";
-  devis[name].etage = (etage && etage!=="(aucun)") ? etage : "";
-  saveLocal();
-  goPiece(name);
+  const etageVal = (etage && etage!=="(aucun)") ? etage : "";
+  const key = createOrGetPiece(base, qualif, etageVal);
+  goPiece(key);
 }
-function removePiece(piece){
-  if(confirm(`Supprimer la pièce « ${piece} » et toutes ses lignes ?`)){
-    delete devis[piece]; saveLocal(); pageHome();
+function removePiece(pieceKey){
+  if(confirm(`Supprimer la pièce « ${formatPieceLabel(pieceKey)} » et toutes ses lignes ?`)){
+    delete devis[pieceKey]; saveLocal(); pageHome();
   }
 }
-function goPiece(piece){
-  ctx = { piece, category:null, intervention:null, pose:null, designation:null };
-  ensureSection(piece);
+function goPiece(pieceKey){
+  ctx = { piece:pieceKey, category:null, intervention:null, pose:null, designation:null };
+  ensureSection(pieceKey);
 
   const cats = CATEGORIES
     .filter(cat => cat !== "Spécifique")
-    .map(cat => b(cat, `goCategory('${cat}')`)).join('');
+    .map(cat => b(cat, \`goCategory("${cat}")\`)).join('');
 
-  const noteTxt = devis[piece].note
-    ? `<em class="muted">Note : ${devis[piece].note}</em>`
+  const s = devis[pieceKey];
+  const noteTxt = s.note
+    ? `<em class="muted">Note : ${s.note}</em>`
     : `<span class="muted">Aucune note</span>`;
 
-  const lignes = (devis[piece].items||[]).length
-    ? `<ul>` + devis[piece].items.map((it,i)=>{
+  const lignes = (s.items||[]).length
+    ? `<ul>` + s.items.map((it,i)=>{
         const total = (+it.prixU||0) * (+it.qty||0);
-        const poseTxt = (it.intervention==="Création" && it.pose) ? ` — ${it.pose.toLowerCase()}` : "";
+        const poseTxt = (it.intervention==="Création" && it.pose) ? \` — \${it.pose.toLowerCase()}\` : "";
         const unitTxt = it.unit || "u";
         return `<li>
           ${it.intervention ? it.intervention + " — " : ""}${it.designation}${poseTxt}
           (${it.qty} ${unitTxt} × ${euro(it.prixU)} = ${euro(total)})
-          ${b("×",`delLine('${piece}',${i})`,"btn")}
+          ${b("×",\`delLine("${pieceKey.replace(/"/g,'&quot;')}",${i})\`,"btn")}
         </li>`;
       }).join('') + `</ul>`
     : `<p class="muted">Aucune ligne pour l’instant.</p>`;
@@ -350,7 +377,7 @@ function goPiece(piece){
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
-      <h2>${formatPieceLabel(piece)}</h2>
+      <h2>${formatPieceLabel(pieceKey)}</h2>
       <div class="row">
         ${cats}
         ${b("Spécifique","pagePieceSpecifique()","btn ghost")}
@@ -366,8 +393,8 @@ function goPiece(piece){
     </div>
   `);
 }
-function delLine(piece, idx){
-  (devis[piece].items||[]).splice(idx,1); saveLocal(); goPiece(piece);
+function delLine(pieceKey, idx){
+  (devis[pieceKey].items||[]).splice(idx,1); saveLocal(); goPiece(pieceKey);
 }
 function goCategory(cat){
   ctx.category = cat;
@@ -380,11 +407,11 @@ function goCategory(cat){
   } else {
     interventions = ["Création"];
   }
-  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
+  const btns = interventions.map(i=> b(i, \`goIntervention("${i}")\`)).join('');
   view(`
     <div class="card">
-      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
-      <h2>${ctx.category} — ${ctx.piece}</h2>
+      ${b("Retour",\`goPiece("${ctx.piece.replace(/"/g,'&quot;')}")\`,"btn back")}
+      <h2>${ctx.category} — ${formatPieceLabel(ctx.piece)}</h2>
       <div class="row">${btns}</div>
     </div>
   `);
@@ -392,11 +419,11 @@ function goCategory(cat){
 function goEclairageSub(){
   view(`
     <div class="card">
-      ${b("Retour",`goPiece('${ctx.piece}')`,"btn back")}
-      <h2>Éclairage — ${ctx.piece}</h2>
+      ${b("Retour",\`goPiece("${ctx.piece.replace(/"/g,'&quot;')}")\`,"btn back")}
+      <h2>Éclairage — ${formatPieceLabel(ctx.piece)}</h2>
       <div class="row">
-        ${b("Luminaires","setEclairageBranch('Éclairage/Luminaires')")}
-        ${b("Commandes","setEclairageBranch('Éclairage/Commandes')")}
+        ${b("Luminaires",\`setEclairageBranch("Éclairage/Luminaires")\`)}
+        ${b("Commandes",\`setEclairageBranch("Éclairage/Commandes")\`)}
       </div>
     </div>
   `);
@@ -406,11 +433,11 @@ function setEclairageBranch(branch){
   const interventions = (branch==="Éclairage/Luminaires")
     ? ["Création","Remplacement luminaire","Recâblage avec remplacement luminaire","Recâblage sans remplacement luminaire"]
     : ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"];
-  const btns = interventions.map(i=> b(i,`goIntervention('${i}')`)).join('');
+  const btns = interventions.map(i=> b(i, \`goIntervention("${i}")\`)).join('');
   view(`
     <div class="card">
       ${b("Retour","goEclairageSub()","btn back")}
-      <h2>${branch} — ${ctx.piece}</h2>
+      <h2>${branch} — ${formatPieceLabel(ctx.piece)}</h2>
       <div class="row">${btns}</div>
     </div>
   `);
@@ -426,9 +453,9 @@ function goIntervention(interv){
   }
   const needsPose = ["Prises","Circuit spécialisé","Éclairage/Luminaires","Éclairage/Commandes"].includes(ctx.category);
   if (interv==="Création" && needsPose){
-    const poses = POSES.map(p=> b(p,`goDesignation('${p}')`)).join('');
+    const poses = POSES.map(p=> b(p, \`goDesignation("${p}")\`)).join('');
     const back = (ctx.category.startsWith("Éclairage/") ? "Éclairage" : ctx.category);
-    view(`<div class="card">${b("Retour",`goCategory('${back}')`,"btn back")}<h2>Type de pose</h2><div class="row">${poses}</div></div>`);
+    view(`<div class="card">${b("Retour",\`goCategory("${back}")\`,"btn back")}<h2>Type de pose</h2><div class="row">${poses}</div></div>`);
   } else {
     goDesignation(null);
   }
@@ -437,13 +464,13 @@ function goDesignation(pose){
   ctx.pose = pose;
   const list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ["Élément"];
   if (list.length===1) return pageQuantite(list[0]);
-  const btns = list.map(d=> b(d,`pageQuantite('${d}')`)).join('');
-  view(`<div class="card">${b("Retour", ctx.intervention==="Création"?`goIntervention('${ctx.intervention}')`:`goCategory('${ctx.category}')`,"btn back")}<h2>Désignation</h2><div class="row">${btns}</div></div>`);
+  const btns = list.map(d=> b(d, \`pageQuantite("${d}")\`)).join('');
+  view(`<div class="card">${b("Retour", ctx.intervention==="Création"?\`goIntervention("${ctx.intervention}")\`:\`goCategory("${ctx.category}")\`,"btn back")}<h2>Désignation</h2><div class="row">${btns}</div></div>`);
 }
 function pageQuantite(designation){
   ctx.designation = designation;
-  const qtyBtns = Array.from({length:10},(_,i)=> b(i+1,`saveItem(${i+1})`)).join('');
-  view(`<div class="card">${b("Retour",`goDesignation('${ctx.pose}')`,"btn back")}<h2>Quantité</h2><div class="grid-qty">${qtyBtns}</div></div>`);
+  const qtyBtns = Array.from({length:10},(_,i)=> b(i+1, \`saveItem(${i+1})\`)).join('');
+  view(`<div class="card">${b("Retour",\`goDesignation("${ctx.pose||''}")\`,"btn back")}<h2>Quantité</h2><div class="grid-qty">${qtyBtns}</div></div>`);
 }
 function getPrix(designation, intervention){
   const base = TARIFS[designation] || {};
@@ -468,7 +495,7 @@ function pagePieceSpecifique(){
 function editPieceNote(){
   ensureSection(ctx.piece);
   const cur = devis[ctx.piece].note || "";
-  const n = prompt(`Note pour ${ctx.piece}`, cur);
+  const n = prompt(`Note pour ${formatPieceLabel(ctx.piece)}`, cur);
   if(n!==null) devis[ctx.piece].note = n.trim();
   saveLocal(); goPiece(ctx.piece);
 }
@@ -477,8 +504,8 @@ function editPieceNote(){
 /* CHAPITRE 6 : TABLEAU & DISTRIBUTION (COMPLET) */
 /* ============================= */
 
-// Petit helper local : on stocke tout dans la pièce "Tableau"
-function ensureTableau(){ ensureSection("Tableau"); }
+// Tout est stocké sous la pièce "Tableau"
+function ensureTableau(){ ensureSection("Tableau"); if(!devis["Tableau"].__base) devis["Tableau"].__base = "Tableau"; }
 
 // Hub “Installations spécifiques”
 function pageISHome(){
@@ -539,7 +566,7 @@ function pageTabPose(){
       <label style="margin-top:8px;">Type de pose</label>
       <select id="tp-pose">
         <option value="Saillie" selected>Saillie</option>
-        <option value="Encastre">Encastré</option>
+        <option value="Encastré">Encastré</option>
       </select>
 
       <label style="margin-top:8px;">Type d’intervention</label>
@@ -651,7 +678,6 @@ function submitTabMod_ID(){
 
 /* --- B/C. Disjoncteurs 10/16/20A + détail circuits --- */
 function pageTabMod_Disj(which){
-  // which = 'B' ou 'C' (même structure, 2 entrées séparées pour organiser)
   view(`
     <div class="card">
       ${b("Retour","pageTabModulaire()","btn back")}
@@ -660,20 +686,20 @@ function pageTabMod_Disj(which){
       <div class="list">
         <label>Disjoncteurs 10 A (Qté)
           <input id="dj-10a" type="number" min="0" value="0" />
-          ${b("Détail circuits","pageTabMod_DisjDetails('${which}',10,document.getElementById('dj-10a').value)")}
+          ${b("Détail circuits", \`pageTabMod_DisjDetails("${which}",10,document.getElementById('dj-10a').value)\`)}
         </label>
         <label>Disjoncteurs 16 A (Qté)
           <input id="dj-16a" type="number" min="0" value="0" />
-          ${b("Détail circuits","pageTabMod_DisjDetails('${which}',16,document.getElementById('dj-16a').value)")}
+          ${b("Détail circuits", \`pageTabMod_DisjDetails("${which}",16,document.getElementById('dj-16a').value)\`)}
         </label>
         <label>Disjoncteurs 20 A (Qté)
           <input id="dj-20a" type="number" min="0" value="0" />
-          ${b("Détail circuits","pageTabMod_DisjDetails('${which}',20,document.getElementById('dj-20a').value)")}
+          ${b("Détail circuits", \`pageTabMod_DisjDetails("${which}",20,document.getElementById('dj-20a').value)\`)}
         </label>
       </div>
 
       <div class="row" style="margin-top:12px;">
-        ${b("Ajouter au devis (sans détails)","submitTabMod_Disj('${which}',null)","btn")}
+        ${b("Ajouter au devis (sans détails)", \`submitTabMod_Disj("${which}", null)\`,"btn")}
       </div>
     </div>
   `);
@@ -688,13 +714,13 @@ function pageTabMod_DisjDetails(which, rating, qtyRaw){
 
   view(`
     <div class="card">
-      ${b("Retour","pageTabMod_Disj('"+which+"')","btn back")}
+      ${b("Retour", \`pageTabMod_Disj("${which}")\`,"btn back")}
       <h2>Détail circuits — ${rating} A</h2>
       <p class="muted">Renseigne le nom de chaque circuit.</p>
       <div class="list">${fields}</div>
 
       <div class="row" style="margin-top:12px;">
-        ${b("Ajouter ces circuits","submitTabMod_DisjDetails('"+which+"',"+rating+","+qty+")","btn primary")}
+        ${b("Ajouter ces circuits", \`submitTabMod_DisjDetails("${which}", ${rating}, ${qty})\`,"btn primary")}
       </div>
     </div>
   `);
@@ -702,24 +728,23 @@ function pageTabMod_DisjDetails(which, rating, qtyRaw){
 function submitTabMod_DisjDetails(which, rating, qty){
   const names = [];
   for(let i=0;i<qty;i++){
-    const v = (document.getElementById(`dj-name-${rating}-${i}`).value||"").trim();
-    names.push(v||`Circuit ${i+1}`);
+    const v = (document.getElementById(\`dj-name-\${rating}-\${i}\`).value||"").trim();
+    names.push(v||\`Circuit \${i+1}\`);
   }
   ensureTableau();
   devis["Tableau"].items.push({
     category: "Tableau/Modulaire",
     intervention: "",
     pose: "",
-    designation: `Disjoncteur ${rating} A — circuits : ${names.join(', ')}`,
+    designation: \`Disjoncteur \${rating} A — circuits : \${names.join(', ')}\`,
     qty: qty,
     prixU: 0
   });
   saveLocal();
-  alert(`Ajouté : ${qty} × Disjoncteur ${rating} A (avec détails).`);
+  alert(\`Ajouté : \${qty} × Disjoncteur \${rating} A (avec détails).\`);
   pageTabModulaire();
 }
-function submitTabMod_Disj(which, _ignored){
-  // Ajoute sans détails, en prenant juste les quantités
+function submitTabMod_Disj(which){
   const q10 = +document.getElementById('dj-10a').value || 0;
   const q16 = +document.getElementById('dj-16a').value || 0;
   const q20 = +document.getElementById('dj-20a').value || 0;
@@ -814,8 +839,9 @@ function pageTabMod_Specifique(){
   alert("Ajouté.");
   pageTabModulaire();
 }
+
 /* ============================= */
-/* CHAPITRE 7 : ESTIMATIF & EXPORTS (stable + complet) */
+/* CHAPITRE 7 : ESTIMATIF & EXPORTS (par groupe + complet) */
 /* ============================= */
 const PIECE_GROUPS = {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
@@ -826,13 +852,17 @@ const PIECE_GROUPS = {
   "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau","Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
   "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution","Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
+// Groupage basé sur __base (sinon heuristique)
 function groupDevis(){
   const g={};
-  for(const piece in devis){
-    if(piece.startsWith('__')) continue;
-    const grp = PIECE_GROUPS[piece] || "Divers";
+  for(const key in devis){
+    if(key.startsWith('__')) continue;
+    const s = devis[key];
+    const base = (s && s.__base) ? s.__base
+      : key.replace(/\s*\(.*\)\s*$/, '').split(' — ')[0]; // fallback anciens
+    const grp = PIECE_GROUPS[base] || "Divers";
     if(!g[grp]) g[grp] = {};
-    g[grp][piece] = devis[piece];
+    g[grp][key] = s;
   }
   return g;
 }
@@ -843,10 +873,10 @@ function pageEstimatif(){
   for(const grp in grouped){
     html += `<h2 style="border-top:2px solid #000; padding-top:8px;">${grp}</h2>`;
     let groupTotal=0;
-    for(const piece in grouped[grp]){
-      const s = grouped[grp][piece];
+    for(const key in grouped[grp]){
+      const s = grouped[grp][key];
       if(!s || !Array.isArray(s.items) || !s.items.length) continue;
-      const pieceLabel = formatPieceLabel(piece);
+      const pieceLabel = formatPieceLabel(key);
       let sectionTotal=0;
       html += `<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">${pieceLabel}</h3><ul>`;
       s.items.forEach(it=>{
@@ -876,8 +906,8 @@ function pageTotaux(){
   let totalGlobal=0; const grouped = groupDevis();
   for(const grp in grouped){
     let gt=0;
-    for(const piece in grouped[grp]){
-      const s=grouped[grp][piece];
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key];
       if(!s || !Array.isArray(s.items) || !s.items.length) continue;
       const st=s.items.reduce((sum,it)=>sum+(((+it.prixU)||0)*((+it.qty)||0)),0);
       gt+=st; totalGlobal+=st;
@@ -893,7 +923,7 @@ function pageTotaux(){
            </div></div>`;
   view(html);
 }
-// TXT par groupe
+// Helpers export
 function itemLine(it){
   const unit = it.unit||"u";
   const poseTxt = (it.intervention==="Création" && it.pose) ? ` - ${it.pose.toLowerCase()}` : "";
@@ -902,14 +932,15 @@ function itemLine(it){
   return `- ${left}${it.designation}${poseTxt} | Qté: ${q} ${unit} | PU: ${pu}€ | Total: ${total}€`;
 }
 function pieceSeparator(label){ return `\n---------------- ${label} ----------------\n`; }
+// TXT par groupe
 function exportText(){
   const grouped = groupDevis();
   for(const grp in grouped){
     let lines=[`=== ${grp} ===\n`], groupTotal=0;
-    for(const piece in grouped[grp]){
-      const s=grouped[grp][piece];
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key];
       if(!s || !Array.isArray(s.items) || !s.items.length) continue;
-      const label=formatPieceLabel(piece);
+      const label=formatPieceLabel(key);
       lines.push(pieceSeparator(label));
       let st=0;
       s.items.forEach(it=>{ const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it)); });
@@ -929,10 +960,10 @@ async function exportZipGroups(){
   const grouped=groupDevis(); const zip=new JSZip(); let global=0;
   for(const grp in grouped){
     let lines=[`=== ${grp} ===\n`], groupTotal=0;
-    for(const piece in grouped[grp]){
-      const s=grouped[grp][piece];
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key];
       if(!s || !Array.isArray(s.items) || !s.items.length) continue;
-      const label=formatPieceLabel(piece);
+      const label=formatPieceLabel(key);
       lines.push(pieceSeparator(label));
       let st=0;
       s.items.forEach(it=>{ const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it)); });
@@ -944,7 +975,7 @@ async function exportZipGroups(){
     zip.file(`devis_${grp}.txt`, lines.join("\r\n"));
   }
   const name=(devis.__name||"Devis").trim()||"Devis";
-  const readme=[`Récapitulatif — ${name}`,`Date: ${new Date().toLocaleString()}`,"",`Total global: ${global.toFixed(2)}€`,"","Un fichier .txt par groupe avec détails, quantités, PU et totaux.`"].join("\r\n");
+  const readme=[`Récapitulatif — ${name}`,`Date: ${new Date().toLocaleString()}`,"",`Total global: ${global.toFixed(2)}€`,"","Un fichier .txt par groupe avec détails, quantités, PU et totaux.`].join("\r\n");
   zip.file("README.txt", readme);
   const blob=await zip.generateAsync({type:"blob"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
@@ -965,11 +996,11 @@ function buildFullText(){
     lines.push(`\n## ${grp} ##\n`);
     let groupTotal = 0;
 
-    for (const piece in grouped[grp]) {
-      const s = grouped[grp][piece];
+    for (const key in grouped[grp]) {
+      const s = grouped[grp][key];
       if(!s || !Array.isArray(s.items) || !s.items.length) continue;
 
-      const label = formatPieceLabel(piece);
+      const label = formatPieceLabel(key);
       lines.push(pieceSeparator(label));
 
       let st = 0;
@@ -1024,65 +1055,35 @@ function init(){
   }
 }
 
-/* Expose — rendre accessibles depuis les boutons/liens HTML
-   (⚠️ Laisse seulement des noms qui existent réellement dans ton fichier) */
+// Expose (uniquement ce qui existe)
 Object.assign(window, {
   // Menu / sauvegardes
-  pageMain,
-  actionNouveauDevis,
-  pageSavedDevis,
-  loadDevis,
-  deleteDevis,
-  saveCurrentDevis,
+  pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
 
   // Pièces & flux (chap. 5)
-  pageHome,
-  pageAddPiece,
-  confirmPieceChoice,
-  removePiece,
-  goPiece,
-  delLine,
-  editPieceNote,
-  pagePieceSpecifique,
-  goCategory,
-  goEclairageSub,
-  setEclairageBranch,
-  goIntervention,
-  goDesignation,
-  pageQuantite,
-  saveItem,
+  pageHome, pageAddPiece, confirmPieceChoice, removePiece, goPiece, delLine,
+  editPieceNote, pagePieceSpecifique, goCategory, goEclairageSub, setEclairageBranch,
+  goIntervention, goDesignation, pageQuantite, saveItem,
 
-  // Installations spécifiques (chap. 6)
-  pageISHome,
-  isSoon,
-
-  // Tableau & distribution (chap. 6)
-  pageTabHome,
-  pageTabPose,
-  addTabPose,
-  pageTabModulaire,
-  pageTabMod_ID,
-  submitTabMod_ID,
-  pageTabMod_Disj,
-  pageTabMod_DisjDetails,
-  submitTabMod_DisjDetails,
-  submitTabMod_Disj,
-  pageTabMod_Commandes,
-  submitTabMod_Commandes,
-  pageTabMod_Specifique,
+  // Installations spécifiques & Tableau (chap. 6)
+  pageISHome, isSoon,
+  pageTabHome, pageTabPose, addTabPose,
+  pageTabModulaire, pageTabMod_ID, submitTabMod_ID,
+  pageTabMod_Disj, pageTabMod_DisjDetails, submitTabMod_DisjDetails, submitTabMod_Disj,
+  pageTabMod_Commandes, submitTabMod_Commandes, pageTabMod_Specifique,
 
   // Estimatif & exports (chap. 7)
-  pageEstimatif,
-  pageTotaux,
-  exportText,
-  exportZipGroups,
-  // si tu as activé les exports « complets » :
-  exportTextFull,
-  exportZipFull,
+  pageEstimatif, pageTotaux,
+  exportText, exportZipGroups,
+  exportTextFull, exportZipFull,
 
-  // Navigation / sécurité
+  // Navigation
   confirmBackHome
 });
 
 // Lancement
 init();
+</script>
+</main>
+</body>
+</html>
