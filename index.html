@@ -760,31 +760,31 @@ async function exportZipFull(){
 /* ============================= */
 function init(){
   try{
-    loadLocal();
-    pageMain();
+    loadLocal();   // restaure l’état si présent
+    pageMain();    // menu principal au lancement
   }catch(err){
-    const el=document.getElementById('app');
-    if(el) el.innerHTML=`<div class="card"><h2>Erreur init()</h2><pre>${(err&&err.stack)||err}</pre></div>`;
+    const el = document.getElementById('app');
+    if (el) el.innerHTML = `<div class="card"><h2>Erreur init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
   }
 }
 
-/* --- STUBS DE SÉCURITÉ (si Chapitre 6 non présent) --- */
-function pageISHome(){ 
-  alert("Installations spécifiques : module à venir."); 
+/* --- STUBS de sécurité (définis uniquement si absents) --- */
+if (typeof pageISHome !== 'function') {
+  function pageISHome(){ alert("Installations spécifiques : module à venir."); }
 }
-function isSoon(x){ 
-  alert((x||"Cette section")+" : à venir."); 
+if (typeof isSoon !== 'function') {
+  function isSoon(x){ alert((x || "Cette section") + " : à venir."); }
 }
-/* Ces deux fonctions étaient exposées mais non définies : on met des placeholders */
-function pageTabHome(){ 
-  alert("Tableau & distribution : hub à venir."); 
+/* Ces deux fonctions étaient exposées mais non définies dans certaines versions → on crée des placeholders */
+if (typeof pageTabHome !== 'function') {
+  function pageTabHome(){ alert("Tableau & distribution : hub à venir."); }
 }
-function tabSoon(x){ 
-  alert("Tableau & distribution → "+(x||"élément")+" : à venir."); 
+if (typeof tabSoon !== 'function') {
+  function tabSoon(x){ alert("Tableau & distribution → " + (x || "élément") + " : à venir."); }
 }
 
 /* --- Expose toutes les fonctions utiles --- */
-Object.assign(window,{
+Object.assign(window, {
   // Menu / sauvegardes
   pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
 
@@ -797,12 +797,12 @@ Object.assign(window,{
   pageISHome, isSoon,
   pageTabHome, tabSoon,
 
-  // Estimatif & exports (groupes + complet)
+  // Estimatif & exports (y compris exports complets)
   pageEstimatif, pageTotaux,
   exportText, exportZipGroups,
   exportTextFull, exportZipFull,
 
-  // Navigation
+  // Navigation / sécurité
   confirmBackHome
 });
 
