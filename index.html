@@ -3,9 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V2.4.1 (safe quoting)</title>
+  <title>MiniDevis — V3.0 (rebuild chap.1)</title>
+
+  <!-- Styles de base -->
   <style>
-    :root { --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666; --line:#e8e8e8; --primary:#111; }
+    :root {
+      --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666;
+      --line:#e8e8e8; --primary:#111;
+    }
     *{ box-sizing:border-box }
     body{ margin:0; font-family:Arial, Helvetica, sans-serif; color:var(--txt); background:var(--bg); }
     header{ position:sticky; top:0; z-index:10; background:var(--primary); color:#fff; padding:10px 14px; font-weight:700; text-align:center; }
@@ -26,351 +31,604 @@
     .pill small{ color:var(--muted); }
     .badge{ display:inline-block; padding:2px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:#444; background:#fafafa; }
   </style>
+
+  <!-- JSZip (exports ZIP) -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script>(function(){try{var u=new URL(location.href);if(!u.searchParams.has('v')){u.searchParams.set('v',Date.now());location.replace(u.toString());}}catch(e){}})();</script>
+
+  <!-- Cache-busting doux : ajoute ?v=timestamp si absent -->
+  <script>
+  (function(){
+    try{
+      var u = new URL(location.href);
+      if(!u.searchParams.has('v')){
+        u.searchParams.set('v', Date.now());
+        location.replace(u.toString());
+      }
+    }catch(e){}
+  })();
+  </script>
 </head>
 <body>
-<header>MiniDevis — V2.4.1</header>
-<main id="app"></main>
+  <header>MiniDevis — V3.0</header>
+  <main id="app"></main>
 
-<!-- Sentinelle ultra-tôt : si tu vois ça, le HTML et ce script sont OK -->
-<script>
-(function(){
-  var app=document.getElementById('app');
-  if(app){ app.innerHTML='<div class="card">Loader OK — le JS principal va démarrer…</div>'; }
-})();
-</script>
+  <!-- Sentinelle ultra-tôt : prouve que HTML + ce script sont chargés -->
+  <script>
+  (function(){
+    var app = document.getElementById('app');
+    if(app){ app.innerHTML =
+      '<div class="card">Loader OK — en attente des chapitres JS…</div>';
+    }
+  })();
+  </script>
 
+<!-- =============================
+     CHAPITRE 2 : ÉTAT & HELPERS
+     ============================= -->
 <script>
-// =============================
-// Debug global (affiche les erreurs fatales parsing/exécution)
-// =============================
-window.addEventListener('error', function(e){
-  var el=document.getElementById('app');
-  if(el){ el.innerHTML='<div class="card"><h2>Erreur JS</h2><pre>'+e.message+'\n'+e.filename+':'+e.lineno+':'+e.colno+'</pre></div>'; }
+// --- Debug global : affiche toute erreur JS dans #app
+window.addEventListener('error', function (e) {
+  var el = document.getElementById('app');
+  if (el) {
+    el.innerHTML =
+      '<div class="card"><h2>Erreur JS</h2><pre>'
+      + (e.message || 'Erreur inconnue')
+      + '\n' + (e.filename || '') + ':' + (e.lineno || 0) + ':' + (e.colno || 0)
+      + '</pre></div>';
+  }
 });
 
-// =============================
-// CHAPITRE 2 : ÉTAT & HELPERS
-// =============================
-var devis = {}; // + __id, __name
-var ctx = { piece:null, category:null, intervention:null, pose:null, designation:null };
+// --- État global
+var devis = {}; // contiendra aussi __id, __name
+var ctx   = { piece:null, category:null, intervention:null, pose:null, designation:null };
 
-function genId(){ return 'dv_'+Math.random().toString(36).slice(2)+Date.now().toString(36); }
+// --- Identifiants
+function genId(){ return 'dv_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 
+// --- DOM & helpers UI
 function $app(){ return document.getElementById('app'); }
-// bouton : fn est une chaîne "goPiece('Salon')"
-function b(label, fn, cls){ cls=cls||'btn'; return '<button class="'+cls+'" onclick="'+fn+'">'+label+'</button>'; }
-function euro(n){ return (+(n||0)).toFixed(2)+' €'; }
+/** Crée un bouton (fn = string "goPiece('Salon')") */
+function b(label, fn, cls){ cls = cls || 'btn'; return '<button class="'+cls+'" onclick="'+fn+'">'+label+'</button>'; }
+/** Format € */
+function euro(n){ return (+(n||0)).toFixed(2) + ' €'; }
 
-// Libellé “base + (qualif) — étage”
-function buildPieceLabel(base, qualif, etage){
-  var lbl=base||''; if(qualif&&qualif.trim()) lbl+=' ('+qualif.trim()+')';
-  if(etage&&etage.trim()) lbl+=' — '+etage.trim(); return lbl;
-}
-function nextFreeKey(label){
-  if(!devis[label]) return label;
-  var n=2; while(devis[label+' ('+n+')']) n++; return label+' ('+n+')';
-}
-function createOrGetPiece(base, qualif, etage){
-  var wanted=buildPieceLabel(base,qualif,etage);
-  var key=nextFreeKey(wanted);
-  if(!devis[key]) devis[key]={ __base:base, qualificatif:qualif||'', etage:etage||'', items:[], note:'' };
-  saveLocal(); return key;
-}
-function formatPieceLabel(key){
-  var s=devis[key]; if(!s) return key;
-  var base=s.__base||key; return buildPieceLabel(base, s.qualificatif, s.etage);
-}
-
+/** Rendu principal avec footer Sauvegarde/Accueil (désactivable par noFooter=true) */
 function view(html, noFooter){
   if(!noFooter){
-    html+='<div class="row" style="margin-top:16px; gap:12px;">'
-         +b('⬅️ Accueil','confirmBackHome()','btn back')
-         +b('💾 Sauvegarder devis','saveCurrentDevis()','btn primary')
-         +'</div>';
+    html += '<div class="row" style="margin-top:16px; gap:12px;">'
+          + b('⬅️ Accueil','confirmBackHome()','btn back')
+          + b('💾 Sauvegarder devis','saveCurrentDevis()','btn primary')
+          + '</div>';
   }
-  $app().innerHTML=html;
+  $app().innerHTML = html;
 }
 
+/** Confirmation retour accueil si données non vides */
 function confirmBackHome(){
-  var hasData=Object.keys(devis).filter(function(k){return k.indexOf('__')!==0;})
+  var hasData = Object.keys(devis)
+    .filter(function(k){ return k.indexOf('__') !== 0; })
     .some(function(k){
-      var s=devis[k]||{};
-      return (s.items&&s.items.length>0) || (s.note&&s.note.trim().length>0);
+      var s = devis[k]||{};
+      return (s.items && s.items.length>0) || (s.note && s.note.trim().length>0);
     });
+
   if(!hasData || confirm('Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.')){
-    pageMain();
+    if (typeof pageMain === 'function') pageMain();
+    else $app().innerHTML = '<div class="card"><h2>Accueil</h2><p class="muted">Le chapitre Menu (4) n\'est pas encore chargé.</p></div>';
   }
 }
 
-// Persistance
-function ensureSection(key){ if(!devis[key]) devis[key]={ items:[], note:'', qualificatif:'', etage:'' }; }
-function saveLocal(){ try{ localStorage.setItem('devis', JSON.stringify(devis)); }catch(e){} }
+// --- Libellés des pièces (base + qualificatif + étage)
+function buildPieceLabel(base, qualif, etage){
+  var lbl = base || '';
+  if(qualif && qualif.trim()) lbl += ' ('+qualif.trim()+')';
+  if(etage && etage.trim())   lbl += ' — '+etage.trim();
+  return lbl;
+}
+/** Cherche une clé libre si le libellé existe déjà (Salon, Salon (2), Salon (3), …) */
+function nextFreeKey(label){
+  if(!devis[label]) return label;
+  var n=2; while(devis[label+' ('+n+')']) n++;
+  return label+' ('+n+')';
+}
+/** Crée (ou récupère) une section pièce, avec méta conservées */
+function createOrGetPiece(base, qualif, etage){
+  var wanted = buildPieceLabel(base,qualif,etage);
+  var key    = nextFreeKey(wanted);
+  if(!devis[key]) devis[key] = { __base:base, qualificatif:qualif||'', etage:etage||'', items:[], note:'' };
+  saveLocal();
+  return key;
+}
+/** Affiche le libellé complet d’une clé pièce */
+function formatPieceLabel(key){
+  var s = devis[key]; if(!s) return key;
+  var base = s.__base || key;
+  return buildPieceLabel(base, s.qualificatif, s.etage);
+}
+
+// --- Persistance locale
+function ensureSection(key){
+  if(!devis[key]) devis[key] = { items:[], note:'', qualificatif:'', etage:'' };
+}
+function saveLocal(){
+  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
+}
 function loadLocal(){
-  try{ devis=JSON.parse(localStorage.getItem('devis')||'{}')||{}; }catch(e){ devis={}; }
+  try { devis = JSON.parse(localStorage.getItem('devis') || '{}') || {}; }
+  catch(e){ devis = {}; }
   ensureId();
 }
-
-// =============================
-// CHAP.3 : CONSTANTES
-// =============================
-var PIECES_PREDEFINIES=[
+</script>
+  <!-- =============================
+     CHAPITRE 3 : CONSTANTES
+     ============================= -->
+<script>
+// Pièces prédéfinies
+var PIECES_PREDEFINIES = [
   'Salon','Cuisine','Salle à manger','Salle de bain','Salle d\'eau',
   'Chambre 1','Chambre 2','Chambre 3','Toilettes','Bureau',
   'Buanderie','Garage','Couloir','Terrasse','Balcon','Jardin',
-  'Débarras','Extérieur','Grenier/Combles','Atelier','Abri de jardin','Entrée','Bibliothèque'
+  'Débarras','Extérieur','Grenier/Combles','Atelier',
+  'Abri de jardin','Entrée','Bibliothèque'
 ];
-var CATEGORIES=['Prises','Éclairage','Circuit spécialisé'];
-var POSES=['Encastré maçonnerie','Placo','Semi-encastré','Sur-mesure','Saillie avec moulure','Sous tube IRL'];
-var DESIGNATIONS_PAR_CATEGORIE={
-  'Prises':['Prise'],
-  'Éclairage/Luminaires':['Point de centre','Applique'],
-  'Éclairage/Commandes':['Interrupteur simple','Interrupteur double'],
-  'Circuit spécialisé':['Four','Plaque de cuisson','Lave-linge','Lave-vaisselle','Sèche-linge','Cumulus','VMC','Chauffage','Climatisation','Prise extérieure étanche','Autre circuit spécialisé']
-};
-var TARIFS={
-  'Prise':{ creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
-  'Point de centre':{ creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
-  'Applique':{ creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
-  'Interrupteur simple':{ creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
-  'Interrupteur double':{ creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
-  'Four':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Plaque de cuisson':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Lave-linge':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Lave-vaisselle':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Sèche-linge':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Cumulus':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'VMC':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Chauffage':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Climatisation':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Prise extérieure étanche':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
-  'Autre circuit spécialisé':{ creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
-};
-var ETAGES=['Rez-de-chaussée','1er étage','2e étage','Sous-sol','Combles','Annexe'];
 
-// =============================
-// CHAP.4 : MENU PRINCIPAL
-// =============================
+// Catégories standards
+var CATEGORIES = [
+  'Prises','Éclairage','Circuit spécialisé','Spécifique'
+];
+
+// Modes de pose
+var POSES = [
+  'Encastré maçonnerie','Placo','Semi-encastré',
+  'Sur-mesure','Saillie avec moulure','Sous tube IRL'
+];
+
+// Désignations possibles par catégorie
+var DESIGNATIONS_PAR_CATEGORIE = {
+  'Prises': ['Prise'],
+  'Éclairage/Luminaires': ['Point de centre','Applique'],
+  'Éclairage/Commandes': ['Interrupteur simple','Interrupteur double'],
+  'Circuit spécialisé': [
+    'Four','Plaque de cuisson','Lave-linge','Lave-vaisselle',
+    'Sèche-linge','Cumulus','VMC','Chauffage','Climatisation',
+    'Prise extérieure étanche','Autre circuit spécialisé'
+  ]
+};
+
+// Tarifs de base (selon type d’intervention)
+var TARIFS = {
+  'Prise': { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
+  'Point de centre': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
+  'Applique': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
+  'Interrupteur simple': { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
+  'Interrupteur double': { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
+  'Four': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Plaque de cuisson': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Lave-linge': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Lave-vaisselle': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Sèche-linge': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Cumulus': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'VMC': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Chauffage': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Climatisation': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Prise extérieure étanche': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
+  'Autre circuit spécialisé': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
+};
+
+// Étages prédéfinis
+var ETAGES = [
+  'Rez-de-chaussée','1er étage','2e étage',
+  'Sous-sol','Combles','Annexe'
+];
+</script>
+  <!-- =============================
+     CHAPITRE 4 : MENU PRINCIPAL
+     ============================= -->
+<script>
 function pageMain(){
   view(
     '<div class="card">'
-    +'<h2>Menu principal</h2>'
-    +'<div class="row">'
-      +b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
-      +b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
-    +'</div>'
+      +'<h2>Menu principal</h2>'
+      +'<div class="row">'
+        +b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
+        +b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
+      +'</div>'
     +'</div>'
   , true);
 }
-function actionNouveauDevis(){ devis={ __id:genId(), __name:'' }; saveLocal(); pageHome(); }
-function pageSavedDevis(){
-  var saved=JSON.parse(localStorage.getItem('savedDevisList')||'[]');
-  if(!saved.length){
-    return view('<div class="card">'+b('Retour','pageMain()','btn back')+'<h2>Mes devis sauvegardés</h2><p class="muted">Aucun devis sauvegardé.</p></div>', true);
-  }
-  var list=saved.map(function(d,i){
-    return '<div class="pill"><strong>'+d.name+'</strong> <small>'+d.date+'</small>'
-      +b('Ouvrir','loadDevis('+i+')','btn')+b('Supprimer','deleteDevis('+i+')','btn')
-      +'</div>';
-  }).join('');
-  view('<div class="card">'+b('Retour','pageMain()','btn back')+'<h2>Mes devis sauvegardés</h2><div class="list">'+list+'</div></div>', true);
-}
-function loadDevis(idx){
-  var saved=JSON.parse(localStorage.getItem('savedDevisList')||'[]');
-  if(!saved[idx]) return pageSavedDevis();
-  devis=saved[idx].data||{}; ensureId(); saveLocal(); pageHome();
-}
-function deleteDevis(idx){
-  if(!confirm('Supprimer ce devis sauvegardé ?')) return;
-  var saved=JSON.parse(localStorage.getItem('savedDevisList')||'[]');
-  saved.splice(idx,1); localStorage.setItem('savedDevisList', JSON.stringify(saved)); pageSavedDevis();
-}
-function saveCurrentDevis(){
-  ensureId();
-  var saved=JSON.parse(localStorage.getItem('savedDevisList')||'[]');
-  var i=saved.findIndex(function(d){return d.data&&d.data.__id===devis.__id;});
-  if(i>=0){
-    var name=devis.__name||saved[i].name||('Devis '+new Date().toLocaleDateString());
-    devis.__name=name; saved[i]={ name:name, date:new Date().toLocaleDateString(), data:devis };
-    localStorage.setItem('savedDevisList', JSON.stringify(saved)); alert('Devis mis à jour.'); return;
-  }
-  var name2=(devis.__name||'').trim();
-  if(!name2){ name2=(prompt('Nom du devis :','')||'').trim(); if(!name2){ alert('Sauvegarde annulée.'); return; } }
-  var j=saved.findIndex(function(d){ return (d.name||'').toLowerCase()===name2.toLowerCase(); });
-  devis.__name=name2;
-  if(j>=0){ if(!confirm('Un devis « '+name2+' » existe déjà. L\'écraser ?')) return; saved[j]={ name:name2, date:new Date().toLocaleDateString(), data:devis }; }
-  else{ saved.push({ name:name2, date:new Date().toLocaleDateString(), data:devis }); }
-  localStorage.setItem('savedDevisList', JSON.stringify(saved)); alert('Devis sauvegardé !');
+
+// Créer un nouveau devis vide
+function actionNouveauDevis(){
+  devis = { __id: genId(), __name: '' };
+  saveLocal();
+  pageHome();
 }
 
-// =============================
-// CHAP.5 : ACCUEIL & FLUX PIÈCES
-// =============================
-function pageHome(){
-  var keys=Object.keys(devis).filter(function(k){return k.indexOf('__')!==0;});
-  var listHtml = keys.length ? keys.map(function(p){
-    var s=devis[p]||{};
-    var badges=[ (s.qualificatif&&s.qualificatif.trim())?'<span class="badge">'+s.qualificatif+'</span>':'',
-                 (s.etage&&s.etage.trim())?'<span class="badge">'+s.etage+'</span>':'' ].filter(Boolean).join(' ');
+// Liste des devis sauvegardés
+function pageSavedDevis(){
+  var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
+  if(!saved.length){
+    return view(
+      '<div class="card">'
+        +b('Retour','pageMain()','btn back')
+        +'<h2>Mes devis sauvegardés</h2>'
+        +'<p class="muted">Aucun devis sauvegardé.</p>'
+      +'</div>', true
+    );
+  }
+
+  var list = saved.map(function(d,i){
     return '<div class="pill">'
-      +'<strong>'+formatPieceLabel(p)+'</strong>'
-      +'<small>'+((s.items||[]).length)+' ligne(s)</small> '+badges
-      +b('Ouvrir','goPiece('+JSON.stringify(p)+')','btn')
-      +b('Supprimer','removePiece('+JSON.stringify(p)+')','btn')
+      +'<strong>'+d.name+'</strong> <small>'+d.date+'</small>'
+      +b('Ouvrir','loadDevis('+i+')','btn')
+      +b('Supprimer','deleteDevis('+i+')','btn')
       +'</div>';
+  }).join('');
+
+  view(
+    '<div class="card">'
+      +b('Retour','pageMain()','btn back')
+      +'<h2>Mes devis sauvegardés</h2>'
+      +'<div class="list">'+list+'</div>'
+    +'</div>', true
+  );
+}
+
+// Charger un devis sauvegardé
+function loadDevis(idx){
+  var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
+  if(!saved[idx]) return pageSavedDevis();
+  devis = saved[idx].data || {};
+  ensureId();
+  saveLocal();
+  pageHome();
+}
+
+// Supprimer un devis sauvegardé
+function deleteDevis(idx){
+  if(!confirm('Supprimer ce devis sauvegardé ?')) return;
+  var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
+  saved.splice(idx,1);
+  localStorage.setItem('savedDevisList', JSON.stringify(saved));
+  pageSavedDevis();
+}
+
+// Sauvegarder l’état actuel du devis
+function saveCurrentDevis(){
+  ensureId();
+  var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
+  var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
+
+  if(i >= 0){
+    // Mise à jour d’un devis existant
+    var name = devis.__name || saved[i].name || ('Devis '+new Date().toLocaleDateString());
+    devis.__name = name;
+    saved[i] = { name:name, date:new Date().toLocaleDateString(), data:devis };
+    localStorage.setItem('savedDevisList', JSON.stringify(saved));
+    alert('Devis mis à jour.');
+    return;
+  }
+
+  // Nouveau devis
+  var name2 = (devis.__name||'').trim();
+  if(!name2){
+    name2 = (prompt('Nom du devis :','')||'').trim();
+    if(!name2){ alert('Sauvegarde annulée.'); return; }
+  }
+  var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === name2.toLowerCase(); });
+  devis.__name = name2;
+
+  if(j >= 0){
+    if(!confirm('Un devis « '+name2+' » existe déjà. L\'écraser ?')) return;
+    saved[j] = { name:name2, date:new Date().toLocaleDateString(), data:devis };
+  } else {
+    saved.push({ name:name2, date:new Date().toLocaleDateString(), data:devis });
+  }
+
+  localStorage.setItem('savedDevisList', JSON.stringify(saved));
+  alert('Devis sauvegardé !');
+}
+</script>
+<!-- =============================
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES
+     ============================= -->
+<script>
+// ---- Accueil
+function pageHome(){
+  var keys = Object.keys(devis).filter(function(k){ return k.indexOf('__')!==0; });
+  var listHtml = keys.length ? keys.map(function(key){
+    var s = devis[key] || {};
+    var badges = [
+      (s.qualificatif && s.qualificatif.trim()) ? '<span class="badge">'+s.qualificatif+'</span>' : '',
+      (s.etage && s.etage.trim()) ? '<span class="badge">'+s.etage+'</span>' : ''
+    ].filter(Boolean).join(' ');
+    return '<div class="pill">'
+      +'<strong>'+formatPieceLabel(key)+'</strong> '
+      +'<small>'+((s.items||[]).length)+' ligne(s)</small> '
+      +badges
+      +b('Ouvrir','goPiece('+JSON.stringify(key)+')','btn')
+      +b('Supprimer','removePiece('+JSON.stringify(key)+')','btn')
+    +'</div>';
   }).join('') : '<p class="muted">Aucune pièce ajoutée pour l’instant.</p>';
 
   view(
-    '<div class="card"><h2>Accueil</h2>'
-    +'<div class="row">'+b('Ajouter une pièce','pageAddPiece()','btn primary')+b('Installations spécifiques','pageISHome()','btn')+'</div></div>'
-    +'<div class="card" style="margin-top:12px;"><h2>Pièces ajoutées</h2><div class="list">'+listHtml+'</div></div>'
-    +'<div class="row" style="margin-top:12px;">'+b('Voir l’estimatif','pageEstimatif()','btn')+b('Voir les totaux','pageTotaux()','btn')+'</div>'
-  );
-}
-function pageAddPiece(){
-  var opts=PIECES_PREDEFINIES.map(function(p){return '<option value="'+p+'">'+p+'</option>';}).join('')
-           +'<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
-  var etageOpts=['(aucun)'].concat(ETAGES).map(function(e){return '<option value="'+e+'">'+e+'</option>';}).join('');
-  view(
-    '<div class="card">'+b('Retour','pageHome()','btn back')+'<h2>Ajouter une pièce</h2>'
-    +'<label>Choisir une pièce</label><select id="piece-choice">'+opts+'</select>'
-    +'<label style="margin-top:10px;">Qualificatif (optionnel)</label><input id="piece-qualif" placeholder="ex : Parents, RDC, gauche" />'
-    +'<label style="margin-top:10px;">Étage (optionnel)</label><select id="piece-etage">'+etageOpts+'</select>'
-    +'<div class="row" style="margin-top:10px;">'+b('Valider','confirmPieceChoice()','btn primary')+'</div>'
+    '<div class="card">'
+      +'<h2>Accueil</h2>'
+      +'<div class="row">'
+        +b('Ajouter une pièce','pageAddPiece()','btn primary')
+        +b('Installations spécifiques','pageISHome()','btn')
+      +'</div>'
+    +'</div>'
+    +'<div class="card" style="margin-top:12px;">'
+      +'<h2>Pièces ajoutées</h2>'
+      +'<div class="list">'+listHtml+'</div>'
+    +'</div>'
+    +'<div class="row" style="margin-top:12px;">'
+      +b('Voir l’estimatif','pageEstimatif()','btn')
+      +b('Voir les totaux','pageTotaux()','btn')
     +'</div>'
   );
 }
+
+// ---- Ajouter une pièce
+function pageAddPiece(){
+  var opts = PIECES_PREDEFINIES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('')
+           + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
+  var etageOpts = ['(aucun)'].concat(ETAGES).map(function(e){ return '<option value="'+e+'">'+e+'</option>'; }).join('');
+
+  view(
+    '<div class="card">'
+      +b('Retour','pageHome()','btn back')
+      +'<h2>Ajouter une pièce</h2>'
+      +'<label>Choisir une pièce</label>'
+      +'<select id="piece-choice">'+opts+'</select>'
+      +'<label style="margin-top:10px;">Qualificatif (optionnel)</label>'
+      +'<input id="piece-qualif" placeholder="ex : Parents, RDC, gauche" />'
+      +'<label style="margin-top:10px;">Étage (optionnel)</label>'
+      +'<select id="piece-etage">'+etageOpts+'</select>'
+      +'<div class="row" style="margin-top:10px;">'
+        +b('Valider','confirmPieceChoice()','btn primary')
+      +'</div>'
+    +'</div>'
+  );
+}
+
 function confirmPieceChoice(){
-  var sel=document.getElementById('piece-choice').value;
-  var qualif=(document.getElementById('piece-qualif').value||'').trim();
-  var etage=document.getElementById('piece-etage').value;
+  var sel    = document.getElementById('piece-choice').value;
+  var qualif = (document.getElementById('piece-qualif').value || '').trim();
+  var etage  = document.getElementById('piece-etage').value;
   if(!sel) return;
-  var base=sel;
-  if(sel==='__NEW__'){ base=(prompt('Nom de la pièce :','')||'').trim(); if(!base) return; }
-  var etageVal=(etage&&etage!=='(aucun)')?etage:'';
-  var key=createOrGetPiece(base,qualif,etageVal);
+
+  var base = sel;
+  if(sel==='__NEW__'){
+    base = (prompt('Nom de la pièce :','') || '').trim();
+    if(!base) return;
+  }
+  var etageVal = (etage && etage!=='(aucun)') ? etage : '';
+  var key = createOrGetPiece(base, qualif, etageVal); // garantit une clé unique
   goPiece(key);
 }
+
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+formatPieceLabel(key)+' » et toutes ses lignes ?')){
-    delete devis[key]; saveLocal(); pageHome();
+    delete devis[key];
+    saveLocal();
+    pageHome();
   }
 }
+
+// ---- Détail d’une pièce
 function goPiece(key){
-  ctx={ piece:key, category:null, intervention:null, pose:null, designation:null };
+  ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
-  var cats=CATEGORIES.filter(function(c){return c!=='Spécifique';})
-    .map(function(c){return b(c,'goCategory('+JSON.stringify(c)+')','btn');}).join('');
-  var s=devis[key];
-  var noteTxt=s.note?'<em class="muted">Note : '+s.note+'</em>':'<span class="muted">Aucune note</span>';
-  var lignes=(s.items||[]).length?('<ul>'+s.items.map(function(it,i){
-    var total=(+it.prixU||0)*(+it.qty||0);
-    var poseTxt=(it.intervention==='Création'&&it.pose)?' — '+String(it.pose).toLowerCase():'';
-    var unitTxt=it.unit||'u';
-    return '<li>'+(it.intervention?(it.intervention+' — '):'')+it.designation+poseTxt
-      +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
-      +b('×','delLine('+JSON.stringify(key)+','+i+')','btn')+'</li>';
-  }).join('')+'</ul>'):'<p class="muted">Aucune ligne pour l’instant.</p>';
+
+  var cats = CATEGORIES
+    .filter(function(c){ return c!=='Spécifique'; })
+    .map(function(c){ return b(c,'goCategory('+JSON.stringify(c)+')','btn'); })
+    .join('');
+
+  var s = devis[key];
+  var noteTxt = s.note ? '<em class="muted">Note : '+s.note+'</em>' : '<span class="muted">Aucune note</span>';
+
+  var lignes = (s.items||[]).length
+    ? '<ul>'+s.items.map(function(it,i){
+        var total = (+it.prixU||0) * (+it.qty||0);
+        var poseTxt = (it.intervention==='Création' && it.pose) ? ' — '+String(it.pose).toLowerCase() : '';
+        var unitTxt = it.unit || 'u';
+        return '<li>'
+          +(it.intervention?(it.intervention+' — '):'')+it.designation+poseTxt
+          +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
+          +b('×','delLine('+JSON.stringify(key)+','+i+')','btn')
+        +'</li>';
+      }).join('') + '</ul>'
+    : '<p class="muted">Aucune ligne pour l’instant.</p>';
+
   view(
-    '<div class="card">'+b('Retour','pageHome()','btn back')+'<h2>'+formatPieceLabel(key)+'</h2>'
-    +'<div class="row">'+cats+b('Spécifique','pagePieceSpecifique()','btn ghost')+'</div>'
-    +'<div class="row" style="margin-top:10px;">'+b('Ajouter / modifier la note','editPieceNote()','btn')+'</div>'
+    '<div class="card">'
+      +b('Retour','pageHome()','btn back')
+      +'<h2>'+formatPieceLabel(key)+'</h2>'
+      +'<div class="row">'+cats+b('Spécifique','pagePieceSpecifique()','btn ghost')+'</div>'
+      +'<div class="row" style="margin-top:10px;">'
+        +b('Ajouter / modifier la note','editPieceNote()','btn')
+      +'</div>'
     +'</div>'
-    +'<div class="card" style="margin-top:12px;"><h2>Lignes de la pièce</h2>'+lignes+'<p style="margin-top:8px;">'+noteTxt+'</p></div>'
+    +'<div class="card" style="margin-top:12px;">'
+      +'<h2>Lignes de la pièce</h2>'
+      +lignes
+      +'<p style="margin-top:8px;">'+noteTxt+'</p>'
+    +'</div>'
   );
 }
-function delLine(key, idx){ (devis[key].items||[]).splice(idx,1); saveLocal(); goPiece(key); }
-function goCategory(cat){
-  ctx.category=cat;
-  if(cat==='Éclairage') return goEclairageSub();
-  var interventions=[];
-  if(cat==='Prises'||cat==='Circuit spécialisé'){ interventions=['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']; }
-  else if(cat==='Spécifique'){ interventions=['Saisie libre avec prix']; }
-  else{ interventions=['Création']; }
-  var btns=interventions.map(function(i){return b(i,'goIntervention('+JSON.stringify(i)+')','btn');}).join('');
-  view('<div class="card">'+b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')+'<h2>'+ctx.category+' — '+formatPieceLabel(ctx.piece)+'</h2><div class="row">'+btns+'</div></div>');
+function delLine(key, idx){
+  (devis[key].items||[]).splice(idx,1);
+  saveLocal();
+  goPiece(key);
 }
+
+// ---- Choix catégorie → intervention
+function goCategory(cat){
+  ctx.category = cat;
+  if(cat==='Éclairage') return goEclairageSub();
+
+  var interventions = [];
+  if(cat==='Prises' || cat==='Circuit spécialisé'){
+    interventions = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
+  }else if(cat==='Spécifique'){
+    interventions = ['Saisie libre avec prix'];
+  }else{
+    interventions = ['Création'];
+  }
+
+  var btns = interventions.map(function(i){
+    return b(i,'goIntervention('+JSON.stringify(i)+')','btn');
+  }).join('');
+
+  view(
+    '<div class="card">'
+      +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
+      +'<h2>'+ctx.category+' — '+formatPieceLabel(ctx.piece)+'</h2>'
+      +'<div class="row">'+btns+'</div>'
+    +'</div>'
+  );
+}
+
+// Sous-menu Éclairage
 function goEclairageSub(){
-  view('<div class="card">'+b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')+'<h2>Éclairage — '+formatPieceLabel(ctx.piece)+'</h2><div class="row">'
-    +b('Luminaires','setEclairageBranch('+JSON.stringify('Éclairage/Luminaires')+')','btn')
-    +b('Commandes','setEclairageBranch('+JSON.stringify('Éclairage/Commandes')+')','btn')
-    +'</div></div>');
+  view(
+    '<div class="card">'
+      +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
+      +'<h2>Éclairage — '+formatPieceLabel(ctx.piece)+'</h2>'
+      +'<div class="row">'
+        +b('Luminaires','setEclairageBranch('+JSON.stringify('Éclairage/Luminaires')+')','btn')
+        +b('Commandes','setEclairageBranch('+JSON.stringify('Éclairage/Commandes')+')','btn')
+      +'</div>'
+    +'</div>'
+  );
 }
 function setEclairageBranch(branch){
-  ctx.category=branch;
-  var interventions=(branch==='Éclairage/Luminaires')?['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire']
-                                                 :['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
-  var btns=interventions.map(function(i){return b(i,'goIntervention('+JSON.stringify(i)+')','btn');}).join('');
-  view('<div class="card">'+b('Retour','goEclairageSub()','btn back')+'<h2>'+branch+' — '+formatPieceLabel(ctx.piece)+'</h2><div class="row">'+btns+'</div></div>');
+  ctx.category = branch;
+  var interventions = (branch==='Éclairage/Luminaires')
+    ? ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire']
+    : ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+
+  var btns = interventions.map(function(i){
+    return b(i,'goIntervention('+JSON.stringify(i)+')','btn');
+  }).join('');
+
+  view(
+    '<div class="card">'
+      +b('Retour','goEclairageSub()','btn back')
+      +'<h2>'+branch+' — '+formatPieceLabel(ctx.piece)+'</h2>'
+      +'<div class="row">'+btns+'</div>'
+    +'</div>'
+  );
 }
+
+// ---- Intervention → éventuellement Pose → Désignation
 function goIntervention(interv){
-  ctx.intervention=interv;
+  ctx.intervention = interv;
+
+  // Spécifique (saisie libre)
   if(ctx.category==='Spécifique'){
-    var label=prompt('Nom de la prestation spécifique :',''); if(!label) return goCategory('Spécifique');
-    var prix=parseFloat(prompt('Prix estimé (€) :','0'))||0;
+    var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goCategory('Spécifique');
+    var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
     ensureSection(ctx.piece);
     devis[ctx.piece].items.push({ category:'Spécifique', intervention:'', pose:'', designation:label, qty:1, prixU:prix });
-    saveLocal(); return goPiece(ctx.piece);
+    saveLocal();
+    return goPiece(ctx.piece);
   }
-  var needsPose=['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category)>=0;
+
+  var needsPose = ['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category)>=0;
   if(interv==='Création' && needsPose){
-    var poses=POSES.map(function(p){return b(p,'goDesignation('+JSON.stringify(p)+')','btn');}).join('');
-    var back=(ctx.category.indexOf('Éclairage/')===0)?'Éclairage':ctx.category;
+    var poses = POSES.map(function(p){ return b(p,'goDesignation('+JSON.stringify(p)+')','btn'); }).join('');
+    var back  = (ctx.category.indexOf('Éclairage/')===0) ? 'Éclairage' : ctx.category;
     view('<div class="card">'+b('Retour','goCategory('+JSON.stringify(back)+')','btn back')+'<h2>Type de pose</h2><div class="row">'+poses+'</div></div>');
   }else{
     goDesignation(null);
   }
 }
+
 function goDesignation(pose){
-  ctx.pose=pose;
-  var list=DESIGNATIONS_PAR_CATEGORIE[ctx.category]||['Élément'];
+  ctx.pose = pose;
+  var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   if(list.length===1) return pageQuantite(list[0]);
-  var btns=list.map(function(d){return b(d,'pageQuantite('+JSON.stringify(d)+')','btn');}).join('');
-  view('<div class="card">'+b('Retour', (ctx.intervention==='Création'?'goIntervention('+JSON.stringify(ctx.intervention)+')':'goCategory('+JSON.stringify(ctx.category)+')') ,'btn back')+'<h2>Désignation</h2><div class="row">'+btns+'</div></div>');
+
+  var btns = list.map(function(d){
+    return b(d,'pageQuantite('+JSON.stringify(d)+')','btn');
+  }).join('');
+
+  var backFn = (ctx.intervention==='Création')
+    ? 'goIntervention('+JSON.stringify(ctx.intervention)+')'
+    : 'goCategory('+JSON.stringify(ctx.category)+')';
+
+  view('<div class="card">'+b('Retour', backFn ,'btn back')+'<h2>Désignation</h2><div class="row">'+btns+'</div></div>');
 }
+
+// ---- Quantité → enregistrement
 function pageQuantite(designation){
-  ctx.designation=designation;
-  var qtyBtns=Array.from({length:10}).map(function(_,i){var q=i+1; return b(q,'saveItem('+q+')','btn');}).join('');
+  ctx.designation = designation;
+  var qtyBtns = Array.from({length:10}).map(function(_,i){
+    var q=i+1; return b(q,'saveItem('+q+')','btn');
+  }).join('');
   view('<div class="card">'+b('Retour','goDesignation('+(ctx.pose?JSON.stringify(ctx.pose):'null')+')','btn back')+'<h2>Quantité</h2><div class="grid-qty">'+qtyBtns+'</div></div>');
 }
+
 function getPrix(designation, intervention){
-  var base=TARIFS[designation]||{};
+  var base = TARIFS[designation] || {};
   if(intervention==='Création') return base.creation||0;
-  if(intervention&&intervention.indexOf('sans remplacement')>=0) return base.recablage_sans||0;
-  if(intervention&&intervention.indexOf('avec remplacement')>=0) return base.recablage_avec||0;
-  if(intervention&&intervention.indexOf('Remplacement')===0) return base.remplacement||0;
+  if(intervention && intervention.indexOf('sans remplacement')>=0) return base.recablage_sans||0;
+  if(intervention && intervention.indexOf('avec remplacement')>=0) return base.recablage_avec||0;
+  if(intervention && intervention.indexOf('Remplacement')===0) return base.remplacement||0;
   return 0;
 }
+
 function saveItem(qty){
   ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({ category:ctx.category, intervention:ctx.intervention, pose:ctx.pose, designation:ctx.designation, qty:qty, prixU:getPrix(ctx.designation, ctx.intervention) });
-  saveLocal(); goPiece(ctx.piece);
+  devis[ctx.piece].items.push({
+    category: ctx.category,
+    intervention: ctx.intervention,
+    pose: ctx.pose,
+    designation: ctx.designation,
+    qty: qty,
+    prixU: getPrix(ctx.designation, ctx.intervention)
+  });
+  saveLocal();
+  goPiece(ctx.piece);
 }
+
+// ---- Spécifique & Notes
 function pagePieceSpecifique(){
-  var label=prompt('Nom de la prestation spécifique :',''); if(!label) return goPiece(ctx.piece);
-  var prix=parseFloat(prompt('Prix estimé (€) :','0'))||0;
+  var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goPiece(ctx.piece);
+  var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({ category:'Spécifique', intervention:'', pose:'', designation:label, qty:1, prixU:prix });
-  saveLocal(); goPiece(ctx.piece);
+  saveLocal();
+  goPiece(ctx.piece);
 }
+
 function editPieceNote(){
   ensureSection(ctx.piece);
-  var cur=devis[ctx.piece].note||'';
-  var n=prompt('Note pour '+formatPieceLabel(ctx.piece), cur);
-  if(n!==null) devis[ctx.piece].note=n.trim();
-  saveLocal(); goPiece(ctx.piece);
+  var cur = devis[ctx.piece].note || '';
+  var n = prompt('Note pour '+formatPieceLabel(ctx.piece), cur);
+  if(n!==null) devis[ctx.piece].note = n.trim();
+  saveLocal();
+  goPiece(ctx.piece);
 }
-
-/* ============================= */
-/* CHAPITRE 6 : TABLEAU & DISTRIBUTION (COMPLET) */
-/* ============================= */
-
-// Tout ce qui concerne le tableau est stocké dans la pièce "Tableau"
+</script>
+<!-- =============================
+     CHAPITRE 6 : TABLEAU & DISTRIBUTION
+     ============================= -->
+<script>
+// Forcer la présence de la section Tableau
 function ensureTableau(){ ensureSection("Tableau"); }
 
-// Petit état local pour la page Disjoncteurs (évite le clavier)
+// État local pour garder les disjoncteurs (persistant pendant navigation)
 let tabState = {
   disj: {
     2:  { qty:0, names:[] },
@@ -417,7 +675,6 @@ function pageTabHome(){
 }
 
 /* ========== (1) POSE TABLEAU ========== */
-
 function pageTabPose(){
   view(`
     <div class="card">
@@ -477,29 +734,19 @@ function addTabPose(){
   pageTabHome();
 }
 
-/* ========== (2) MODULAIRE : INTER DIFF. ========== */
-
+/* ========== (2) INTER DIFF. ========== */
 function pageTab_ID(){
+  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
   view(`
     <div class="card">
       ${b("Retour","pageTabHome()","btn back")}
       <h2>Interrupteurs différentiels</h2>
-
       <div class="list">
-        <label>ID 30mA - 40A - Type A
-          <select id="id-a-40-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
-        </label>
-        <label>ID 30mA - 40A - Type AC
-          <select id="id-ac-40-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
-        </label>
-        <label>ID 30mA - 63A - Type A
-          <select id="id-a-63-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
-        </label>
-        <label>ID 30mA - 63A - Type AC
-          <select id="id-ac-63-30">${[...Array(21)].map((_,i)=>`<option ${i===0?'selected':''} value="${i}">${i}</option>`).join('')}</select>
-        </label>
+        <label>ID 30mA - 40A - Type A <select id="id-a-40-30">${opts(20)}</select></label>
+        <label>ID 30mA - 40A - Type AC <select id="id-ac-40-30">${opts(20)}</select></label>
+        <label>ID 30mA - 63A - Type A <select id="id-a-63-30">${opts(20)}</select></label>
+        <label>ID 30mA - 63A - Type AC <select id="id-ac-63-30">${opts(20)}</select></label>
       </div>
-
       <div class="row" style="margin-top:12px;">
         ${b("Ajouter au devis","submitTab_ID()","btn primary")}
       </div>
@@ -520,408 +767,322 @@ function submitTab_ID(){
     if(q>0){
       devis["Tableau"].items.push({
         category: "Tableau/Modulaire",
-        intervention: "",
-        pose: "",
         designation: d.name,
-        qty: q,
-        prixU: 0
+        qty: q, prixU: 0
       });
       added++;
     }
   });
   if(!added){ alert("Rien à ajouter."); return; }
-  saveLocal();
-  alert("Interrupteurs différentiels ajoutés.");
-  pageTabHome();
+  saveLocal(); alert("Interrupteurs différentiels ajoutés."); pageTabHome();
 }
 
-/* ========== (3) MODULAIRE : DISJONCTEURS regroupés ========== */
-
+/* ========== (3) DISJONCTEURS regroupés ========== */
 function pageTab_Disjoncteurs(){
-  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
-
+  const opts = (max=30)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
   view(`
     <div class="card">
       ${b("Retour","pageTabHome()","btn back")}
       <h2>Disjoncteurs modulaires (2A / 10A / 16A / 20A / 32A)</h2>
-
       <div class="list">
-        <label>2 A (Qté)
-          <select id="djq-2">${opts(30)}</select>
-          ${b("Détail circuits","pageTab_DisjDetails(2)")}
-        </label>
-        <label>10 A (Qté)
-          <select id="djq-10">${opts(30)}</select>
-          ${b("Détail circuits","pageTab_DisjDetails(10)")}
-        </label>
-        <label>16 A (Qté)
-          <select id="djq-16">${opts(30)}</select>
-          ${b("Détail circuits","pageTab_DisjDetails(16)")}
-        </label>
-        <label>20 A (Qté)
-          <select id="djq-20">${opts(30)}</select>
-          ${b("Détail circuits","pageTab_DisjDetails(20)")}
-        </label>
-        <label>32 A (Qté)
-          <select id="djq-32">${opts(30)}</select>
-          ${b("Détail circuits","pageTab_DisjDetails(32)")}
-        </label>
+        <label>2 A (Qté) <select id="djq-2">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(2)")}</label>
+        <label>10 A (Qté) <select id="djq-10">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(10)")}</label>
+        <label>16 A (Qté) <select id="djq-16">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(16)")}</label>
+        <label>20 A (Qté) <select id="djq-20">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(20)")}</label>
+        <label>32 A (Qté) <select id="djq-32">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails(32)")}</label>
       </div>
-
       <div class="row" style="margin-top:12px;">
         ${b("Vider la sélection","pageTab_DisjVider()")}
         ${b("Valider ces disjoncteurs","pageTab_DisjValider()","btn primary")}
       </div>
-      <p class="muted" style="margin-top:6px;">Astuce : utilise « Détail circuits » pour générer automatiquement “Circuit 1, 2, …” sans clavier. Après validation, tu restes sur cette page pour ajouter d’autres calibres.</p>
+      <p class="muted" style="margin-top:6px;">Utilise « Détail circuits » pour générer Circuit 1, 2… sans clavier.</p>
     </div>
   `);
-
   document.getElementById('djq-2').value  = tabState.disj[2].qty;
   document.getElementById('djq-10').value = tabState.disj[10].qty;
   document.getElementById('djq-16').value = tabState.disj[16].qty;
   document.getElementById('djq-20').value = tabState.disj[20].qty;
   document.getElementById('djq-32').value = tabState.disj[32].qty;
 }
-
 function pageTab_DisjDetails(rating){
   const currentQty = tabState.disj[rating]?.qty || 0;
   const opts = (sel)=>[...Array(31)].map((_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join('');
-  const preview = (n)=> n>0
-    ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
-    : `<p class="muted">Aucun circuit pour l’instant.</p>`;
-
+  const preview = (n)=> n>0 ? `<ul>${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>` : `<p class="muted">Aucun circuit.</p>`;
   view(`
     <div class="card">
       ${b("Retour","pageTab_Disjoncteurs()","btn back")}
       <h2>Détail circuits — ${rating} A</h2>
-
-      <label>Nombre de circuits
-        <select id="dj-detail-qty">${opts(currentQty)}</select>
-      </label>
-
-      <div id="dj-detail-preview" style="margin-top:8px;">
-        ${preview(currentQty)}
-      </div>
-
-      <div class="row" style="margin-top:12px;">
-        ${b("Enregistrer et revenir","pageTab_DisjSaveDetails("+rating+")","btn primary")}
-      </div>
+      <label>Nombre de circuits <select id="dj-detail-qty">${opts(currentQty)}</select></label>
+      <div id="dj-detail-preview" style="margin-top:8px;">${preview(currentQty)}</div>
+      <div class="row" style="margin-top:12px;">${b("Enregistrer et revenir","pageTab_DisjSaveDetails("+rating+")","btn primary")}</div>
     </div>
   `);
-
-  document.getElementById('dj-detail-qty').addEventListener('change', (e)=>{
-    const n = +e.target.value || 0;
-    document.getElementById('dj-detail-preview').innerHTML =
-      n>0 ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
-          : `<p class="muted">Aucun circuit pour l’instant.</p>`;
+  document.getElementById('dj-detail-qty').addEventListener('change',(e)=>{
+    const n = +e.target.value||0;
+    document.getElementById('dj-detail-preview').innerHTML = n>0? `<ul>${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>` : `<p class="muted">Aucun circuit.</p>`;
   });
 }
-
 function pageTab_DisjSaveDetails(rating){
   const qty = +document.getElementById('dj-detail-qty').value || 0;
-  tabState.disj[rating] = {
-    qty,
-    names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : []
-  };
+  tabState.disj[rating] = { qty, names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : [] };
   alert(`Détails ${rating} A enregistrés (${qty} circuit(s)).`);
   pageTab_Disjoncteurs();
 }
-
-function pageTab_DisjVider(){
-  tabState.disj = {2:{qty:0,names:[]},10:{qty:0,names:[]},16:{qty:0,names:[]},20:{qty:0,names:[]},32:{qty:0,names:[]}};
-  pageTab_Disjoncteurs();
-}
-
+function pageTab_DisjVider(){ tabState.disj={2:{qty:0,names:[]},10:{qty:0,names:[]},16:{qty:0,names:[]},20:{qty:0,names:[]},32:{qty:0,names:[]}}; pageTab_Disjoncteurs(); }
 function pageTab_DisjValider(){
-  const readQty = (id)=> +document.getElementById(id).value || 0;
-  tabState.disj[2].qty  = readQty('djq-2');
-  tabState.disj[10].qty = readQty('djq-10');
-  tabState.disj[16].qty = readQty('djq-16');
-  tabState.disj[20].qty = readQty('djq-20');
-  tabState.disj[32].qty = readQty('djq-32');
-
-  let added = 0;
-  ensureTableau();
-
+  const readQty=id=>+document.getElementById(id).value||0;
+  [2,10,16,20,32].forEach(r=>{ tabState.disj[r].qty=readQty('djq-'+r); });
+  let added=0; ensureTableau();
   [2,10,16,20,32].forEach(rating=>{
-    const { qty, names } = tabState.disj[rating];
+    const {qty,names}=tabState.disj[rating];
     if(qty>0){
-      const details = (names && names.length)
-        ? ` — circuits : ${names.join(', ')}`
-        : '';
-      devis["Tableau"].items.push({
-        category: "Tableau/Modulaire",
-        intervention: "",
-        pose: "",
-        designation: `Disjoncteur ${rating} A${details}`,
-        qty,
-        prixU: 0
-      });
+      const details=(names&&names.length)?` — circuits : ${names.join(', ')}`:'';
+      devis["Tableau"].items.push({ category:"Tableau/Modulaire", designation:`Disjoncteur ${rating} A${details}`, qty, prixU:0 });
       added++;
     }
   });
-
   if(!added){ alert("Rien à ajouter."); return; }
-  saveLocal();
-  alert("Disjoncteurs ajoutés au devis.");
-  pageTab_Disjoncteurs();
+  saveLocal(); alert("Disjoncteurs ajoutés au devis."); pageTab_Disjoncteurs();
 }
 
-/* ========== (4) COMMANDE & PILOTAGE ========== */
-
+/* ========== (4) COMMANDES ========== */
 function pageTabMod_Commandes(){
-  const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
+  const opts=(max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
   view(`
     <div class="card">
       ${b("Retour","pageTabHome()","btn back")}
-      <h2>Commande & pilotage modulaire</h2>
-
+      <h2>Commande & pilotage</h2>
       <div class="list">
-        <label>Télérupteur
-          <select id="cmd-telerup">${opts(20)}</select>
-        </label>
-        <label>Télérupteur silencieux
-          <select id="cmd-telerup-sil">${opts(20)}</select>
-        </label>
-        <label>Horloge mécanique + Disjoncteur 2A
-          <select id="cmd-horloge-2a">${opts(20)}</select>
-        </label>
-        <label>Horloge mécanique + contacteur HC + Disjoncteur 2A
-          <select id="cmd-horloge-hc-2a">${opts(20)}</select>
-        </label>
+        <label>Télérupteur <select id="cmd-telerup">${opts(20)}</select></label>
+        <label>Télérupteur silencieux <select id="cmd-telerup-sil">${opts(20)}</select></label>
+        <label>Horloge mécanique + Disj 2A <select id="cmd-horloge-2a">${opts(20)}</select></label>
+        <label>Horloge mécanique + contacteur HC + Disj 2A <select id="cmd-horloge-hc-2a">${opts(20)}</select></label>
       </div>
-
-      <div class="row" style="margin-top:12px;">
-        ${b("Ajouter au devis","submitTabMod_Commandes()","btn primary")}
-      </div>
+      <div class="row" style="margin-top:12px;">${b("Ajouter au devis","submitTabMod_Commandes()","btn primary")}</div>
     </div>
   `);
 }
 function submitTabMod_Commandes(){
-  const pick = id => +document.getElementById(id).value || 0;
-  const defs = [
-    { id:"cmd-telerup",       name:"Télérupteur" },
-    { id:"cmd-telerup-sil",   name:"Télérupteur silencieux" },
-    { id:"cmd-horloge-2a",    name:"Horloge mécanique + Disjoncteur 2A" },
-    { id:"cmd-horloge-hc-2a", name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A" }
-  ];
-  let added=0;
-  ensureTableau();
-  defs.forEach(d=>{
-    const q = pick(d.id);
-    if(q>0){
-      devis["Tableau"].items.push({
-        category: "Tableau/Commandes",
-        intervention: "",
-        pose: "",
-        designation: d.name,
-        qty: q,
-        prixU: 0
-      });
-      added++;
-    }
-  });
+  const pick=id=>+document.getElementById(id).value||0;
+  const defs=[ {id:"cmd-telerup",name:"Télérupteur"}, {id:"cmd-telerup-sil",name:"Télérupteur silencieux"}, {id:"cmd-horloge-2a",name:"Horloge mécanique + Disj 2A"}, {id:"cmd-horloge-hc-2a",name:"Horloge mécanique + contacteur HC + Disj 2A"} ];
+  let added=0; ensureTableau();
+  defs.forEach(d=>{const q=pick(d.id); if(q>0){ devis["Tableau"].items.push({ category:"Tableau/Commandes", designation:d.name, qty:q, prixU:0 }); added++; }});
   if(!added){ alert("Rien à ajouter."); return; }
-  saveLocal();
-  alert("Commandes modulaires ajoutées.");
-  pageTabHome();
+  saveLocal(); alert("Commandes ajoutées."); pageTabHome();
 }
 
 /* ========== (5) SPÉCIFIQUE ========== */
-
 function pageTabMod_Specifique(){
-  const label = prompt("Intitulé (libre) :", "");
-  if(!label){ pageTabHome(); return; }
-
-  const prix  = parseFloat(prompt("Prix unitaire estimé (€) :", "0")) || 0;
-  const qty   = Math.max(1, parseInt(prompt("Quantité :", "1")||"1", 10));
-
+  const label=prompt("Intitulé (libre) :",""); if(!label){ pageTabHome(); return; }
+  const prix=parseFloat(prompt("Prix unitaire (€) :","0"))||0;
+  const qty=Math.max(1,parseInt(prompt("Quantité :","1")||"1",10));
   ensureTableau();
-  devis["Tableau"].items.push({
-    category: "Tableau/Modulaire — Spécifique",
-    intervention: "",
-    pose: "",
-    designation: label,
-    qty,
-    prixU: prix
-  });
-
-  saveLocal();
-  alert("Ajouté.");
-  pageTabHome();
+  devis["Tableau"].items.push({ category:"Tableau/Spécifique", designation:label, qty, prixU:prix });
+  saveLocal(); alert("Ajouté."); pageTabHome();
 }
-// =============================
-// CHAP.7 : ESTIMATIF & EXPORTS
-// =============================
-var PIECE_GROUPS={
-  'Buanderie':'Pièces techniques','Garage':'Pièces techniques','Atelier':'Pièces techniques',
-  'Jardin':'Extérieur','Terrasse':'Extérieur','Balcon':'Extérieur','Abri de jardin':'Extérieur',
-  'Cuisine':'Cuisine',
-  'Salon':'Pièces de vie','Salle à manger':'Pièces de vie','Couloir':'Pièces de vie','Entrée':'Pièces de vie',
-  'Salle de bain':'Pièces d\'eau','Salle d\'eau':'Pièces d\'eau','Toilettes':'Pièces d\'eau',
-  'Chambre 1':'Chambres & Bureau','Chambre 2':'Chambres & Bureau','Chambre 3':'Chambres & Bureau','Bureau':'Chambres & Bureau','Bibliothèque':'Chambres & Bureau',
-  'Tableau':'Tableau & distribution','Distribution':'Tableau & distribution','Mise à la terre':'Mise à la terre','VMC':'VMC'
+</script>
+
+  <!-- =============================
+     CHAPITRE 7 : ESTIMATIF & EXPORTS
+     ============================= -->
+<script>
+const PIECE_GROUPS = {
+  "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
+  "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
+  "Cuisine":"Cuisine",
+  "Salon":"Pièces de vie","Salle à manger":"Pièces de vie","Couloir":"Pièces de vie","Entrée":"Pièces de vie",
+  "Salle de bain":"Pièces d'eau","Salle d'eau":"Pièces d'eau","Toilettes":"Pièces d'eau",
+  "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau","Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
+  "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
+  "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
+
+// Regrouper les devis par groupe
 function groupDevis(){
-  var g={}, key, s, base, grp;
-  for(key in devis){
-    if(key.indexOf('__')===0) continue;
-    s=devis[key]; base=(s&&s.__base)?s.__base:key.replace(/\s*\(.*\)\s*$/,'').split(' — ')[0];
-    grp=PIECE_GROUPS[base]||'Divers';
+  const g={};
+  for(const key in devis){
+    if(key.startsWith("__")) continue;
+    const s=devis[key];
+    const base=(s && s.__base)?s.__base:key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
+    const grp=PIECE_GROUPS[base]||"Divers";
     if(!g[grp]) g[grp]={};
     g[grp][key]=s;
   }
   return g;
 }
-function pageEstimatif(){
-  var html='<div class="card">'+b('Retour','pageHome()','btn back')+'<h2>Estimatif détaillé</h2>';
-  var totalGlobal=0, grouped=groupDevis();
-  for(var grp in grouped){
-    html+='<h2 style="border-top:2px solid #000; padding-top:8px;">'+grp+'</h2>';
-    var groupTotal=0;
-    for(var key in grouped[grp]){
-      var s=grouped[grp][key]; if(!s||!Array.isArray(s.items)||!s.items.length) continue;
-      var pieceLabel=formatPieceLabel(key), sectionTotal=0;
-      html+='<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
-      s.items.forEach(function(it){
-        var q=+it.qty||0, pu=+it.prixU||0, t=q*pu; sectionTotal+=t; groupTotal+=t; totalGlobal+=t;
-        var poseTxt=(it.intervention==='Création'&&it.pose)?' '+String(it.pose).toLowerCase():'';
-        var unit=it.unit||'u', left=it.intervention?(it.intervention+' — '):'';
-        html+='<li>'+left+it.designation+poseTxt+' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
-      });
-      if(s.note) html+='<li><em>Note : '+s.note+'</em></li>';
-      html+='</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
-    }
-    html+='<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
-  }
-  html+='<h3>Total global : '+euro(totalGlobal)+'</h3>'
-      +'<div class="row" style="margin-top:10px;">'
-      +b('Export .txt (par groupe)','exportText()','btn')
-      +b('Export .zip (par groupe)','exportZipGroups()','btn')
-      +b('Export .txt (complet)','exportTextFull()','btn')
-      +b('Export .zip (complet)','exportZipFull()','btn')
-      +'</div></div>';
-  view(html);
-}
-function pageTotaux(){
-  var html='<div class="card">'+b('Retour','pageHome()','btn back')+'<h2>Totaux par groupe</h2>';
-  var totalGlobal=0, grouped=groupDevis();
-  for(var grp in grouped){
-    var gt=0;
-    for(var key in grouped[grp]){
-      var s=grouped[grp][key]; if(!s||!Array.isArray(s.items)||!s.items.length) continue;
-      var st=s.items.reduce(function(sum,it){ return sum+(((+it.prixU)||0)*((+it.qty)||0)); },0);
-      gt+=st; totalGlobal+=st;
-    }
-    html+='<p><strong>'+grp+'</strong> : '+euro(gt)+'</p>';
-  }
-  html+='<hr><p><strong>Total global : '+euro(totalGlobal)+'</strong></p>'
-      +'<div class="row" style="margin-top:10px;">'
-      +b('Export .txt (par groupe)','exportText()','btn')
-      +b('Export .zip (par groupe)','exportZipGroups()','btn')
-      +b('Export .txt (complet)','exportTextFull()','btn')
-      +b('Export .zip (complet)','exportZipFull()','btn')
-      +'</div></div>';
-  view(html);
-}
+
+// Helpers pour affichage et exports
 function itemLine(it){
-  var unit=it.unit||'u';
-  var poseTxt=(it.intervention==='Création'&&it.pose)?' - '+String(it.pose).toLowerCase():'';
-  var left=it.intervention?(it.intervention+' — '):'';
-  var pu=(+it.prixU||0).toFixed(2), q=+it.qty||0, total=(q*(+it.prixU||0)).toFixed(2);
-  return '- '+left+it.designation+poseTxt+' | Qté: '+q+' '+unit+' | PU: '+pu+'€ | Total: '+total+'€';
+  const unit=it.unit||"u";
+  const poseTxt=(it.intervention==="Création" && it.pose)?` - ${String(it.pose).toLowerCase()}`:"";
+  const left=it.intervention?(it.intervention+" — "):"";
+  const pu=(+it.prixU||0).toFixed(2), q=+it.qty||0, total=(q*(+it.prixU||0)).toFixed(2);
+  return `- ${left}${it.designation}${poseTxt} | Qté: ${q} ${unit} | PU: ${pu}€ | Total: ${total}€`;
 }
-function pieceSeparator(label){ return '\n---------------- '+label+' ----------------\n'; }
-function exportText(){
-  var grouped=groupDevis();
-  for(var grp in grouped){
-    var lines=['=== '+grp+' ===\n'], groupTotal=0;
-    for(var key in grouped[grp]){
-      var s=grouped[grp][key]; if(!s||!Array.isArray(s.items)||!s.items.length) continue;
-      var label=formatPieceLabel(key), st=0;
-      lines.push(pieceSeparator(label));
-      s.items.forEach(function(it){ var q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it)); });
-      if(s.note) lines.push('Note : '+s.note);
-      lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
+function pieceSeparator(label){ return `\n---------------- ${label} ----------------\n`; }
+
+// Page Estimatif détaillé
+function pageEstimatif(){
+  let html='<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
+  let totalGlobal=0, grouped=groupDevis();
+  for(const grp in grouped){
+    html+=`<h2 style="border-top:2px solid #000; padding-top:8px;">${grp}</h2>`;
+    let groupTotal=0;
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key]; if(!s||!s.items||!s.items.length) continue;
+      const pieceLabel=formatPieceLabel(key); let sectionTotal=0;
+      html+=`<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">${pieceLabel}</h3><ul>`;
+      s.items.forEach(it=>{
+        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
+        sectionTotal+=t; groupTotal+=t; totalGlobal+=t;
+        const poseTxt=(it.intervention==="Création"&&it.pose)?` ${String(it.pose).toLowerCase()}`:"";
+        const unit=it.unit||"u", left=it.intervention?it.intervention+" — ":"";
+        html+=`<li>${left}${it.designation}${poseTxt} (${q} ${unit} × ${euro(pu)} = ${euro(t)})</li>`;
+      });
+      if(s.note) html+=`<li><em>Note : ${s.note}</em></li>`;
+      html+=`</ul><p><strong>Total ${pieceLabel} : ${euro(sectionTotal)}</strong></p>`;
     }
-    lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€');
-    var blob=new Blob([lines.join('\r\n')],{type:'text/plain;charset=utf-8'});
-    var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='devis_'+grp+'.txt'; a.click(); URL.revokeObjectURL(url);
+    html+=`<p><strong>Total ${grp} : ${euro(groupTotal)}</strong></p><hr>`;
   }
-  alert('✅ Export terminé : un fichier .txt par groupe généré.');
-}
-async function exportZipGroups(){
-  if(typeof JSZip==='undefined'){ alert('JSZip non chargé.'); return; }
-  var grouped=groupDevis(), zip=new JSZip(), global=0;
-  for(var grp in grouped){
-    var lines=['=== '+grp+' ===\n'], groupTotal=0;
-    for(var key in grouped[grp]){
-      var s=grouped[grp][key]; if(!s||!Array.isArray(s.items)||!s.items.length) continue;
-      var label=formatPieceLabel(key), st=0;
-      lines.push(pieceSeparator(label));
-      s.items.forEach(function(it){ var q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it)); });
-      if(s.note) lines.push('Note : '+s.note);
-      lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
-    }
-    lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€'); global+=groupTotal;
-    zip.file('devis_'+grp+'.txt', lines.join('\r\n'));
-  }
-  var name=(devis.__name||'Devis').trim()||'Devis';
-  var readme=['Récapitulatif — '+name,'Date: '+new Date().toLocaleString(),'','Total global: '+global.toFixed(2)+'€','','Un fichier .txt par groupe avec détails, quantités, PU et totaux.'].join('\r\n');
-  zip.file('README.txt', readme);
-  var blob=await zip.generateAsync({type:'blob'}); var url=URL.createObjectURL(blob); var a=document.createElement('a');
-  a.href=url; a.download=(name.replace(/\s+/g,'_').toLowerCase())+'_groupes.zip'; a.click(); URL.revokeObjectURL(url);
-  alert('✅ Export ZIP (par groupe) généré.');
-}
-function buildFullText(){
-  var grouped=groupDevis(), lines=[], globalTotal=0, grp, key;
-  lines.push('=== DEVIS COMPLET ===\n');
-  for(grp in grouped){
-    lines.push('\n## '+grp+' ##\n'); var groupTotal=0;
-    for(key in grouped[grp]){
-      var s=grouped[grp][key]; if(!s||!Array.isArray(s.items)||!s.items.length) continue;
-      var label=formatPieceLabel(key), st=0;
-      lines.push(pieceSeparator(label));
-      s.items.forEach(function(it){ var q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; globalTotal+=t; lines.push(itemLine(it)); });
-      if(s.note) lines.push('Note : '+s.note);
-      lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
-    }
-    lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€\n');
-  }
-  lines.push('\n=== Total global : '+globalTotal.toFixed(2)+'€ ===\n'); return lines.join('\r\n');
-}
-function exportTextFull(){
-  var name=(devis.__name||'Devis').trim()||'Devis';
-  var blob=new Blob([buildFullText()],{type:'text/plain;charset=utf-8'});
-  var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt'; a.click(); URL.revokeObjectURL(url);
-  alert('✅ Export .txt complet généré.');
-}
-async function exportZipFull(){
-  if(typeof JSZip==='undefined'){ alert('JSZip non chargé.'); return; }
-  var name=(devis.__name||'Devis').trim()||'Devis', zip=new JSZip();
-  zip.file(name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt', buildFullText());
-  zip.file('README.txt','Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
-  var blob=await zip.generateAsync({type:'blob'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip'; a.click(); URL.revokeObjectURL(url);
-  alert('✅ Export .zip complet généré.');
+  html+=`<h3>Total global : ${euro(totalGlobal)}</h3>
+         <div class="row" style="margin-top:10px;">
+           ${b("Export .txt (par groupe)","exportText()","btn")}
+           ${b("Export .zip (par groupe)","exportZipGroups()","btn")}
+           ${b("Export .txt (complet)","exportTextFull()","btn")}
+           ${b("Export .zip (complet)","exportZipFull()","btn")}
+         </div></div>`;
+  view(html);
 }
 
-/* ============================= */
-/* CHAPITRE 8 : DÉMARRAGE & EXPOSE */
-/* ============================= */
+// Page Totaux par groupe
+function pageTotaux(){
+  let html='<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
+  let totalGlobal=0, grouped=groupDevis();
+  for(const grp in grouped){
+    let gt=0;
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key]; if(!s||!s.items||!s.items.length) continue;
+      const st=s.items.reduce((sum,it)=>sum+(((+it.prixU)||0)*((+it.qty)||0)),0);
+      gt+=st; totalGlobal+=st;
+    }
+    html+=`<p><strong>${grp}</strong> : ${euro(gt)}</p>`;
+  }
+  html+=`<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
+         <div class="row" style="margin-top:10px;">
+           ${b("Export .txt (par groupe)","exportText()","btn")}
+           ${b("Export .zip (par groupe)","exportZipGroups()","btn")}
+           ${b("Export .txt (complet)","exportTextFull()","btn")}
+           ${b("Export .zip (complet)","exportZipFull()","btn")}
+         </div></div>`;
+  view(html);
+}
+
+/* ==== Exports ==== */
+// Texte par groupe
+function exportText(){
+  const grouped=groupDevis();
+  for(const grp in grouped){
+    let lines=[`=== ${grp} ===\n`], groupTotal=0;
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key]; if(!s||!s.items||!s.items.length) continue;
+      const label=formatPieceLabel(key); let st=0;
+      lines.push(pieceSeparator(label));
+      s.items.forEach(it=>{const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it));});
+      if(s.note) lines.push("Note : "+s.note);
+      lines.push(`Total ${label} : ${st.toFixed(2)}€\n`);
+    }
+    lines.push(`Total ${grp} : ${groupTotal.toFixed(2)}€`);
+    const blob=new Blob([lines.join("\r\n")],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download=`devis_${grp}.txt`; a.click(); URL.revokeObjectURL(url);
+  }
+  alert("✅ Export terminé : un fichier .txt par groupe généré.");
+}
+
+// Zip par groupe
+async function exportZipGroups(){
+  if(typeof JSZip==="undefined"){ alert("JSZip non chargé."); return; }
+  const grouped=groupDevis(), zip=new JSZip(); let global=0;
+  for(const grp in grouped){
+    let lines=[`=== ${grp} ===\n`], groupTotal=0;
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key]; if(!s||!s.items||!s.items.length) continue;
+      const label=formatPieceLabel(key), st=0;
+      lines.push(pieceSeparator(label));
+      s.items.forEach(it=>{const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it));});
+      if(s.note) lines.push("Note : "+s.note);
+      lines.push(`Total ${label} : ${st.toFixed(2)}€\n`);
+    }
+    lines.push(`Total ${grp} : ${groupTotal.toFixed(2)}€`); global+=groupTotal;
+    zip.file(`devis_${grp}.txt`, lines.join("\r\n"));
+  }
+  const name=(devis.__name||"Devis").trim()||"Devis";
+  zip.file("README.txt", `Récapitulatif — ${name}\nDate: ${new Date().toLocaleString()}\nTotal global: ${global.toFixed(2)}€\n`);
+  const blob=await zip.generateAsync({type:"blob"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=`${name.replace(/\s+/g,'_').toLowerCase()}_groupes.zip`; a.click();
+  URL.revokeObjectURL(url);
+  alert("✅ Export ZIP (par groupe) généré.");
+}
+
+// Texte complet
+function buildFullText(){
+  const grouped=groupDevis(); let lines=["=== DEVIS COMPLET ===\n"], globalTotal=0;
+  for(const grp in grouped){
+    lines.push(`\n## ${grp} ##\n`); let groupTotal=0;
+    for(const key in grouped[grp]){
+      const s=grouped[grp][key]; if(!s||!s.items||!s.items.length) continue;
+      const label=formatPieceLabel(key), st=0;
+      lines.push(pieceSeparator(label));
+      s.items.forEach(it=>{const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; globalTotal+=t; lines.push(itemLine(it));});
+      if(s.note) lines.push("Note : "+s.note);
+      lines.push(`Total ${label} : ${st.toFixed(2)}€\n`);
+    }
+    lines.push(`Total ${grp} : ${groupTotal.toFixed(2)}€\n`);
+  }
+  lines.push(`\n=== Total global : ${globalTotal.toFixed(2)}€ ===\n`);
+  return lines.join("\r\n");
+}
+function exportTextFull(){
+  const name=(devis.__name||"Devis").trim()||"Devis";
+  const blob=new Blob([buildFullText()],{type:"text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=`${name.replace(/\s+/g,'_').toLowerCase()}_complet.txt`; a.click();
+  URL.revokeObjectURL(url);
+  alert("✅ Export .txt complet généré.");
+}
+async function exportZipFull(){
+  if(typeof JSZip==="undefined"){ alert("JSZip non chargé."); return; }
+  const name=(devis.__name||"Devis").trim()||"Devis", zip=new JSZip();
+  zip.file(`${name.replace(/\s+/g,'_').toLowerCase()}_complet.txt`, buildFullText());
+  zip.file("README.txt", `Devis complet\nNom: ${name}\nDate: ${new Date().toLocaleString()}\n`);
+  const blob=await zip.generateAsync({type:"blob"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=`${name.replace(/\s+/g,'_').toLowerCase()}_complet.zip`; a.click();
+  URL.revokeObjectURL(url);
+  alert("✅ Export .zip complet généré.");
+}
+</script>
+
+  <!-- =============================
+     CHAPITRE 8 : DÉMARRAGE & EXPOSE
+     ============================= -->
+<script>
 function init(){
   try{
     loadLocal();
     pageMain();
   }catch(err){
-    const el = document.getElementById('app');
-    if (el) el.innerHTML =
-      `<div class="card"><h2>Erreur init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
+    const el=document.getElementById("app");
+    if(el){
+      el.innerHTML=`<div class="card"><h2>Erreur init()</h2><pre>${(err&&err.stack)||err}</pre></div>`;
+    }
   }
 }
 
-/* Expose — ne lister que des fonctions qui existent réellement dans le fichier */
+/* Expose uniquement les fonctions réelles */
 Object.assign(window, {
-  // Menu / sauvegardes (chap. 4)
+  // Menu & sauvegarde (chap.4)
   pageMain,
   actionNouveauDevis,
   pageSavedDevis,
@@ -929,7 +1090,7 @@ Object.assign(window, {
   deleteDevis,
   saveCurrentDevis,
 
-  // Pièces & flux (chap. 5)
+  // Pièces & flux (chap.5)
   pageHome,
   pageAddPiece,
   confirmPieceChoice,
@@ -946,7 +1107,7 @@ Object.assign(window, {
   pageQuantite,
   saveItem,
 
-  // Installations spécifiques & Tableau (chap. 6)
+  // Installations spécifiques & Tableau (chap.6)
   pageISHome,
   isSoon,
   pageTabHome,
@@ -963,7 +1124,7 @@ Object.assign(window, {
   submitTabMod_Commandes,
   pageTabMod_Specifique,
 
-  // Estimatif & exports (chap. 7)
+  // Estimatif & exports (chap.7)
   pageEstimatif,
   pageTotaux,
   exportText,
@@ -971,9 +1132,15 @@ Object.assign(window, {
   exportTextFull,
   exportZipFull,
 
-  // Navigation / sécurité
+  // Navigation
   confirmBackHome
 });
 
 // Lancement
 init();
+</script>
+  
+  
+  
+</body>
+</html>
