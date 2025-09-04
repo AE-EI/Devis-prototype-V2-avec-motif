@@ -167,7 +167,7 @@ function loadLocal(){
   ensureId();
 }
 </script>
-  <!-- =============================
+<!-- =============================
      CHAPITRE 3 : CONSTANTES
      ============================= -->
 <script>
@@ -203,7 +203,7 @@ var DESIGNATIONS_PAR_CATEGORIE = {
   ]
 };
 
-// Tarifs de base (selon type d’intervention)
+// Tarifs de base (pièces classiques, selon type d’intervention)
 var TARIFS = {
   'Prise': { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
   'Point de centre': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
@@ -228,32 +228,41 @@ var ETAGES = [
   'Rez-de-chaussée','1er étage','2e étage',
   'Sous-sol','Combles','Annexe'
 ];
-</script>
-  <script>
-// ----- Tarifs "Tableau & distribution" -----
 
-// Règles données :
-// - Pose encastrée = +70% vs saillie
-// - Avec dépose de l’existant = +30% vs création
-// - 18 modules = +30% vs 13 modules
-// - 24 modules = +50% vs 13 modules
-// Bases (saillie, création, 13 modules) :
-// - 1 rangée = 60 €
-// - 2 rangées = 80 €
-// - 3 rangées = 100 €
-// - 4 rangées = 120 €
+/* ======================================================
+   TARIFS — TABLEAU & DISTRIBUTION (pose, modulaires, etc.)
+   ====================================================== */
 
+// Barèmes Pose Tableau (base 13 modules en saillie, création)
 var TARIFS_TABLEAU = {
-  // A. Bases pose (saillie + création + 13 modules)
-  poseBase13: {
-    1: 60,
-    2: 80,
-    3: 100,
-    4: 120
+  // Pose tableau : prix de base (13 modules, Saillie, Création)
+  pose_base_13: {
+    1: 60,   // 1 rangée 13M
+    2: 80,   // 2 rangées 13M
+    3: 100,  // 3 rangées 13M
+    4: 120   // 4 rangées 13M
   },
 
-  // B. Disjoncteurs (PU par calibre)
-  disjoncteur: {
+  // Coefficients supplémentaires
+  coef: {
+    // Modules (par rapport à 13M)
+    modules: {
+      13: 1.00,
+      18: 1.30, // +30%
+      24: 1.50  // +50%
+    },
+    pose: {
+      'Saillie': 1.00,
+      'Encastré': 1.70 // +70%
+    },
+    intervention: {
+      'Création': 1.00,
+      'Avec dépose de l’existant': 1.30 // +30%
+    }
+  },
+
+  // Disjoncteurs (PU)
+  disjoncteurs: {
     2: 32,
     10: 25,
     16: 25,
@@ -261,68 +270,42 @@ var TARIFS_TABLEAU = {
     32: 32
   },
 
-  // C. Interrupteurs différentiels (PU par type)
-  // Clés: "40A_A", "40A_AC", "63A_A", "63A_AC"
-  id: {
-    "40A_AC": 60,
-    "40A_A":  80,
-    "63A_AC": 100,
-    "63A_A":  120
+  // Interrupteurs différentiels (PU)
+  inter_diff: {
+    '40A-AC': 60,
+    '40A-A': 80,
+    '63A-AC': 100,
+    '63A-A': 120
   },
 
-  // D. Commandes & pilotage (PU par article)
+  // Commandes & pilotage (PU)
   commandes: {
-    "Télérupteur": 50,
-    "Télérupteur silencieux": 70,
-    "Horloge mécanique + Disj 2A": 80,
-    "Horloge mécanique + contacteur HC + Disj 2A": 130
+    'Télérupteur': 50,
+    'Télérupteur silencieux': 70,
+    'Horloge mécanique + Disjoncteur 2A': 80,
+    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A': 130
   }
 };
 
-// Helper : prix du Tableau
-// kind: 'pose' | 'disjoncteur' | 'id' | 'commandes'
-function getTabPrice(kind, keyObjOrStr){
-  try{
-    if(kind === 'pose'){
-      // keyObjOrStr = { r, m, pose, interv }
-      const r     = parseInt(keyObjOrStr.r,10) || 1;
-      const m     = String(keyObjOrStr.m||'13').trim();         // "13" | "18" | "24"
-      const pose  = String(keyObjOrStr.pose||'Saillie').trim(); // "Saillie" | "Encastré"
-      const itv   = String(keyObjOrStr.interv||'Création').trim();
+/**
+ * Calcule le prix de la pose de tableau selon :
+ * - rangées (1..4)
+ * - modules (13 / 18 / 24)
+ * - type de pose ('Saillie' | 'Encastré')
+ * - intervention ('Création' | 'Avec dépose de l’existant')
+ *
+ * Retourne un nombre (prix TTC en €) arrondi à 2 décimales.
+ */
+function getTabPrice(rang, modules, pose, intervention){
+  var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
+  if(!base) return 0;
 
-      // base (saillie, création, 13 modules)
-      const baseSaillie13 = TARIFS_TABLEAU.poseBase13[r] != null ? +TARIFS_TABLEAU.poseBase13[r] : 0;
+  var cMod = TARIFS_TABLEAU.coef.modules[+modules] || 1.00;
+  var cPose = TARIFS_TABLEAU.coef.pose[pose] || 1.00;
+  var cInv = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
 
-      // multiplicateurs
-      const multModules =
-        (m === '18') ? 1.30 :
-        (m === '24') ? 1.50 : 1.00; // 13 modules
-
-      const multPose = (pose === 'Encastré') ? 1.70 : 1.00; // +70%
-      const multInterv = (itv === 'Avec dépose de l’existant') ? 1.30 : 1.00; // +30%
-
-      const price = baseSaillie13 * multModules * multPose * multInterv;
-
-      // On arrondit à l'euro le plus proche
-      return Math.round(price);
-    }
-
-    if(kind === 'disjoncteur'){
-      const calib = +keyObjOrStr;
-      return +((TARIFS_TABLEAU.disjoncteur||{})[calib] || 0);
-    }
-
-    if(kind === 'id'){
-      const key = String(keyObjOrStr||'');
-      return +((TARIFS_TABLEAU.id||{})[key] || 0);
-    }
-
-    if(kind === 'commandes'){
-      const key = String(keyObjOrStr||'');
-      return +((TARIFS_TABLEAU.commandes||{})[key] || 0);
-    }
-  }catch(e){}
-  return 0;
+  var price = base * cMod * cPose * cInv;
+  return Math.round(price * 100) / 100;
 }
 </script>
   <!-- =============================
