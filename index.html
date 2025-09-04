@@ -919,28 +919,59 @@ function init(){
   }
 }
 
-// Expose : uniquement des fonctions QUI EXISTENT
+/* Expose — ne lister que des fonctions qui existent réellement dans le fichier */
 Object.assign(window, {
-  // Menu / sauvegardes
-  pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
+  // Menu / sauvegardes (chap. 4)
+  pageMain,
+  actionNouveauDevis,
+  pageSavedDevis,
+  loadDevis,
+  deleteDevis,
+  saveCurrentDevis,
 
   // Pièces & flux (chap. 5)
-  pageHome, pageAddPiece, confirmPieceChoice, removePiece,
-  goPiece, delLine, editPieceNote, pagePieceSpecifique,
-  goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
+  pageHome,
+  pageAddPiece,
+  confirmPieceChoice,
+  removePiece,
+  goPiece,
+  delLine,
+  editPieceNote,
+  pagePieceSpecifique,
+  goCategory,
+  goEclairageSub,
+  setEclairageBranch,
+  goIntervention,
+  goDesignation,
+  pageQuantite,
+  saveItem,
 
   // Installations spécifiques & Tableau (chap. 6)
-  pageISHome, isSoon,
-  pageTabHome, pageTabPose, addTabPose,
-  pageTab_ID, submitTab_ID,
-  pageTab_Disjoncteurs, pageTab_DisjDetails, pageTab_DisjSaveDetails, pageTab_DisjVider, pageTab_DisjValider,
-  pageTabMod_Commandes, submitTabMod_Commandes,
+  pageISHome,
+  isSoon,
+  pageTabHome,
+  pageTabPose,
+  addTabPose,
+  pageTab_ID,
+  submitTab_ID,
+  pageTab_Disjoncteurs,
+  pageTab_DisjDetails,
+  pageTab_DisjSaveDetails,
+  pageTab_DisjVider,
+  pageTab_DisjValider,
+  pageTabMod_Commandes,
+  submitTabMod_Commandes,
   pageTabMod_Specifique,
 
   // Estimatif & exports (chap. 7)
-  pageEstimatif, pageTotaux, exportText, exportZipGroups, exportTextFull, exportZipFull,
+  pageEstimatif,
+  pageTotaux,
+  exportText,
+  exportZipGroups,
+  exportTextFull,
+  exportZipFull,
 
-  // Navigation
+  // Navigation / sécurité
   confirmBackHome
 });
 
