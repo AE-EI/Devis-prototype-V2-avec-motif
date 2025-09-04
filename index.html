@@ -88,8 +88,15 @@ function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 
 // --- DOM & helpers UI
 function $app(){ return document.getElementById('app'); }
-/** Crée un bouton (fn = string "goPiece('Salon')") */
-function b(label, fn, cls){ cls = cls || 'btn'; return '<button class="'+cls+'" onclick="'+fn+'">'+label+'</button>'; }
+
+/** Crée un bouton (fn = string comme "goPiece('Salon')") 
+ *  ✅ FIX : utilisation de guillemets simples dans onclick
+ */
+function b(label, fn, cls){
+  cls = cls || 'btn';
+  return '<button class="'+cls+'" onclick=\''+fn+'\'>'+label+'</button>';
+}
+
 /** Format € */
 function euro(n){ return (+(n||0)).toFixed(2) + ' €'; }
 
@@ -126,7 +133,7 @@ function buildPieceLabel(base, qualif, etage){
   if(etage && etage.trim())   lbl += ' — '+etage.trim();
   return lbl;
 }
-/** Cherche une clé libre si le libellé existe déjà (Salon, Salon (2), Salon (3), …) */
+/** Cherche une clé libre si le libellé existe déjà (Salon, Salon (2), …) */
 function nextFreeKey(label){
   if(!devis[label]) return label;
   var n=2; while(devis[label+' ('+n+')']) n++;
