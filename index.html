@@ -538,7 +538,6 @@ function submitTab_ID(){
 /* ========== (3) MODULAIRE : DISJONCTEURS regroupés ========== */
 
 function pageTab_Disjoncteurs(){
-  // helpers rendus sans clavier
   const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
 
   view(`
@@ -586,11 +585,14 @@ function pageTab_Disjoncteurs(){
 }
 
 function pageTab_DisjDetails(rating){
-  // quantité actuelle
-  const currentQty = tabState.disj[rating]?.qty || 0;
+  // quantité actuelle (compat Safari : pas de optional chaining)
+  const currentQty = (tabState.disj && tabState.disj[rating] && typeof tabState.disj[rating].qty==='number')
+    ? tabState.disj[rating].qty : 0;
+
   // options 0..30
   const opts = (sel)=>[...Array(31)].map((_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join('');
-  // items “Circuit 1…N” visuels (pré-remplis, pas de clavier)
+
+  // aperçu “Circuit 1…N” (sans clavier)
   const preview = (n)=> n>0
     ? `<ul style="margin:8px 0 0 18px;">${[...Array(n)].map((_,i)=>`<li>Circuit ${i+1}</li>`).join('')}</ul>`
     : `<p class="muted">Aucun circuit pour l’instant.</p>`;
@@ -614,7 +616,7 @@ function pageTab_DisjDetails(rating){
     </div>
   `);
 
-  // live preview quand on change la quantité (sans clavier)
+  // live preview quand on change la quantité
   document.getElementById('dj-detail-qty').addEventListener('change', (e)=>{
     const n = +e.target.value || 0;
     document.getElementById('dj-detail-preview').innerHTML =
@@ -639,7 +641,6 @@ function pageTab_DisjVider(){
 }
 
 function pageTab_DisjValider(){
-  // récupère les quantités visibles (au cas où l’utilisateur a changé sans passer par “Détail circuits”)
   const readQty = (id)=> +document.getElementById(id).value || 0;
   tabState.disj[2].qty  = readQty('djq-2');
   tabState.disj[10].qty = readQty('djq-10');
@@ -651,11 +652,11 @@ function pageTab_DisjValider(){
   ensureTableau();
 
   [2,10,16,20,32].forEach(rating=>{
-    const { qty, names } = tabState.disj[rating];
+    const entry = tabState.disj[rating] || { qty:0, names:[] };
+    const qty   = entry.qty || 0;
+    const names = entry.names || [];
     if(qty>0){
-      const details = (names && names.length)
-        ? ` — circuits : ${names.join(', ')}`
-        : '';
+      const details = names.length ? ` — circuits : ${names.join(', ')}` : '';
       devis["Tableau"].items.push({
         category: "Tableau/Modulaire",
         intervention: "",
@@ -671,7 +672,6 @@ function pageTab_DisjValider(){
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal();
   alert("Disjoncteurs ajoutés au devis.");
-  // On reste sur la page Disjoncteurs pour pouvoir compléter d’autres calibres
   pageTab_Disjoncteurs();
 }
 
@@ -756,7 +756,6 @@ function pageTabMod_Specifique(){
   alert("Ajouté.");
   pageTabHome();
 }
-
 // =============================
 // CHAP.7 : ESTIMATIF & EXPORTS
 // =============================
