@@ -474,24 +474,346 @@ function editPieceNote(){
 }
 
 /* ============================= */
-/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholders sûrs) */
+/* CHAPITRE 6 : TABLEAU & DISTRIBUTION (COMPLET) */
 /* ============================= */
+
+// Petit helper local : on stocke tout dans la pièce "Tableau"
+function ensureTableau(){ ensureSection("Tableau"); }
+
+// Hub “Installations spécifiques”
 function pageISHome(){
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Installations spécifiques</h2>
-      <p class="muted">À venir : Mise à la terre, VMC, Tableau & distribution.</p>
       <div class="row" style="margin-top:10px;">
         ${b("Mise à la terre","isSoon('Mise à la terre')")}
         ${b("VMC","isSoon('VMC')")}
-        ${b("Tableau / distribution","isSoon('Tableau / distribution')")}
+        ${b("Tableau / distribution","pageTabHome()","btn primary")}
+      </div>
+      <p class="muted" style="margin-top:8px;">Les modules “Mise à la terre” et “VMC” arrivent bientôt.</p>
+    </div>
+  `);
+}
+function isSoon(x){ alert(x + " : module à venir."); }
+
+// Hub “Tableau & distribution”
+function pageTabHome(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageISHome()","btn back")}
+      <h2>Tableau & distribution</h2>
+      <div class="row" style="margin-top:10px;">
+        ${b("1 · Pose tableau","pageTabPose()","btn primary")}
+        ${b("2 · Modulaire","pageTabModulaire()","btn")}
+        ${b("3 · Commande & pilotage modulaire","pageTabMod_Commandes()","btn")}
+      </div>
+      <p class="muted" style="margin-top:8px;">Tous les éléments ajoutés seront rangés dans la pièce « Tableau ».</p>
+    </div>
+  `);
+}
+
+/* ========== (1) POSE TABLEAU ========== */
+
+function pageTabPose(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Pose tableau</h2>
+
+      <label>Nombre de rangées</label>
+      <select id="tp-rang">
+        <option value="1" selected>1 rangée</option>
+        <option value="2">2 rangées</option>
+        <option value="3">3 rangées</option>
+        <option value="4">4 rangées</option>
+      </select>
+
+      <label style="margin-top:8px;">Nombre de modules</label>
+      <select id="tp-mod">
+        <option value="13" selected>13 modules</option>
+        <option value="18">18 modules</option>
+        <option value="24">24 modules</option>
+      </select>
+
+      <label style="margin-top:8px;">Type de pose</label>
+      <select id="tp-pose">
+        <option value="Saillie" selected>Saillie</option>
+        <option value="Encastre">Encastré</option>
+      </select>
+
+      <label style="margin-top:8px;">Type d’intervention</label>
+      <select id="tp-interv">
+        <option value="Création" selected>Création</option>
+        <option value="Avec dépose de l’existant">Avec dépose de l’existant</option>
+      </select>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","addTabPose()","btn primary")}
       </div>
     </div>
   `);
 }
-function isSoon(x){ alert(x+" : module à venir."); }
+function addTabPose(){
+  const r   = document.getElementById('tp-rang').value;
+  const m   = document.getElementById('tp-mod').value;
+  const pos = document.getElementById('tp-pose').value;
+  const itv = document.getElementById('tp-interv').value;
 
+  ensureTableau();
+  devis["Tableau"].items.push({
+    category: "Tableau & distribution",
+    intervention: itv,
+    pose: pos,
+    designation: `Pose tableau — ${r} rangée(s), ${m} modules`,
+    qty: 1,
+    prixU: 0
+  });
+  saveLocal();
+  alert("Élément ajouté à « Tableau ».");
+  pageTabHome();
+}
+
+/* ========== (2) MODULAIRE ========== */
+
+function pageTabModulaire(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Modulaire</h2>
+      <div class="row" style="margin-top:10px;">
+        ${b("A · Interrupteurs différentiels","pageTabMod_ID()","btn primary")}
+        ${b("B · Disjoncteurs 10/16/20 A","pageTabMod_Disj('B')","btn")}
+        ${b("C · Disjoncteurs 10/16/20 A (jeu 2)","pageTabMod_Disj('C')","btn")}
+        ${b("D · Commandes modulaires","pageTabMod_Commandes()","btn")}
+        ${b("E · Spécifique (libre + prix)","pageTabMod_Specifique()","btn ghost")}
+      </div>
+    </div>
+  `);
+}
+
+/* --- A. Interrupteurs différentiels --- */
+function pageTabMod_ID(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabModulaire()","btn back")}
+      <h2>Interrupteurs différentiels</h2>
+
+      <div class="list">
+        <label>ID 30mA - 40A - Type A
+          <input id="id-a-40-30" type="number" min="0" value="0" />
+        </label>
+        <label>ID 30mA - 40A - Type AC
+          <input id="id-ac-40-30" type="number" min="0" value="0" />
+        </label>
+        <label>ID 30mA - 63A - Type A
+          <input id="id-a-63-30" type="number" min="0" value="0" />
+        </label>
+        <label>ID 30mA - 63A - Type AC
+          <input id="id-ac-63-30" type="number" min="0" value="0" />
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","submitTabMod_ID()","btn primary")}
+      </div>
+    </div>
+  `);
+}
+function submitTabMod_ID(){
+  const defs = [
+    { id:"id-a-40-30",  name:"ID 30mA - 40A - Type A"  },
+    { id:"id-ac-40-30", name:"ID 30mA - 40A - Type AC" },
+    { id:"id-a-63-30",  name:"ID 30mA - 63A - Type A"  },
+    { id:"id-ac-63-30", name:"ID 30mA - 63A - Type AC" }
+  ];
+  let added = 0;
+  ensureTableau();
+  defs.forEach(d=>{
+    const q = +document.getElementById(d.id).value || 0;
+    if(q>0){
+      devis["Tableau"].items.push({
+        category: "Tableau/Modulaire",
+        intervention: "",
+        pose: "",
+        designation: d.name,
+        qty: q,
+        prixU: 0
+      });
+      added++;
+    }
+  });
+  if(!added){ alert("Rien à ajouter."); return; }
+  saveLocal();
+  alert("Interrupteurs différentiels ajoutés.");
+  pageTabModulaire();
+}
+
+/* --- B/C. Disjoncteurs 10/16/20A + détail circuits --- */
+function pageTabMod_Disj(which){
+  // which = 'B' ou 'C' (même structure, 2 entrées séparées pour organiser)
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabModulaire()","btn back")}
+      <h2>${which==='B' ? 'Disjoncteurs 10/16/20 A' : 'Disjoncteurs 10/16/20 A (jeu 2)'}</h2>
+
+      <div class="list">
+        <label>Disjoncteurs 10 A (Qté)
+          <input id="dj-10a" type="number" min="0" value="0" />
+          ${b("Détail circuits","pageTabMod_DisjDetails('${which}',10,document.getElementById('dj-10a').value)")}
+        </label>
+        <label>Disjoncteurs 16 A (Qté)
+          <input id="dj-16a" type="number" min="0" value="0" />
+          ${b("Détail circuits","pageTabMod_DisjDetails('${which}',16,document.getElementById('dj-16a').value)")}
+        </label>
+        <label>Disjoncteurs 20 A (Qté)
+          <input id="dj-20a" type="number" min="0" value="0" />
+          ${b("Détail circuits","pageTabMod_DisjDetails('${which}',20,document.getElementById('dj-20a').value)")}
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis (sans détails)","submitTabMod_Disj('${which}',null)","btn")}
+      </div>
+    </div>
+  `);
+}
+function pageTabMod_DisjDetails(which, rating, qtyRaw){
+  const qty = Math.max(0, +qtyRaw||0);
+  if(!qty){ alert("Définis une quantité > 0 avant le détail."); return; }
+
+  const fields = Array.from({length:qty},(_,i)=>`
+    <input id="dj-name-${rating}-${i}" placeholder="Circuit ${i+1} (ex: Prises salon)"/>
+  `).join('');
+
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabMod_Disj('"+which+"')","btn back")}
+      <h2>Détail circuits — ${rating} A</h2>
+      <p class="muted">Renseigne le nom de chaque circuit.</p>
+      <div class="list">${fields}</div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter ces circuits","submitTabMod_DisjDetails('"+which+"',"+rating+","+qty+")","btn primary")}
+      </div>
+    </div>
+  `);
+}
+function submitTabMod_DisjDetails(which, rating, qty){
+  const names = [];
+  for(let i=0;i<qty;i++){
+    const v = (document.getElementById(`dj-name-${rating}-${i}`).value||"").trim();
+    names.push(v||`Circuit ${i+1}`);
+  }
+  ensureTableau();
+  devis["Tableau"].items.push({
+    category: "Tableau/Modulaire",
+    intervention: "",
+    pose: "",
+    designation: `Disjoncteur ${rating} A — circuits : ${names.join(', ')}`,
+    qty: qty,
+    prixU: 0
+  });
+  saveLocal();
+  alert(`Ajouté : ${qty} × Disjoncteur ${rating} A (avec détails).`);
+  pageTabModulaire();
+}
+function submitTabMod_Disj(which, _ignored){
+  // Ajoute sans détails, en prenant juste les quantités
+  const q10 = +document.getElementById('dj-10a').value || 0;
+  const q16 = +document.getElementById('dj-16a').value || 0;
+  const q20 = +document.getElementById('dj-20a').value || 0;
+
+  if(!(q10||q16||q20)){ alert("Rien à ajouter."); return; }
+
+  ensureTableau();
+  if(q10) devis["Tableau"].items.push({ category:"Tableau/Modulaire", intervention:"", pose:"", designation:"Disjoncteur 10 A", qty:q10, prixU:0 });
+  if(q16) devis["Tableau"].items.push({ category:"Tableau/Modulaire", intervention:"", pose:"", designation:"Disjoncteur 16 A", qty:q16, prixU:0 });
+  if(q20) devis["Tableau"].items.push({ category:"Tableau/Modulaire", intervention:"", pose:"", designation:"Disjoncteur 20 A", qty:q20, prixU:0 });
+
+  saveLocal();
+  alert("Disjoncteurs ajoutés.");
+  pageTabModulaire();
+}
+
+/* ========== (3) COMMANDE & PILOTAGE MODULAIRE ========== */
+
+function pageTabMod_Commandes(){
+  view(`
+    <div class="card">
+      ${b("Retour","pageTabHome()","btn back")}
+      <h2>Commande & pilotage modulaire</h2>
+
+      <div class="list">
+        <label>Télérupteur
+          <input id="cmd-telerup" type="number" min="0" value="0" />
+        </label>
+        <label>Télérupteur silencieux
+          <input id="cmd-telerup-sil" type="number" min="0" value="0" />
+        </label>
+        <label>Horloge mécanique + Disjoncteur 2A
+          <input id="cmd-horloge-2a" type="number" min="0" value="0" />
+        </label>
+        <label>Horloge mécanique + contacteur HC + Disjoncteur 2A
+          <input id="cmd-horloge-hc-2a" type="number" min="0" value="0" />
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        ${b("Ajouter au devis","submitTabMod_Commandes()","btn primary")}
+      </div>
+    </div>
+  `);
+}
+function submitTabMod_Commandes(){
+  const defs = [
+    { id:"cmd-telerup",        name:"Télérupteur" },
+    { id:"cmd-telerup-sil",    name:"Télérupteur silencieux" },
+    { id:"cmd-horloge-2a",     name:"Horloge mécanique + Disjoncteur 2A" },
+    { id:"cmd-horloge-hc-2a",  name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A" }
+  ];
+  let added=0;
+  ensureTableau();
+  defs.forEach(d=>{
+    const q=+document.getElementById(d.id).value||0;
+    if(q>0){
+      devis["Tableau"].items.push({
+        category: "Tableau/Commandes",
+        intervention: "",
+        pose: "",
+        designation: d.name,
+        qty: q,
+        prixU: 0
+      });
+      added++;
+    }
+  });
+  if(!added){ alert("Rien à ajouter."); return; }
+  saveLocal();
+  alert("Commandes modulaires ajoutées.");
+  pageTabHome();
+}
+
+/* --- E. Spécifique (libre + prix) --- */
+function pageTabMod_Specifique(){
+  const label = prompt("Intitulé de l’élément modulaire (libre) :","");
+  if(!label){ pageTabModulaire(); return; }
+  const prix  = parseFloat(prompt("Prix unitaire estimé (€) :","0")) || 0;
+  const qty   = Math.max(1, parseInt(prompt("Quantité :","1")||"1",10));
+
+  ensureTableau();
+  devis["Tableau"].items.push({
+    category: "Tableau/Modulaire — Spécifique",
+    intervention: "",
+    pose: "",
+    designation: label,
+    qty: qty,
+    prixU: prix
+  });
+  saveLocal();
+  alert("Ajouté.");
+  pageTabModulaire();
+}
 /* ============================= */
 /* CHAPITRE 7 : ESTIMATIF & EXPORTS (stable + complet) */
 /* ============================= */
@@ -691,34 +1013,76 @@ async function exportZipFull(){
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE & EXPOSE */
 /* ============================= */
-function init(){ 
-  try{ 
-    loadLocal(); 
-    pageMain(); 
+function init(){
+  try{
+    loadLocal();
+    pageMain();
   }catch(err){
-    const el=document.getElementById('app');
-    if(el) el.innerHTML=`<div class="card"><h2>Erreur init()</h2><pre>${(err&&err.stack)||err}</pre></div>`;
+    const el = document.getElementById('app');
+    if (el) el.innerHTML =
+      `<div class="card"><h2>Erreur init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
   }
 }
 
-/* Stubs de sécurité (au cas où certaines fonctions seraient référencées ailleurs) */
-function pageTabHome(){ alert("Tableau & distribution : hub à venir."); }
-function tabSoon(x){ alert("Tableau & distribution → " + (x||"élément") + " : à venir."); }
+/* Expose — rendre accessibles depuis les boutons/liens HTML
+   (⚠️ Laisse seulement des noms qui existent réellement dans ton fichier) */
+Object.assign(window, {
+  // Menu / sauvegardes
+  pageMain,
+  actionNouveauDevis,
+  pageSavedDevis,
+  loadDevis,
+  deleteDevis,
+  saveCurrentDevis,
 
-/* Expose */
-Object.assign(window,{
-  pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
-  pageHome, pageAddPiece, confirmPieceChoice, removePiece,
-  goPiece, delLine, editPieceNote, pagePieceSpecifique,
-  goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
-  pageISHome, isSoon, pageTabHome, tabSoon,
-  pageEstimatif, pageTotaux, exportText, exportZipGroups, exportTextFull, exportZipFull,
+  // Pièces & flux (chap. 5)
+  pageHome,
+  pageAddPiece,
+  confirmPieceChoice,
+  removePiece,
+  goPiece,
+  delLine,
+  editPieceNote,
+  pagePieceSpecifique,
+  goCategory,
+  goEclairageSub,
+  setEclairageBranch,
+  goIntervention,
+  goDesignation,
+  pageQuantite,
+  saveItem,
+
+  // Installations spécifiques (chap. 6)
+  pageISHome,
+  isSoon,
+
+  // Tableau & distribution (chap. 6)
+  pageTabHome,
+  pageTabPose,
+  addTabPose,
+  pageTabModulaire,
+  pageTabMod_ID,
+  submitTabMod_ID,
+  pageTabMod_Disj,
+  pageTabMod_DisjDetails,
+  submitTabMod_DisjDetails,
+  submitTabMod_Disj,
+  pageTabMod_Commandes,
+  submitTabMod_Commandes,
+  pageTabMod_Specifique,
+
+  // Estimatif & exports (chap. 7)
+  pageEstimatif,
+  pageTotaux,
+  exportText,
+  exportZipGroups,
+  // si tu as activé les exports « complets » :
+  exportTextFull,
+  exportZipFull,
+
+  // Navigation / sécurité
   confirmBackHome
 });
 
-/* Lancement */
+// Lancement
 init();
-</script>
-</main>
-</body>
-</html>
