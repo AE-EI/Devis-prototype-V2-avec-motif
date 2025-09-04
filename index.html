@@ -768,7 +768,22 @@ function init(){
   }
 }
 
-// Expose toutes les fonctions utiles (ordre logique)
+/* --- STUBS DE SÉCURITÉ (si Chapitre 6 non présent) --- */
+function pageISHome(){ 
+  alert("Installations spécifiques : module à venir."); 
+}
+function isSoon(x){ 
+  alert((x||"Cette section")+" : à venir."); 
+}
+/* Ces deux fonctions étaient exposées mais non définies : on met des placeholders */
+function pageTabHome(){ 
+  alert("Tableau & distribution : hub à venir."); 
+}
+function tabSoon(x){ 
+  alert("Tableau & distribution → "+(x||"élément")+" : à venir."); 
+}
+
+/* --- Expose toutes les fonctions utiles --- */
 Object.assign(window,{
   // Menu / sauvegardes
   pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
@@ -778,11 +793,11 @@ Object.assign(window,{
   goPiece, delLine, editPieceNote, pagePieceSpecifique,
   goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
 
-  // Installations spécifiques (safe)
+  // Installations spécifiques (placeholders safe)
   pageISHome, isSoon,
   pageTabHome, tabSoon,
 
-  // Estimatif & exports
+  // Estimatif & exports (groupes + complet)
   pageEstimatif, pageTotaux,
   exportText, exportZipGroups,
   exportTextFull, exportZipFull,
