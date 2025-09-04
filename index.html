@@ -6,7 +6,7 @@
   <!-- ============================= -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V2.2 (groupes + ZIP stable)</title>
+  <title>MiniDevis — V2.3 (stable + exports complets)</title>
   <style>
     :root { --bg:#f6f6f6; --card:#fff; --txt:#111; --muted:#666; --line:#e8e8e8; --primary:#111; }
     *{ box-sizing:border-box }
@@ -47,7 +47,7 @@
   </script>
 </head>
 <body>
-<header>MiniDevis — V2.2</header>
+<header>MiniDevis — V2.3</header>
 <main id="app"></main>
 
 <script>
@@ -474,61 +474,27 @@ function editPieceNote(){
 }
 
 /* ============================= */
-/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (SAFE) */
+/* CHAPITRE 6 : INSTALLATIONS SPÉCIFIQUES (placeholders sûrs) */
 /* ============================= */
-
-// Accueil du module "Installations spécifiques"
 function pageISHome(){
   view(`
     <div class="card">
       ${b("Retour","pageHome()","btn back")}
       <h2>Installations spécifiques</h2>
-      <p class="muted">Modules dédiés (en cours d’intégration progressive).</p>
-
+      <p class="muted">À venir : Mise à la terre, VMC, Tableau & distribution.</p>
       <div class="row" style="margin-top:10px;">
         ${b("Mise à la terre","isSoon('Mise à la terre')")}
         ${b("VMC","isSoon('VMC')")}
-        ${b("Tableau / distribution","pageTabHome()")}
+        ${b("Tableau / distribution","isSoon('Tableau / distribution')")}
       </div>
     </div>
   `);
 }
-
-// Placeholder simple (ne casse rien)
-function isSoon(x){
-  alert(x + " : module à venir.");
-  pageISHome();
-}
-
-/* === Sous-module : Tableau & distribution (squelette SAFE) === */
-
-// Hub "Tableau & distribution" (3 tuiles)
-function pageTabHome(){
-  view(`
-    <div class="card">
-      ${b("Retour","pageISHome()","btn back")}
-      <h2>Tableau & distribution</h2>
-      <div class="row" style="margin-top:10px;">
-        ${b("1 · Pose tableau","tabSoon('Pose tableau')")}
-        ${b("2 · Modulaire","tabSoon('Modulaire')")}
-        ${b("3 · Commande modulaire","tabSoon('Commande & pilotage modulaire')")}
-      </div>
-      <p class="muted" style="margin-top:8px;">Ces écrans sont en préparation. Aucun impact sur votre devis actuel.</p>
-    </div>
-  `);
-}
-
-// Placeholder interne du sous-module (aucune écriture dans le devis)
-function tabSoon(label){
-  alert(label + " : écran en cours d’intégration (prochaine étape).");
-  pageTabHome();
-}
+function isSoon(x){ alert(x+" : module à venir."); }
 
 /* ============================= */
-/* CHAPITRE 7 : ESTIMATIF & TOTAUX + EXPORTS */
+/* CHAPITRE 7 : ESTIMATIF & EXPORTS (stable + complet) */
 /* ============================= */
-
-// Groupes de pièces
 const PIECE_GROUPS = {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
   "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
@@ -538,8 +504,6 @@ const PIECE_GROUPS = {
   "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau","Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
   "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution","Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
-
-// Helpers communs aux exports
 function groupDevis(){
   const g={};
   for(const piece in devis){
@@ -550,31 +514,18 @@ function groupDevis(){
   }
   return g;
 }
-function itemLine(it){
-  const unit = it.unit||"u";
-  const poseTxt = (it.intervention==="Création" && it.pose) ? ` - ${it.pose.toLowerCase()}` : "";
-  const left = it.intervention ? `${it.intervention} — ` : "";
-  const pu = (+it.prixU||0).toFixed(2), q=+it.qty||0, total=(q*(+it.prixU||0)).toFixed(2);
-  return `- ${left}${it.designation}${poseTxt} | Qté: ${q} ${unit} | PU: ${pu}€ | Total: ${total}€`;
-}
-function pieceSeparator(label){ return `\n---------------- ${label} ----------------\n`; }
-
-// Estimatif détaillé
+// Estimatif
 function pageEstimatif(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Estimatif détaillé</h2>`;
   let totalGlobal=0; const grouped = groupDevis();
-
   for(const grp in grouped){
     html += `<h2 style="border-top:2px solid #000; padding-top:8px;">${grp}</h2>`;
     let groupTotal=0;
-
     for(const piece in grouped[grp]){
       const s = grouped[grp][piece];
       if(!s || !Array.isArray(s.items) || !s.items.length) continue;
-
       const pieceLabel = formatPieceLabel(piece);
       let sectionTotal=0;
-
       html += `<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">${pieceLabel}</h3><ul>`;
       s.items.forEach(it=>{
         const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
@@ -586,10 +537,8 @@ function pageEstimatif(){
       if(s.note) html += `<li><em>Note : ${s.note}</em></li>`;
       html += `</ul><p><strong>Total ${pieceLabel} : ${euro(sectionTotal)}</strong></p>`;
     }
-
     html += `<p><strong>Total ${grp} : ${euro(groupTotal)}</strong></p><hr>`;
   }
-
   html += `<h3>Total global : ${euro(totalGlobal)}</h3>
            <div class="row" style="margin-top:10px;">
              ${b("Export .txt (par groupe)","exportText()")}
@@ -599,12 +548,10 @@ function pageEstimatif(){
            </div></div>`;
   view(html);
 }
-
-// Totaux par groupe
+// Totaux
 function pageTotaux(){
   let html = `<div class="card">${b("Retour","pageHome()","btn back")}<h2>Totaux par groupe</h2>`;
   let totalGlobal=0; const grouped = groupDevis();
-
   for(const grp in grouped){
     let gt=0;
     for(const piece in grouped[grp]){
@@ -615,7 +562,6 @@ function pageTotaux(){
     }
     html += `<p><strong>${grp}</strong> : ${euro(gt)}</p>`;
   }
-
   html += `<hr><p><strong>Total global : ${euro(totalGlobal)}</strong></p>
            <div class="row" style="margin-top:10px;">
              ${b("Export .txt (par groupe)","exportText()")}
@@ -625,8 +571,15 @@ function pageTotaux(){
            </div></div>`;
   view(html);
 }
-
-// TXT par groupe (stable)
+// TXT par groupe
+function itemLine(it){
+  const unit = it.unit||"u";
+  const poseTxt = (it.intervention==="Création" && it.pose) ? ` - ${it.pose.toLowerCase()}` : "";
+  const left = it.intervention ? `${it.intervention} — ` : "";
+  const pu = (+it.prixU||0).toFixed(2), q=+it.qty||0, total=(q*(+it.prixU||0)).toFixed(2);
+  return `- ${left}${it.designation}${poseTxt} | Qté: ${q} ${unit} | PU: ${pu}€ | Total: ${total}€`;
+}
+function pieceSeparator(label){ return `\n---------------- ${label} ----------------\n`; }
 function exportText(){
   const grouped = groupDevis();
   for(const grp in grouped){
@@ -637,10 +590,7 @@ function exportText(){
       const label=formatPieceLabel(piece);
       lines.push(pieceSeparator(label));
       let st=0;
-      s.items.forEach(it=>{
-        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
-        st+=t; groupTotal+=t; lines.push(itemLine(it));
-      });
+      s.items.forEach(it=>{ const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it)); });
       if(s.note) lines.push(`Note : ${s.note}`);
       lines.push(`Total ${label} : ${st.toFixed(2)}€\n`);
     }
@@ -651,12 +601,10 @@ function exportText(){
   }
   alert("✅ Export terminé : un fichier .txt par groupe généré.");
 }
-
-// ZIP par groupe (stable)
+// ZIP par groupe
 async function exportZipGroups(){
   if(typeof JSZip==="undefined"){ alert("JSZip non chargé."); return; }
   const grouped=groupDevis(); const zip=new JSZip(); let global=0;
-
   for(const grp in grouped){
     let lines=[`=== ${grp} ===\n`], groupTotal=0;
     for(const piece in grouped[grp]){
@@ -665,10 +613,7 @@ async function exportZipGroups(){
       const label=formatPieceLabel(piece);
       lines.push(pieceSeparator(label));
       let st=0;
-      s.items.forEach(it=>{
-        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
-        st+=t; groupTotal+=t; lines.push(itemLine(it));
-      });
+      s.items.forEach(it=>{ const q=+it.qty||0, pu=+it.prixU||0, t=q*pu; st+=t; groupTotal+=t; lines.push(itemLine(it)); });
       if(s.note) lines.push(`Note : ${s.note}`);
       lines.push(`Total ${label} : ${st.toFixed(2)}€\n`);
     }
@@ -676,18 +621,9 @@ async function exportZipGroups(){
     global+=groupTotal;
     zip.file(`devis_${grp}.txt`, lines.join("\r\n"));
   }
-
   const name=(devis.__name||"Devis").trim()||"Devis";
-  const readme=[
-    `Récapitulatif — ${name}`,
-    `Date: ${new Date().toLocaleString()}`,
-    ``,
-    `Total global: ${global.toFixed(2)}€`,
-    ``,
-    `Un fichier .txt par groupe avec détails, quantités, PU et totaux.`
-  ].join("\r\n");
+  const readme=[`Récapitulatif — ${name}`,`Date: ${new Date().toLocaleString()}`,"",`Total global: ${global.toFixed(2)}€`,"","Un fichier .txt par groupe avec détails, quantités, PU et totaux.`"].join("\r\n");
   zip.file("README.txt", readme);
-
   const blob=await zip.generateAsync({type:"blob"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
   a.href=url; a.download=`${name.replace(/\s+/g,'_').toLowerCase()}_groupes.zip`; a.click();
@@ -695,9 +631,7 @@ async function exportZipGroups(){
   alert("✅ Export ZIP (par groupe) généré.");
 }
 
-/* ===== Exports COMPLETS (nouveau, sans casser l’existant) ===== */
-
-// Texte complet (tout dans 1 fichier)
+/* ===== Exports COMPLETS ===== */
 function buildFullText(){
   const grouped = groupDevis();
   let lines = [];
@@ -731,7 +665,6 @@ function buildFullText(){
   lines.push(`\n=== Total global : ${globalTotal.toFixed(2)}€ ===\n`);
   return lines.join("\r\n");
 }
-
 function exportTextFull(){
   const name = (devis.__name||"Devis").trim()||"Devis";
   const blob = new Blob([buildFullText()], { type:"text/plain;charset=utf-8" });
@@ -741,7 +674,6 @@ function exportTextFull(){
   URL.revokeObjectURL(url);
   alert("✅ Export .txt complet généré.");
 }
-
 async function exportZipFull(){
   if (typeof JSZip === "undefined"){ alert("JSZip non chargé."); return; }
   const name = (devis.__name||"Devis").trim()||"Devis";
@@ -755,56 +687,38 @@ async function exportZipFull(){
   URL.revokeObjectURL(url);
   alert("✅ Export .zip complet généré.");
 }
+
 /* ============================= */
 /* CHAPITRE 8 : DÉMARRAGE & EXPOSE */
 /* ============================= */
-function init(){
-  try{
-    loadLocal();   // restaure l’état si présent
-    pageMain();    // menu principal au lancement
+function init(){ 
+  try{ 
+    loadLocal(); 
+    pageMain(); 
   }catch(err){
-    const el = document.getElementById('app');
-    if (el) el.innerHTML = `<div class="card"><h2>Erreur init()</h2><pre>${(err && err.stack) || err}</pre></div>`;
+    const el=document.getElementById('app');
+    if(el) el.innerHTML=`<div class="card"><h2>Erreur init()</h2><pre>${(err&&err.stack)||err}</pre></div>`;
   }
 }
 
-/* --- STUBS de sécurité (définis uniquement si absents) --- */
-if (typeof pageISHome !== 'function') {
-  function pageISHome(){ alert("Installations spécifiques : module à venir."); }
-}
-if (typeof isSoon !== 'function') {
-  function isSoon(x){ alert((x || "Cette section") + " : à venir."); }
-}
-/* Ces deux fonctions étaient exposées mais non définies dans certaines versions → on crée des placeholders */
-if (typeof pageTabHome !== 'function') {
-  function pageTabHome(){ alert("Tableau & distribution : hub à venir."); }
-}
-if (typeof tabSoon !== 'function') {
-  function tabSoon(x){ alert("Tableau & distribution → " + (x || "élément") + " : à venir."); }
-}
+/* Stubs de sécurité (au cas où certaines fonctions seraient référencées ailleurs) */
+function pageTabHome(){ alert("Tableau & distribution : hub à venir."); }
+function tabSoon(x){ alert("Tableau & distribution → " + (x||"élément") + " : à venir."); }
 
-/* --- Expose toutes les fonctions utiles --- */
-Object.assign(window, {
-  // Menu / sauvegardes
+/* Expose */
+Object.assign(window,{
   pageMain, actionNouveauDevis, pageSavedDevis, loadDevis, deleteDevis, saveCurrentDevis,
-
-  // Pièces & flux
   pageHome, pageAddPiece, confirmPieceChoice, removePiece,
   goPiece, delLine, editPieceNote, pagePieceSpecifique,
   goCategory, goEclairageSub, setEclairageBranch, goIntervention, goDesignation, pageQuantite, saveItem,
-
-  // Installations spécifiques (placeholders safe)
-  pageISHome, isSoon,
-  pageTabHome, tabSoon,
-
-  // Estimatif & exports (y compris exports complets)
-  pageEstimatif, pageTotaux,
-  exportText, exportZipGroups,
-  exportTextFull, exportZipFull,
-
-  // Navigation / sécurité
+  pageISHome, isSoon, pageTabHome, tabSoon,
+  pageEstimatif, pageTotaux, exportText, exportZipGroups, exportTextFull, exportZipFull,
   confirmBackHome
 });
 
-// Lancement
+/* Lancement */
 init();
+</script>
+</main>
+</body>
+</html>
