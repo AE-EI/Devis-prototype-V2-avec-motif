@@ -757,31 +757,29 @@ function editPieceNote(){
      CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux)
      ============================= -->
 <script>
-/** Créer un nouveau tableau (numéroté automatiquement) */
+/** 1) Créer un nouveau tableau (numéroté automatiquement) */
 function pageTabCreate(){
-  var existing = Object.keys(devis).filter(k => k.startsWith("Tableau "));
+  var existing = Object.keys(devis).filter(function(k){ return k.startsWith("Tableau "); });
   var nextNum = existing.length + 1;
   var key = "Tableau " + nextNum;
 
-  // Créer la section si elle n'existe pas
   if(!devis[key]){
     devis[key] = { __base:"Tableau", items:[], note:"", __customName:"" };
     saveLocal();
   }
 
-  // Demander un nom personnalisé
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>Nouveau tableau</h2>
-      <p>Identifiant auto : <strong>${key}</strong></p>
-      <label>Nom personnalisé (optionnel)</label>
-      <input id="tab-custom" placeholder="ex: Principal RDC" />
-      <div class="row" style="margin-top:10px;">
-        ${b("Valider","saveTabCustomName('`+key+`')","btn primary")}
-      </div>
-    </div>
-  `);
+  view(
+    '<div class="card">'
+      + b("Retour","pageHome()","btn back")
+      + '<h2>Nouveau tableau</h2>'
+      + '<p>Identifiant auto : <strong>'+key+'</strong></p>'
+      + '<label>Nom personnalisé (optionnel)</label>'
+      + '<input id="tab-custom" placeholder="ex: Principal RDC" />'
+      + '<div class="row" style="margin-top:10px;">'
+        + b("Valider","saveTabCustomName("+JSON.stringify(key)+")","btn primary")
+      + '</div>'
+    + '</div>'
+  );
 }
 
 function saveTabCustomName(key){
@@ -793,156 +791,194 @@ function saveTabCustomName(key){
   pageTabHome(key);
 }
 
-/** Page d’accueil d’un tableau donné */
+/** 2) Accueil d’un tableau donné */
 function pageTabHome(key){
-  if(!key) return pageHome();
+  if(!key || !devis[key]) return pageHome();
   var custom = devis[key].__customName ? " — " + devis[key].__customName : "";
 
-  view(`
-    <div class="card">
-      ${b("Retour","pageHome()","btn back")}
-      <h2>${key}${custom}</h2>
-      <div class="row" style="margin-top:10px;">
-        ${b("1 · Pose tableau","pageTabPose('`+key+`')","btn primary")}
-        ${b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs('`+key+`')","btn")}
-        ${b("3 · Inter diff","pageTab_ID('`+key+`')","btn")}
-        ${b("4 · Commandes / pilotage","pageTabMod_Commandes('`+key+`')","btn")}
-        ${b("5 · Spécifique","pageTabMod_Specifique('`+key+`')","btn")}
-      </div>
-    </div>
-  `);
+  view(
+    '<div class="card">'
+      + b("Retour","pageHome()","btn back")
+      + '<h2>'+key+custom+'</h2>'
+      + '<div class="row" style="margin-top:10px;">'
+        + b("1 · Pose tableau","pageTabPose("+JSON.stringify(key)+")","btn primary")
+        + b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs("+JSON.stringify(key)+")","btn")
+        + b("3 · Interrupteurs diff.","pageTab_ID("+JSON.stringify(key)+")","btn")
+        + b("4 · Commandes / pilotage","pageTabMod_Commandes("+JSON.stringify(key)+")","btn")
+        + b("5 · Spécifique (libre + prix)","pageTabMod_Specifique("+JSON.stringify(key)+")","btn ghost")
+      + '</div>'
+      + '<p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans « '+key+' » uniquement.</p>'
+    + '</div>'
+  );
 }
 
-/** Étape 1 : Pose tableau */
+/** 3) Pose tableau */
 function pageTabPose(key){
-  var rangs = [1,2,3,4].map(r => `<option value="${r}">${r} rangée(s)</option>`).join("");
-  var modules = [13,18,24].map(m => `<option value="${m}">${m} modules</option>`).join("");
-  var poses = ["Saillie","Encastré"].map(p => `<option value="${p}">${p}</option>`).join("");
-  var intervs = ["Création","Avec dépose de l’existant"].map(i => `<option value="${i}">${i}</option>`).join("");
+  var rangs   = [1,2,3,4].map(function(r){return '<option value="'+r+'">'+r+' rangée(s)</option>';}).join('');
+  var modules = [13,18,24].map(function(m){return '<option value="'+m+'">'+m+' modules</option>';}).join('');
+  var poses   = ['Saillie','Encastré'].map(function(p){return '<option value="'+p+'">'+p+'</option>';}).join('');
+  var intervs = ['Création','Avec dépose de l’existant'].map(function(i){return '<option value="'+i+'">'+i+'</option>';}).join('');
 
-  view(`
-    <div class="card">
-      ${b("Retour","pageTabHome('`+key+`')","btn back")}
-      <h2>Pose du tableau</h2>
-      <label>Nombre de rangées</label><select id="tab-rang">${rangs}</select>
-      <label>Modules</label><select id="tab-mod">${modules}</select>
-      <label>Pose</label><select id="tab-pose">${poses}</select>
-      <label>Intervention</label><select id="tab-inv">${intervs}</select>
-      <div class="row" style="margin-top:10px;">
-        ${b("Valider","addTabPose('`+key+`')","btn primary")}
-      </div>
-    </div>
-  `);
+  view(
+    '<div class="card">'
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
+      + '<h2>Pose du tableau</h2>'
+      + '<label>Nombre de rangées</label><select id="tab-rang">'+rangs+'</select>'
+      + '<label>Modules</label><select id="tab-mod">'+modules+'</select>'
+      + '<label>Pose</label><select id="tab-pose">'+poses+'</select>'
+      + '<label>Intervention</label><select id="tab-inv">'+intervs+'</select>'
+      + '<div class="row" style="margin-top:10px;">'
+        + b("Ajouter à "+key,"addTabPose("+JSON.stringify(key)+")","btn primary")
+      + '</div>'
+    + '</div>'
+  );
 }
 
 function addTabPose(key){
-  var rang = parseInt(document.getElementById("tab-rang").value,10);
+  var rang    = parseInt(document.getElementById("tab-rang").value,10);
   var modules = parseInt(document.getElementById("tab-mod").value,10);
-  var pose = document.getElementById("tab-pose").value;
-  var inv = document.getElementById("tab-inv").value;
+  var pose    = document.getElementById("tab-pose").value;
+  var inv     = document.getElementById("tab-inv").value;
 
-  var prix = getTabPrice(rang, modules, pose, inv);
+  var pu = getTabPrice(rang, modules, pose, inv) || 0;
 
   devis[key].items.push({
-    type:"pose",
-    rang: rang,
-    modules: modules,
-    pose: pose,
+    category: "Tableau & distribution",
     intervention: inv,
-    prixU: prix,
+    pose: pose,
+    designation: 'Pose tableau — '+rang+' rangée(s), '+modules+' modules',
     qty: 1,
-    designation: `Tableau ${rang} rangée(s) ${modules}M (${pose}, ${inv})`
+    prixU: pu
   });
   saveLocal();
+  alert("Élément ajouté à « "+key+" ».");
   pageTabHome(key);
 }
 
-/** Étape 2 : Interrupteurs différentiels */
+/** 4) Interrupteurs différentiels */
 function pageTab_ID(key){
-  var opts = Object.keys(TARIFS_TABLEAU.inter_diff).map(l =>
-    `<option value="${l}">${l} (${euro(TARIFS_TABLEAU.inter_diff[l])})</option>`).join("");
+  var opts = Object.keys(TARIFS_TABLEAU.inter_diff)
+    .map(function(label){ return '<option value="'+label+'">'+label+' ('+euro(TARIFS_TABLEAU.inter_diff[label])+')</option>'; })
+    .join('');
 
-  view(`
-    <div class="card">
-      ${b("Retour","pageTabHome('`+key+`')","btn back")}
-      <h2>Interrupteurs différentiels</h2>
-      <label>Choisir modèle</label><select id="tab-id">${opts}</select>
-      <label>Quantité</label><input id="tab-id-qty" type="number" min="1" value="1"/>
-      <div class="row" style="margin-top:10px;">
-        ${b("Valider","submitTab_ID('`+key+`')","btn primary")}
-      </div>
-    </div>
-  `);
+  view(
+    '<div class="card">'
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
+      + '<h2>Interrupteurs différentiels</h2>'
+      + '<label>Modèle</label><select id="id-model">'+opts+'</select>'
+      + '<label>Quantité</label><input id="id-qty" type="number" min="1" value="1" />'
+      + '<div class="row" style="margin-top:10px;">'
+        + b("Ajouter à "+key,"submitTab_ID("+JSON.stringify(key)+")","btn primary")
+      + '</div>'
+    + '</div>'
+  );
 }
 
 function submitTab_ID(key){
-  var model = document.getElementById("tab-id").value;
-  var qty = parseInt(document.getElementById("tab-id-qty").value,10);
-  var pu = TARIFS_TABLEAU.inter_diff[model] || 0;
+  var model = document.getElementById("id-model").value;
+  var qty   = Math.max(1, parseInt(document.getElementById("id-qty").value,10) || 1);
+  var pu    = TARIFS_TABLEAU.inter_diff[model] || 0;
 
   devis[key].items.push({
-    type:"inter_diff",
+    category: "Tableau/Modulaire",
+    designation: 'ID 30mA — '+model.replace('-', ' - '),
+    qty: qty,
+    prixU: pu
+  });
+  saveLocal();
+  alert("Inter diff ajouté.");
+  pageTabHome(key);
+}
+
+/** 5) Disjoncteurs (avec petit détail libre) */
+function pageTab_Disjoncteurs(key){
+  var opts = Object.keys(TARIFS_TABLEAU.disjoncteurs)
+    .map(function(a){ return '<option value="'+a+'">'+a+' A ('+euro(TARIFS_TABLEAU.disjoncteurs[a])+')</option>'; })
+    .join('');
+  view(
+    '<div class="card">'
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
+      + '<h2>Disjoncteurs modulaires</h2>'
+      + '<label>Calibre</label><select id="dj-model">'+opts+'</select>'
+      + '<label>Quantité</label><input id="dj-qty" type="number" min="1" value="1" />'
+      + '<label>Note (facultatif)</label><input id="dj-note" placeholder="ex: Circuit LL / Éclairage couloir…" />'
+      + '<div class="row" style="margin-top:10px;">'
+        + b("Ajouter à "+key,"pageTab_DisjSaveDetails("+JSON.stringify(key)+")","btn primary")
+      + '</div>'
+    + '</div>'
+  );
+}
+
+function pageTab_DisjSaveDetails(key){
+  var model = document.getElementById("dj-model").value;
+  var qty   = Math.max(1, parseInt(document.getElementById("dj-qty").value,10) || 1);
+  var note  = (document.getElementById("dj-note").value || "").trim();
+  var pu    = TARIFS_TABLEAU.disjoncteurs[model] || 0;
+
+  var detail = note ? ' — '+note : '';
+  devis[key].items.push({
+    category: "Tableau/Modulaire",
+    designation: 'Disjoncteur '+model+' A'+detail,
+    qty: qty,
+    prixU: pu
+  });
+  saveLocal();
+  alert("Disjoncteur ajouté.");
+  pageTabHome(key);
+}
+
+/** 6) Commandes & pilotage */
+function pageTabMod_Commandes(key){
+  var opts = Object.keys(TARIFS_TABLEAU.commandes)
+    .map(function(c){ return '<option value="'+c+'">'+c+' ('+euro(TARIFS_TABLEAU.commandes[c])+')</option>'; })
+    .join('');
+  view(
+    '<div class="card">'
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
+      + '<h2>Commande & pilotage</h2>'
+      + '<label>Modèle</label><select id="cmd-model">'+opts+'</select>'
+      + '<label>Quantité</label><input id="cmd-qty" type="number" min="1" value="1" />'
+      + '<div class="row" style="margin-top:10px;">'
+        + b("Ajouter à "+key,"submitTabMod_Commandes("+JSON.stringify(key)+")","btn primary")
+      + '</div>'
+    + '</div>'
+  );
+}
+
+function submitTabMod_Commandes(key){
+  var model = document.getElementById("cmd-model").value;
+  var qty   = Math.max(1, parseInt(document.getElementById("cmd-qty").value,10) || 1);
+  var pu    = TARIFS_TABLEAU.commandes[model] || 0;
+
+  devis[key].items.push({
+    category: "Tableau/Commandes",
     designation: model,
     qty: qty,
     prixU: pu
   });
   saveLocal();
+  alert("Commande ajoutée.");
   pageTabHome(key);
 }
 
-/** Étape 3 : Disjoncteurs */
-function pageTab_Disjoncteurs(key){
-  var opts = Object.keys(TARIFS_TABLEAU.disjoncteurs).map(a =>
-    `<option value="${a}">${a}A (${euro(TARIFS_TABLEAU.disjoncteurs[a])})</option>`).join("");
-
-  view(`
-    <div class="card">
-      ${b("Retour","pageTabHome('`+key+`')","btn back")}
-      <h2>Disjoncteurs</h2>
-      <label>Type</label><select id="tab-disj">${opts}</select>
-      <label>Quantité</label><input id="tab-disj-qty" type="number" min="1" value="1"/>
-      <div class="row" style="margin-top:10px;">
-        ${b("Valider","pageTab_DisjDetails('`+key+`')","btn primary")}
-      </div>
-    </div>
-  `);
-}
-
-function pageTab_DisjDetails(key){
-  var model = document.getElementById("tab-disj").value;
-  var qty = parseInt(document.getElementById("tab-disj-qty").value,10);
-
-  view(`
-    <div class="card">
-      ${b("Retour","pageTab_Disjoncteurs('`+key+`')","btn back")}
-      <h2>Détails disjoncteur ${model}A</h2>
-      <label>Désignation</label><input id="tab-disj-label" placeholder="ex: Lave-linge"/>
-      <div class="row" style="margin-top:10px;">
-        ${b("Valider","pageTab_DisjSaveDetails('`+key+`','${model}',${qty})","btn primary")}
-      </div>
-    </div>
-  `);
-}
-
-function pageTab_DisjSaveDetails(key, model, qty){
-  var label = (document.getElementById("tab-disj-label").value||"").trim();
-  var pu = TARIFS_TABLEAU.disjoncteurs[model] || 0;
+/** 7) Spécifique libre + prix */
+function pageTabMod_Specifique(key){
+  var label = prompt("Intitulé (libre) :","");
+  if(!label){ pageTabHome(key); return; }
+  var prix = parseFloat(prompt("Prix unitaire (€) :","0")) || 0;
+  var qty  = Math.max(1, parseInt(prompt("Quantité :","1") || "1",10));
 
   devis[key].items.push({
-    type:"disjoncteur",
-    designation: model + "A — " + label,
+    category: "Tableau/Spécifique",
+    designation: label,
     qty: qty,
-    prixU: pu
+    prixU: prix
   });
   saveLocal();
+  alert("Ajouté.");
   pageTabHome(key);
 }
-
-/** Étape 4 : Commandes / pilotage */
-function pageTabMod_Commandes(key){
-  var opts = Object.keys(TARIFS_TABLEAU.commandes).map(c =>
-    `<option value="${c}">${c} (${euro(TARIFS_TABLEAU.commandes[c])})</option>`).
-
+</script>
 <!-- =============================
      CHAPITRE 7 : ESTIMATIF & EXPORTS
      ============================= -->
