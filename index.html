@@ -89,9 +89,7 @@ function ensureId(){ if(!devis.__id) devis.__id = genId(); }
 // --- DOM & helpers UI
 function $app(){ return document.getElementById('app'); }
 
-/** Crée un bouton (fn = string comme "goPiece('Salon')") 
- *  ✅ FIX : utilisation de guillemets simples dans onclick
- */
+/** Crée un bouton (fn = string comme "goPiece('Salon')") */
 function b(label, fn, cls){
   cls = cls || 'btn';
   return '<button class="'+cls+'" onclick=\''+fn+'\'>'+label+'</button>';
@@ -167,6 +165,7 @@ function loadLocal(){
   ensureId();
 }
 </script>
+
 <!-- =============================
      CHAPITRE 3 : CONSTANTES
      ============================= -->
@@ -235,80 +234,34 @@ var ETAGES = [
 
 // Barèmes Pose Tableau (base 13 modules en saillie, création)
 var TARIFS_TABLEAU = {
-  // Pose tableau : prix de base (13 modules, Saillie, Création)
-  pose_base_13: {
-    1: 60,   // 1 rangée 13M
-    2: 80,   // 2 rangées 13M
-    3: 100,  // 3 rangées 13M
-    4: 120   // 4 rangées 13M
-  },
-
-  // Coefficients supplémentaires
+  pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
   coef: {
-    // Modules (par rapport à 13M)
-    modules: {
-      13: 1.00,
-      18: 1.30, // +30%
-      24: 1.50  // +50%
-    },
-    pose: {
-      'Saillie': 1.00,
-      'Encastré': 1.70 // +70%
-    },
-    intervention: {
-      'Création': 1.00,
-      'Avec dépose de l’existant': 1.30 // +30%
-    }
+    modules: { 13:1.00, 18:1.30, 24:1.50 },
+    pose: { 'Saillie':1.00, 'Encastré':1.70 },
+    intervention: { 'Création':1.00, 'Avec dépose de l’existant':1.30 }
   },
-
-  // Disjoncteurs (PU)
-  disjoncteurs: {
-    2: 32,
-    10: 25,
-    16: 25,
-    20: 25,
-    32: 32
-  },
-
-  // Interrupteurs différentiels (PU)
-  inter_diff: {
-    '40A-AC': 60,
-    '40A-A': 80,
-    '63A-AC': 100,
-    '63A-A': 120
-  },
-
-  // Commandes & pilotage (PU)
+  disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32 },
+  inter_diff: { '40A-AC':60, '40A-A':80, '63A-AC':100, '63A-A':120 },
   commandes: {
-    'Télérupteur': 50,
-    'Télérupteur silencieux': 70,
-    'Horloge mécanique + Disjoncteur 2A': 80,
-    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A': 130
+    'Télérupteur':50,
+    'Télérupteur silencieux':70,
+    'Horloge mécanique + Disjoncteur 2A':80,
+    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A':130
   }
 };
 
-/**
- * Calcule le prix de la pose de tableau selon :
- * - rangées (1..4)
- * - modules (13 / 18 / 24)
- * - type de pose ('Saillie' | 'Encastré')
- * - intervention ('Création' | 'Avec dépose de l’existant')
- *
- * Retourne un nombre (prix TTC en €) arrondi à 2 décimales.
- */
 function getTabPrice(rang, modules, pose, intervention){
   var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
   if(!base) return 0;
-
   var cMod = TARIFS_TABLEAU.coef.modules[+modules] || 1.00;
   var cPose = TARIFS_TABLEAU.coef.pose[pose] || 1.00;
-  var cInv = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
-
+  var cInv  = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
   var price = base * cMod * cPose * cInv;
   return Math.round(price * 100) / 100;
 }
 </script>
-  <!-- =============================
+
+<!-- =============================
      CHAPITRE 4 : MENU PRINCIPAL
      ============================= -->
 <script>
@@ -323,15 +276,11 @@ function pageMain(){
     +'</div>'
   , true);
 }
-
-// Créer un nouveau devis vide
 function actionNouveauDevis(){
   devis = { __id: genId(), __name: '' };
   saveLocal();
   pageHome();
 }
-
-// Liste des devis sauvegardés
 function pageSavedDevis(){
   var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
   if(!saved.length){
@@ -343,7 +292,6 @@ function pageSavedDevis(){
       +'</div>', true
     );
   }
-
   var list = saved.map(function(d,i){
     return '<div class="pill">'
       +'<strong>'+d.name+'</strong> <small>'+d.date+'</small>'
@@ -351,7 +299,6 @@ function pageSavedDevis(){
       +b('Supprimer','deleteDevis('+i+')','btn')
       +'</div>';
   }).join('');
-
   view(
     '<div class="card">'
       +b('Retour','pageMain()','btn back')
@@ -360,8 +307,6 @@ function pageSavedDevis(){
     +'</div>', true
   );
 }
-
-// Charger un devis sauvegardé
 function loadDevis(idx){
   var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
   if(!saved[idx]) return pageSavedDevis();
@@ -370,8 +315,6 @@ function loadDevis(idx){
   saveLocal();
   pageHome();
 }
-
-// Supprimer un devis sauvegardé
 function deleteDevis(idx){
   if(!confirm('Supprimer ce devis sauvegardé ?')) return;
   var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
@@ -379,15 +322,11 @@ function deleteDevis(idx){
   localStorage.setItem('savedDevisList', JSON.stringify(saved));
   pageSavedDevis();
 }
-
-// Sauvegarder l’état actuel du devis
 function saveCurrentDevis(){
   ensureId();
   var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
   var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
-
   if(i >= 0){
-    // Mise à jour d’un devis existant
     var name = devis.__name || saved[i].name || ('Devis '+new Date().toLocaleDateString());
     devis.__name = name;
     saved[i] = { name:name, date:new Date().toLocaleDateString(), data:devis };
@@ -395,8 +334,6 @@ function saveCurrentDevis(){
     alert('Devis mis à jour.');
     return;
   }
-
-  // Nouveau devis
   var name2 = (devis.__name||'').trim();
   if(!name2){
     name2 = (prompt('Nom du devis :','')||'').trim();
@@ -404,18 +341,17 @@ function saveCurrentDevis(){
   }
   var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === name2.toLowerCase(); });
   devis.__name = name2;
-
   if(j >= 0){
     if(!confirm('Un devis « '+name2+' » existe déjà. L\'écraser ?')) return;
     saved[j] = { name:name2, date:new Date().toLocaleDateString(), data:devis };
   } else {
     saved.push({ name:name2, date:new Date().toLocaleDateString(), data:devis });
   }
-
   localStorage.setItem('savedDevisList', JSON.stringify(saved));
   alert('Devis sauvegardé !');
 }
 </script>
+
 <!-- =============================
      CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5-onepage)
      ============================= -->
@@ -479,7 +415,6 @@ function pageAddPiece(){
     +'</div>'
   );
 }
-
 function confirmPieceChoice(){
   var sel    = document.getElementById('piece-choice').value;
   var qualif = (document.getElementById('piece-qualif').value || '').trim();
@@ -492,10 +427,9 @@ function confirmPieceChoice(){
     if(!base) return;
   }
   var etageVal = (etage && etage!=='(aucun)') ? etage : '';
-  var key = createOrGetPiece(base, qualif, etageVal); // garantit une clé unique
+  var key = createOrGetPiece(base, qualif, etageVal);
   goPiece(key);
 }
-
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+formatPieceLabel(key)+' » et toutes ses lignes ?')){
     delete devis[key];
@@ -593,7 +527,7 @@ function goEclairageSub(){
       +'<div class="row">'
         +b('Luminaires','setEclairageBranch('+JSON.stringify('Éclairage/Luminaires')+')','btn')
         +b('Commandes','setEclairageBranch('+JSON.stringify('Éclairage/Commandes')+')','btn')
-      </div>'
+      +'</div>'
     +'</div>'
   );
 }
@@ -620,7 +554,6 @@ function setEclairageBranch(branch){
 function goIntervention(interv){
   ctx.intervention = interv;
 
-  // Spécifique (saisie libre) — inchangé
   if(ctx.category==='Spécifique'){
     var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goCategory('Spécifique');
     var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
@@ -629,19 +562,15 @@ function goIntervention(interv){
     saveLocal();
     return goPiece(ctx.piece);
   }
-
-  // ➜ Nouvelle page "one shot" qui regroupe Pose (si besoin), Désignation et Quantité
   pageOneShotSelection();
 }
 
 // ======== NOUVELLE PAGE "Sélection sur une seule page" ========
 function pageOneShotSelection(){
-  // Catégorie et intervention sont déjà dans ctx
   var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   var needsPose = (ctx.intervention === 'Création') &&
                   (['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category) >= 0);
 
-  // Options
   var desigOpts = list.map(function(d){ return '<option value="'+d+'">'+d+'</option>'; }).join('');
   var poseOpts  = POSES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
   var qtyOpts   = Array.from({length:30}).map(function(_,i){
@@ -671,7 +600,6 @@ function pageOneShotSelection(){
     + '</div>'
   );
 
-  // Listeners d’aperçu
   var $des  = document.getElementById('oneshot-desig');
   var $qty  = document.getElementById('oneshot-qty');
   var $prev = document.getElementById('oneshot-preview');
@@ -724,7 +652,6 @@ function pagePieceSpecifique(){
   saveLocal();
   goPiece(ctx.piece);
 }
-
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
@@ -734,25 +661,14 @@ function editPieceNote(){
   goPiece(ctx.piece);
 }
 </script>
+
 <!-- =============================
      CHAPITRE 6 : TABLEAU & DISTRIBUTION
      ============================= -->
 <script>
-// Forcer la présence de la section Tableau
 function ensureTableau(){ ensureSection("Tableau"); }
+let tabState = { disj: { 2:{qty:0,names:[]}, 10:{qty:0,names:[]}, 16:{qty:0,names:[]}, 20:{qty:0,names:[]}, 32:{qty:0,names:[]} } };
 
-// État local pour garder les disjoncteurs (persistant pendant navigation)
-let tabState = {
-  disj: {
-    2:  { qty:0, names:[] },
-    10: { qty:0, names:[] },
-    16: { qty:0, names:[] },
-    20: { qty:0, names:[] },
-    32: { qty:0, names:[] }
-  }
-};
-
-// -------- Hub “Installations spécifiques”
 function pageISHome(){
   view(`
     <div class="card">
@@ -769,7 +685,6 @@ function pageISHome(){
 }
 function isSoon(x){ alert(x+" : module à venir."); }
 
-// -------- Hub “Tableau & distribution”
 function pageTabHome(){
   view(`
     <div class="card">
@@ -787,7 +702,7 @@ function pageTabHome(){
   `);
 }
 
-/* ========== (1) POSE TABLEAU ========== */
+/* (1) POSE TABLEAU */
 function pageTabPose(){
   view(`
     <div class="card">
@@ -832,8 +747,6 @@ function addTabPose(){
   const m   = document.getElementById('tp-mod').value;
   const pos = document.getElementById('tp-pose').value;
   const itv = document.getElementById('tp-interv').value;
-
-  // Prix selon les règles définies au Chapitre 3
   const pu = (typeof getTabPrice==='function') ? getTabPrice(+r, +m, pos, itv) : 0;
 
   ensureTableau();
@@ -850,7 +763,7 @@ function addTabPose(){
   pageTabHome();
 }
 
-/* ========== (2) INTER DIFF. ========== */
+/* (2) INTER DIFF. */
 function pageTab_ID(){
   const opts = (max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
   view(`
@@ -870,14 +783,12 @@ function pageTab_ID(){
   `);
 }
 function submitTab_ID(){
-  // Mapping ID → libellé → prix unitaire depuis TARIFS_TABLEAU.inter_diff
   const PRICE_ID = TARIFS_TABLEAU && TARIFS_TABLEAU.inter_diff ? {
     "id-a-40-30":  TARIFS_TABLEAU.inter_diff["40A-A"]   || 0,
     "id-ac-40-30": TARIFS_TABLEAU.inter_diff["40A-AC"]  || 0,
     "id-a-63-30":  TARIFS_TABLEAU.inter_diff["63A-A"]   || 0,
     "id-ac-63-30": TARIFS_TABLEAU.inter_diff["63A-AC"]  || 0
   } : {};
-
   const NAME_ID = {
     "id-a-40-30":  "ID 30mA - 40A - Type A",
     "id-ac-40-30": "ID 30mA - 40A - Type AC",
@@ -885,9 +796,7 @@ function submitTab_ID(){
     "id-ac-63-30": "ID 30mA - 63A - Type AC"
   };
 
-  let added = 0;
-  ensureTableau();
-
+  let added = 0; ensureTableau();
   Object.keys(NAME_ID).forEach(key=>{
     const q = +document.getElementById(key).value || 0;
     if(q>0){
@@ -902,15 +811,13 @@ function submitTab_ID(){
       added++;
     }
   });
-
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal(); alert("Interrupteurs différentiels ajoutés."); pageTabHome();
 }
 
-/* ========== (3) DISJONCTEURS regroupés ========== */
+/* (3) DISJONCTEURS regroupés */
 function pageTab_Disjoncteurs(){
   const opts = (max=30)=>[...Array(max+1)].map((_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
-  // Construire l’aperçu des détails si existants
   const preview = rating => {
     const d = tabState.disj[rating];
     if(!d || !d.qty) return '';
@@ -943,15 +850,11 @@ function pageTab_Disjoncteurs(){
   document.getElementById('djq-20').value = tabState.disj[20].qty;
   document.getElementById('djq-32').value = tabState.disj[32].qty;
 }
-
-// Détail circuits — version avec choix type + note par circuit
 function pageTab_DisjDetails(rating){
   const state = tabState.disj[rating] || {qty:0,names:[],details:[]};
-  // Init si vide
   if(!state.details) state.details = [];
   const currentQty = state.qty || 0;
 
-  // Gabarit pour une ligne détail circuit
   const row = (i, d) => {
     const type = d?.type || '';
     const note = d?.note || '';
@@ -983,17 +886,13 @@ function pageTab_DisjDetails(rating){
     `;
   };
 
-  // Génére bloc détails selon quantité
   const detailsBlock = (n, arr=[]) => {
     if(n<=0) return `<p class="muted">Aucun circuit.</p>`;
     let out = '';
-    for(let i=0;i<n;i++){
-      out += row(i, arr[i] || {});
-    }
+    for(let i=0;i<n;i++){ out += row(i, arr[i] || {}); }
     return out;
   };
 
-  // UI
   const optsQty = (sel)=>[...Array(31)].map((_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join('');
   view(`
     <div class="card">
@@ -1014,45 +913,30 @@ function pageTab_DisjDetails(rating){
     </div>
   `);
 
-  // Comportement dynamique
   document.getElementById('dj-detail-qty').addEventListener('change', (e)=>{
     const n = +e.target.value || 0;
-    // redessine
     document.getElementById('dj-detail-container').innerHTML = detailsBlock(n, state.details);
   });
 }
-
 function pageTab_DisjSaveDetails(rating){
   const qty = +document.getElementById('dj-detail-qty').value || 0;
-
-  // Récupère les lignes affichées
   const types = Array.from(document.querySelectorAll('.dj-type'));
   const notes = Array.from(document.querySelectorAll('.dj-note'));
-
   const details = [];
   for(let i=0;i<qty;i++){
     const t = types[i]?.value || '';
     const n = notes[i]?.value || '';
     details.push({ type:t, note:n });
   }
-
-  tabState.disj[rating] = {
-    qty,
-    names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : [],
-    details
-  };
-
+  tabState.disj[rating] = { qty, names: qty>0 ? [...Array(qty)].map((_,i)=>`Circuit ${i+1}`) : [], details };
   alert(`Détails ${rating} A enregistrés (${qty} circuit(s)).`);
   pageTab_Disjoncteurs();
 }
-
 function pageTab_DisjVider(){
   tabState.disj = {2:{qty:0,names:[],details:[]},10:{qty:0,names:[],details:[]},16:{qty:0,names:[],details:[]},20:{qty:0,names:[],details:[]},32:{qty:0,names:[],details:[]}};
   pageTab_Disjoncteurs();
 }
-
 function pageTab_DisjValider(){
-  // Lit les quantités visibles (au cas où)
   const readQty=id=>+document.getElementById(id).value||0;
   [2,10,16,20,32].forEach(r=>{ 
     const q = readQty('djq-'+r);
@@ -1060,16 +944,12 @@ function pageTab_DisjValider(){
     tabState.disj[r].qty = q;
   });
 
-  let added = 0;
-  ensureTableau();
-
-  // Prix unitaires par calibre depuis TARIFS_TABLEAU
+  let added = 0; ensureTableau();
   const PU = (TARIFS_TABLEAU && TARIFS_TABLEAU.disjoncteurs) ? TARIFS_TABLEAU.disjoncteurs : {};
 
   [2,10,16,20,32].forEach(rating=>{
     const { qty, details } = tabState.disj[rating];
     if(qty>0){
-      // Mention des détails uniquement s’il y en a
       const hasDetail = Array.isArray(details) && details.some(d=>d && (d.type || d.note));
       const detailText = hasDetail
         ? ' — circuits : ' + details.map((d,i)=>{
@@ -1079,7 +959,6 @@ function pageTab_DisjValider(){
             return (t ? t : `Circuit ${i+1}`) + n;
           }).join(', ')
         : '';
-
       devis["Tableau"].items.push({
         category: "Tableau/Modulaire",
         intervention: "",
@@ -1091,14 +970,13 @@ function pageTab_DisjValider(){
       added++;
     }
   });
-
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal();
   alert("Disjoncteurs ajoutés au devis.");
   pageTab_Disjoncteurs();
 }
 
-/* ========== (4) COMMANDES & PILOTAGE ========== */
+/* (4) COMMANDES & PILOTAGE */
 function pageTabMod_Commandes(){
   const opts=(max=20)=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
   view(`
@@ -1116,7 +994,6 @@ function pageTabMod_Commandes(){
   `);
 }
 function submitTabMod_Commandes(){
-  // Prix unitaires depuis TARIFS_TABLEAU.commandes
   const PC = TARIFS_TABLEAU && TARIFS_TABLEAU.commandes ? TARIFS_TABLEAU.commandes : {};
   const pick=id=>+document.getElementById(id).value||0;
 
@@ -1142,12 +1019,11 @@ function submitTabMod_Commandes(){
       added++;
     }
   });
-
   if(!added){ alert("Rien à ajouter."); return; }
   saveLocal(); alert("Commandes ajoutées."); pageTabHome();
 }
 
-/* ========== (5) SPÉCIFIQUE ========== */
+/* (5) SPÉCIFIQUE */
 function pageTabMod_Specifique(){
   const label=prompt("Intitulé (libre) :",""); if(!label){ pageTabHome(); return; }
   const prix=parseFloat(prompt("Prix unitaire (€) :","0"))||0;
@@ -1157,11 +1033,11 @@ function pageTabMod_Specifique(){
   saveLocal(); alert("Ajouté."); pageTabHome();
 }
 </script>
+
 <!-- =============================
      CHAPITRE 7 : ESTIMATIF & EXPORTS
      ============================= -->
 <script>
-// --- Groupes de pièces (créé si absent)
 window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
   "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
@@ -1173,8 +1049,6 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
   "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
-
-// --- Regroupe l’objet devis par familles affichables
 function groupDevis(){
   var g = {};
   for (var key in devis){
@@ -1187,8 +1061,6 @@ function groupDevis(){
   }
   return g;
 }
-
-// --- Helpers d’affichage/export
 function itemLine(it){
   var unit = it.unit || "u";
   var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
@@ -1198,11 +1070,8 @@ function itemLine(it){
   var total = (q * (+it.prixU || 0)).toFixed(2);
   return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
 }
-function pieceSeparator(label){
-  return "\n---------------- " + label + " ----------------\n";
-}
+function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
 
-// --- Page : Estimatif détaillé
 function pageEstimatif(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
   var totalGlobal = 0;
@@ -1235,7 +1104,6 @@ function pageEstimatif(){
 
       html += '</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
     }
-
     html += '<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
   }
 
@@ -1250,7 +1118,6 @@ function pageEstimatif(){
   view(html);
 }
 
-// --- Page : Totaux par groupe
 function pageTotaux(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
   var totalGlobal = 0;
@@ -1279,8 +1146,6 @@ function pageTotaux(){
 }
 
 /* ===== Exports ===== */
-
-// --- .txt par groupe
 function exportText(){
   var grouped = groupDevis();
   for (var grp in grouped){
@@ -1315,7 +1180,6 @@ function exportText(){
   alert('✅ Export terminé : un fichier .txt par groupe généré.');
 }
 
-// --- .zip par groupe
 async function exportZipGroups(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
 
@@ -1364,7 +1228,6 @@ async function exportZipGroups(){
   alert('✅ Export ZIP (par groupe) généré.');
 }
 
-// --- Texte complet (helper)
 function buildFullText(){
   var grouped = groupDevis();
   var lines = ['=== DEVIS COMPLET ===\n'];
@@ -1397,8 +1260,6 @@ function buildFullText(){
   lines.push('\n=== Total global : '+globalTotal.toFixed(2)+'€ ===\n');
   return lines.join('\r\n');
 }
-
-// --- .txt complet
 function exportTextFull(){
   var name = (devis.__name || 'Devis').trim() || 'Devis';
   var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
@@ -1408,25 +1269,21 @@ function exportTextFull(){
   a.click(); URL.revokeObjectURL(url);
   alert('✅ Export .txt complet généré.');
 }
-
-// --- .zip complet
 async function exportZipFull(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
-
   var name = (devis.__name || 'Devis').trim() || 'Devis';
   var zip  = new JSZip();
   zip.file(name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt', buildFullText());
   zip.file('README.txt', 'Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
-
   var blob = await zip.generateAsync({type:'blob'});
   var url  = URL.createObjectURL(blob);
   var a    = document.createElement('a');
   a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip';
   a.click(); URL.revokeObjectURL(url);
-
   alert('✅ Export .zip complet généré.');
 }
 </script>
+
 <!-- =============================
      CHAPITRE 8 : DÉMARRAGE & EXPOSE (corrigé V5-onepage)
      ============================= -->
@@ -1501,3 +1358,5 @@ Object.assign(window, {
 // Lancement
 init();
 </script>
+</body>
+</html>
