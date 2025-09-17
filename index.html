@@ -754,10 +754,21 @@ function editPieceNote(){
 </script>
 
 <!-- =============================
-     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux, sans alerts)
+     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux, sélections groupées)
      ============================= -->
 <script>
-/** 1) Créer un nouveau tableau (numéroté automatiquement) */
+/* ========= ÉTAT LOCAL POUR LES DÉTAILS DISJONCTEURS =========
+   On garde un état PAR TABLEAU (key) et par calibre (2/10/16/20/32).
+   Chaque entrée : { qty:number, details:[{type:string, note:string}] }
+*/
+var tabState = {}; // { "<Tableau 1>": { disj:{2:{...},10:{...},16:{...},20:{...},32:{...}} } }
+function ensureTabState(key){
+  if(!tabState[key]){
+    tabState[key] = { disj:{ 2:{qty:0,details:[]}, 10:{qty:0,details:[]}, 16:{qty:0,details:[]}, 20:{qty:0,details:[]}, 32:{qty:0,details:[]} } };
+  }
+}
+
+/* ========= 1) CRÉATION D’UN NOUVEAU TABLEAU ========= */
 function pageTabCreate(){
   var existing = Object.keys(devis).filter(function(k){ return k.startsWith("Tableau "); });
   var nextNum = existing.length + 1;
@@ -781,7 +792,6 @@ function pageTabCreate(){
     + '</div>'
   );
 }
-
 function saveTabCustomName(key){
   var name = (document.getElementById("tab-custom").value || "").trim();
   if(devis[key]){
@@ -791,7 +801,7 @@ function saveTabCustomName(key){
   pageTabHome(key);
 }
 
-/** 2) Accueil d’un tableau donné */
+/* ========= 2) ACCUEIL D’UN TABLEAU ========= */
 function pageTabHome(key){
   if(!key || !devis[key]) return pageHome();
   var custom = devis[key].__customName ? " — " + devis[key].__customName : "";
@@ -807,17 +817,17 @@ function pageTabHome(key){
         + b("4 · Commandes / pilotage","pageTabMod_Commandes("+JSON.stringify(key)+")","btn")
         + b("5 · Spécifique (libre + prix)","pageTabMod_Specifique("+JSON.stringify(key)+")","btn ghost")
       + '</div>'
-      + '<p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans « '+key+' » uniquement.</p>'
+      + '<p class="muted" style="margin-top:8px;">Les éléments saisis ici seront ajoutés à « '+key+' ».</p>'
     + '</div>'
   );
 }
 
-/** 3) Pose tableau */
+/* ========= 3) POSE TABLEAU ========= */
 function pageTabPose(key){
-  var rangs   = [1,2,3,4].map(function(r){return '<option value="'+r+'">'+r+' rangée(s)</option>';}).join('');
-  var modules = [13,18,24].map(function(m){return '<option value="'+m+'">'+m+' modules</option>';}).join('');
-  var poses   = ['Saillie','Encastré'].map(function(p){return '<option value="'+p+'">'+p+'</option>';}).join('');
-  var intervs = ['Création','Avec dépose de l’existant'].map(function(i){return '<option value="'+i+'">'+i+'</option>';}).join('');
+  var rangs   = [1,2,3,4].map(r => `<option value="${r}">${r} rangée(s)</option>`).join('');
+  var modules = [13,18,24].map(m => `<option value="${m}">${m} modules</option>`).join('');
+  var poses   = ['Saillie','Encastré'].map(p => `<option value="${p}">${p}</option>`).join('');
+  var intervs = ['Création','Avec dépose de l’existant'].map(i => `<option value="${i}">${i}</option>`).join('');
 
   view(
     '<div class="card">'
@@ -833,14 +843,12 @@ function pageTabPose(key){
     + '</div>'
   );
 }
-
 function addTabPose(key){
   var rang    = parseInt(document.getElementById("tab-rang").value,10);
   var modules = parseInt(document.getElementById("tab-mod").value,10);
   var pose    = document.getElementById("tab-pose").value;
   var inv     = document.getElementById("tab-inv").value;
-
-  var pu = getTabPrice(rang, modules, pose, inv) || 0;
+  var pu      = getTabPrice(rang, modules, pose, inv) || 0;
 
   devis[key].items.push({
     category: "Tableau & distribution",
@@ -854,110 +862,265 @@ function addTabPose(key){
   pageTabHome(key);
 }
 
-/** 4) Interrupteurs différentiels */
+/* ========= 4) INTER. DIFFÉRENTIELS — SÉLECTION GROUPÉE ========= */
 function pageTab_ID(key){
-  var opts = Object.keys(TARIFS_TABLEAU.inter_diff)
-    .map(function(label){ return '<option value="'+label+'">'+label+' ('+euro(TARIFS_TABLEAU.inter_diff[label])+')</option>'; })
-    .join('');
-
+  var opts = (max=20)=>Array.from({length:max+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
   view(
     '<div class="card">'
       + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Interrupteurs différentiels</h2>'
-      + '<label>Modèle</label><select id="id-model">'+opts+'</select>'
-      + '<label>Quantité</label><input id="id-qty" type="number" min="1" value="1" />'
-      + '<div class="row" style="margin-top:10px;">'
+      + '<div class="list">'
+        + `<label>ID 30mA - 40A - Type A <select id="id-a-40-30">${opts(20)}</select></label>`
+        + `<label>ID 30mA - 40A - Type AC <select id="id-ac-40-30">${opts(20)}</select></label>`
+        + `<label>ID 30mA - 63A - Type A <select id="id-a-63-30">${opts(20)}</select></label>`
+        + `<label>ID 30mA - 63A - Type AC <select id="id-ac-63-30">${opts(20)}</select></label>`
+      + '</div>'
+      + '<div class="row" style="margin-top:12px;">'
         + b("Ajouter à "+key,"submitTab_ID("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
-
 function submitTab_ID(key){
-  var model = document.getElementById("id-model").value;
-  var qty   = Math.max(1, parseInt(document.getElementById("id-qty").value,10) || 1);
-  var pu    = TARIFS_TABLEAU.inter_diff[model] || 0;
+  var PRICE_ID = TARIFS_TABLEAU && TARIFS_TABLEAU.inter_diff ? {
+    "id-a-40-30":  TARIFS_TABLEAU.inter_diff["40A-A"]  || 0,
+    "id-ac-40-30": TARIFS_TABLEAU.inter_diff["40A-AC"] || 0,
+    "id-a-63-30":  TARIFS_TABLEAU.inter_diff["63A-A"]  || 0,
+    "id-ac-63-30": TARIFS_TABLEAU.inter_diff["63A-AC"] || 0
+  } : {};
+  var NAME_ID = {
+    "id-a-40-30":"ID 30mA - 40A - Type A",
+    "id-ac-40-30":"ID 30mA - 40A - Type AC",
+    "id-a-63-30":"ID 30mA - 63A - Type A",
+    "id-ac-63-30":"ID 30mA - 63A - Type AC"
+  };
 
-  devis[key].items.push({
-    category: "Tableau/Modulaire",
-    designation: 'ID 30mA — '+model.replace('-', ' - '),
-    qty: qty,
-    prixU: pu
+  Object.keys(NAME_ID).forEach(function(id){
+    var q = +document.getElementById(id).value || 0;
+    if(q>0){
+      devis[key].items.push({
+        category: "Tableau/Modulaire",
+        designation: NAME_ID[id],
+        qty: q,
+        prixU: PRICE_ID[id] || 0
+      });
+    }
   });
   saveLocal();
   pageTabHome(key);
 }
 
-/** 5) Disjoncteurs (avec note libre) */
+/* ========= 5) DISJONCTEURS — SÉLECTION GROUPÉE + DÉTAILS FACULTATIFS ========= */
 function pageTab_Disjoncteurs(key){
-  var opts = Object.keys(TARIFS_TABLEAU.disjoncteurs)
-    .map(function(a){ return '<option value="'+a+'">'+a+' A ('+euro(TARIFS_TABLEAU.disjoncteurs[a])+')</option>'; })
-    .join('');
+  ensureTabState(key);
+  var opts = (max=30)=>Array.from({length:max+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
+  var preview = function(r){
+    var d = tabState[key].disj[r];
+    if(!d || !d.qty) return '';
+    var has = d.details && d.details.length && d.details.some(x=>x && (x.type || x.note));
+    return has ? ' <small class="muted">— détails ajoutés</small>' : '';
+  };
+
   view(
     '<div class="card">'
       + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
-      + '<h2>Disjoncteurs modulaires</h2>'
-      + '<label>Calibre</label><select id="dj-model">'+opts+'</select>'
-      + '<label>Quantité</label><input id="dj-qty" type="number" min="1" value="1" />'
-      + '<label>Note (facultatif)</label><input id="dj-note" placeholder="ex: Circuit LL / Éclairage couloir…" />'
-      + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,"pageTab_DisjSaveDetails("+JSON.stringify(key)+")","btn primary")
+      + '<h2>Disjoncteurs modulaires (2A / 10A / 16A / 20A / 32A)</h2>'
+      + '<div class="list">'
+        + `<label>2 A (Qté)  <select id="djq-2">${opts(30)}</select>  ${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+",2)")} ${preview(2)}</label>`
+        + `<label>10 A (Qté) <select id="djq-10">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+",10)")} ${preview(10)}</label>`
+        + `<label>16 A (Qté) <select id="djq-16">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+",16)")} ${preview(16)}</label>`
+        + `<label>20 A (Qté) <select id="djq-20">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+",20)")} ${preview(20)}</label>`
+        + `<label>32 A (Qté) <select id="djq-32">${opts(30)}</select> ${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+",32)")} ${preview(32)}</label>`
+      + '</div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + b("Vider la sélection","pageTab_DisjVider("+JSON.stringify(key)+")")
+        + b("Valider ces disjoncteurs","pageTab_DisjValider("+JSON.stringify(key)+")","btn primary")
+      + '</div>'
+      + '<p class="muted" style="margin-top:6px;">Tu peux ajouter des détails par calibre si besoin. C’est facultatif : s’il n’y en a pas, rien ne sera mentionné dans l’estimatif.</p>'
+    + '</div>'
+  );
+
+  // Remettre les valeurs mémorisées
+  document.getElementById('djq-2').value  = tabState[key].disj[2].qty;
+  document.getElementById('djq-10').value = tabState[key].disj[10].qty;
+  document.getElementById('djq-16').value = tabState[key].disj[16].qty;
+  document.getElementById('djq-20').value = tabState[key].disj[20].qty;
+  document.getElementById('djq-32').value = tabState[key].disj[32].qty;
+}
+
+function pageTab_DisjDetails(key, rating){
+  ensureTabState(key);
+  var state = tabState[key].disj[rating] || {qty:0, details:[]};
+  if(!state.details) state.details = [];
+  var currentQty = state.qty || 0;
+
+  // Gabarit d’une ligne de détail
+  var row = function(i, d){
+    var type = (d && d.type) || '';
+    var note = (d && d.note) || '';
+    return `
+      <div class="pill" style="width:100%;justify-content:space-between;">
+        <div style="flex:1 1 auto; display:flex; gap:8px; align-items:center;">
+          <strong>Circuit ${i+1}</strong>
+          <select data-idx="${i}" class="dj-type">
+            <option value="">(non défini)</option>
+            <option value="Circuit prise" ${type==='Circuit prise'?'selected':''}>Circuit prise</option>
+            <option value="Circuit éclairage" ${type==='Circuit éclairage'?'selected':''}>Circuit éclairage</option>
+            <optgroup label="Circuits spécialisés">
+              <option value="Four" ${type==='Four'?'selected':''}>Four</option>
+              <option value="Plaque de cuisson" ${type==='Plaque de cuisson'?'selected':''}>Plaque de cuisson</option>
+              <option value="Lave-linge" ${type==='Lave-linge'?'selected':''}>Lave-linge</option>
+              <option value="Lave-vaisselle" ${type==='Lave-vaisselle'?'selected':''}>Lave-vaisselle</option>
+              <option value="Sèche-linge" ${type==='Sèche-linge'?'selected':''}>Sèche-linge</option>
+              <option value="Cumulus" ${type==='Cumulus'?'selected':''}>Cumulus</option>
+              <option value="VMC" ${type==='VMC'?'selected':''}>VMC</option>
+              <option value="Chauffage" ${type==='Chauffage'?'selected':''}>Chauffage</option>
+              <option value="Climatisation" ${type==='Climatisation'?'selected':''}>Climatisation</option>
+              <option value="Prise extérieure étanche" ${type==='Prise extérieure étanche'?'selected':''}>Prise extérieure étanche</option>
+              <option value="Autre circuit spécialisé" ${type==='Autre circuit spécialisé'?'selected':''}>Autre circuit spécialisé</option>
+            </optgroup>
+          </select>
+          <input data-idx="${i}" class="dj-note" placeholder="Caractéristique / nom (facultatif)" value="${note.replace(/"/g,'&quot;')}" />
+        </div>
+      </div>
+    `;
+  };
+
+  var detailsBlock = function(n, arr){
+    if(n<=0) return `<p class="muted">Aucun circuit.</p>`;
+    var out = '';
+    for(var i=0;i<n;i++){ out += row(i, (arr && arr[i]) || {}); }
+    return out;
+  };
+
+  var optsQty = function(sel){ return Array.from({length:31},(_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${i}</option>`).join(''); };
+
+  view(
+    '<div class="card">'
+      + b("Retour","pageTab_Disjoncteurs("+JSON.stringify(key)+")","btn back")
+      + '<h2>Détail circuits — '+rating+' A</h2>'
+      + '<label>Nombre de circuits <select id="dj-detail-qty">'+optsQty(currentQty)+'</select></label>'
+      + '<div id="dj-detail-container" style="margin-top:8px;">'
+        + detailsBlock(currentQty, state.details)
+      + '</div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + b("Enregistrer et revenir","pageTab_DisjSaveDetails("+JSON.stringify(key)+','+rating+")","btn primary")
       + '</div>'
     + '</div>'
   );
-}
 
-function pageTab_DisjSaveDetails(key){
-  var model = document.getElementById("dj-model").value;
-  var qty   = Math.max(1, parseInt(document.getElementById("dj-qty").value,10) || 1);
-  var note  = (document.getElementById("dj-note").value || "").trim();
-  var pu    = TARIFS_TABLEAU.disjoncteurs[model] || 0;
-
-  var detail = note ? ' — '+note : '';
-  devis[key].items.push({
-    category: "Tableau/Modulaire",
-    designation: 'Disjoncteur '+model+' A'+detail,
-    qty: qty,
-    prixU: pu
+  document.getElementById('dj-detail-qty').addEventListener('change', function(e){
+    var n = +e.target.value || 0;
+    document.getElementById('dj-detail-container').innerHTML = detailsBlock(n, state.details);
   });
-  saveLocal();
-  pageTabHome(key);
 }
 
-/** 6) Commandes & pilotage */
+function pageTab_DisjSaveDetails(key, rating){
+  ensureTabState(key);
+  var qty = +document.getElementById('dj-detail-qty').value || 0;
+  var types = Array.from(document.querySelectorAll('.dj-type'));
+  var notes = Array.from(document.querySelectorAll('.dj-note'));
+  var details = [];
+  for(var i=0;i<qty;i++){
+    var t = types[i] ? types[i].value : '';
+    var n = notes[i] ? notes[i].value : '';
+    details.push({ type:t, note:n });
+  }
+  tabState[key].disj[rating] = { qty: qty, details: details };
+  pageTab_Disjoncteurs(key);
+}
+
+function pageTab_DisjVider(key){
+  ensureTabState(key);
+  tabState[key].disj = {2:{qty:0,details:[]},10:{qty:0,details:[]},16:{qty:0,details:[]},20:{qty:0,details:[]},32:{qty:0,details:[]}};
+  pageTab_Disjoncteurs(key);
+}
+
+function pageTab_DisjValider(key){
+  ensureTabState(key);
+  // Lire les quantités visibles (au cas où)
+  var readQty = function(id){ return +document.getElementById(id).value || 0; };
+  [2,10,16,20,32].forEach(function(r){
+    var q = readQty('djq-'+r);
+    tabState[key].disj[r].qty = q;
+  });
+
+  var PU = (TARIFS_TABLEAU && TARIFS_TABLEAU.disjoncteurs) ? TARIFS_TABLEAU.disjoncteurs : {};
+
+  [2,10,16,20,32].forEach(function(rating){
+    var state = tabState[key].disj[rating];
+    var qty = state.qty || 0;
+    if(qty>0){
+      var details = state.details || [];
+      var hasDetail = details.some(function(d){ return d && (d.type || d.note); });
+      var detailText = hasDetail
+        ? ' — circuits : ' + details.map(function(d,i){
+            if(!d) return 'Circuit '+(i+1);
+            var t = d.type || ('Circuit '+(i+1));
+            var n = d.note ? (' ('+d.note+')') : '';
+            return t + n;
+          }).join(', ')
+        : '';
+
+      devis[key].items.push({
+        category: "Tableau/Modulaire",
+        designation: 'Disjoncteur '+rating+' A'+detailText,
+        qty: qty,
+        prixU: PU[rating] || 0
+      });
+    }
+  });
+
+  saveLocal();
+  pageTab_Disjoncteurs(key);
+}
+
+/* ========= 6) COMMANDES & PILOTAGE — SÉLECTION GROUPÉE ========= */
 function pageTabMod_Commandes(key){
-  var opts = Object.keys(TARIFS_TABLEAU.commandes)
-    .map(function(c){ return '<option value="'+c+'">'+c+' ('+euro(TARIFS_TABLEAU.commandes[c])+')</option>'; })
-    .join('');
+  var opts = (max=20)=>Array.from({length:max+1},(_,i)=>`<option value="${i}">${i}</option>`).join('');
   view(
     '<div class="card">'
       + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Commande & pilotage</h2>'
-      + '<label>Modèle</label><select id="cmd-model">'+opts+'</select>'
-      + '<label>Quantité</label><input id="cmd-qty" type="number" min="1" value="1" />'
-      + '<div class="row" style="margin-top:10px;">'
+      + '<div class="list">'
+        + `<label>Télérupteur <select id="cmd-telerup">${opts(20)}</select></label>`
+        + `<label>Télérupteur silencieux <select id="cmd-telerup-sil">${opts(20)}</select></label>`
+        + `<label>Horloge mécanique + Disjoncteur 2A <select id="cmd-horloge-2a">${opts(20)}</select></label>`
+        + `<label>Horloge mécanique + contacteur heures creuses + Disjoncteur 2A <select id="cmd-horloge-hc-2a">${opts(20)}</select></label>`
+      + '</div>'
+      + '<div class="row" style="margin-top:12px;">'
         + b("Ajouter à "+key,"submitTabMod_Commandes("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
-
 function submitTabMod_Commandes(key){
-  var model = document.getElementById("cmd-model").value;
-  var qty   = Math.max(1, parseInt(document.getElementById("cmd-qty").value,10) || 1);
-  var pu    = TARIFS_TABLEAU.commandes[model] || 0;
+  var PC = TARIFS_TABLEAU && TARIFS_TABLEAU.commandes ? TARIFS_TABLEAU.commandes : {};
+  var pick = function(id){ return +document.getElementById(id).value || 0; };
 
-  devis[key].items.push({
-    category: "Tableau/Commandes",
-    designation: model,
-    qty: qty,
-    prixU: pu
+  var defs = [
+    { id:"cmd-telerup",       name:"Télérupteur",                                                  pu: PC["Télérupteur"] || 0 },
+    { id:"cmd-telerup-sil",   name:"Télérupteur silencieux",                                       pu: PC["Télérupteur silencieux"] || 0 },
+    { id:"cmd-horloge-2a",    name:"Horloge mécanique + Disjoncteur 2A",                           pu: PC["Horloge mécanique + Disjoncteur 2A"] || 0 },
+    { id:"cmd-horloge-hc-2a", name:"Horloge mécanique + contacteur heures creuses + Disjoncteur 2A", pu: PC["Horloge mécanique + contacteur heures creuses + Disjoncteur 2A"] || 0 }
+  ];
+
+  defs.forEach(function(d){
+    var q = pick(d.id);
+    if(q>0){
+      devis[key].items.push({
+        category: "Tableau/Commandes",
+        designation: d.name,
+        qty: q,
+        prixU: d.pu
+      });
+    }
   });
   saveLocal();
   pageTabHome(key);
 }
 
-/** 7) Spécifique libre + prix */
+/* ========= 7) SPÉCIFIQUE ========= */
 function pageTabMod_Specifique(key){
   var label = prompt("Intitulé (libre) :","");
   if(!label){ pageTabHome(key); return; }
