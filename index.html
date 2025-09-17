@@ -418,8 +418,12 @@ function saveCurrentDevis(){
 <script>
 // ---- Accueil
 function pageHome(){
-  var keys = Object.keys(devis).filter(function(k){ return k.indexOf('__')!==0; });
-  var listHtml = keys.length ? keys.map(function(key){
+  // Liste des pièces "classiques" (tout sauf clés commençant par "__" ou "Tableau ")
+  var pieceKeys = Object.keys(devis).filter(function(k){
+    return k.indexOf('__')!==0 && !k.startsWith('Tableau ');
+  });
+
+  var listPieces = pieceKeys.length ? pieceKeys.map(function(key){
     var s = devis[key] || {};
     var badges = [
       (s.qualificatif && s.qualificatif.trim()) ? '<span class="badge">'+s.qualificatif+'</span>' : '',
@@ -434,18 +438,38 @@ function pageHome(){
     +'</div>';
   }).join('') : '<p class="muted">Aucune pièce ajoutée pour l’instant.</p>';
 
+  // Liste des tableaux (multi-tableaux : "Tableau 1", "Tableau 2", …)
+  var tabKeys = Object.keys(devis).filter(function(k){ return k.startsWith('Tableau '); });
+  var listTabs = tabKeys.length ? tabKeys.map(function(key){
+    var s = devis[key] || {};
+    var custom = s.__customName ? ' — <span class="badge">'+s.__customName+'</span>' : '';
+    var count = (s.items||[]).length;
+    return '<div class="pill">'
+      +'<strong>'+key+'</strong>'+custom+' '
+      +'<small>'+count+' ligne(s)</small> '
+      +b('Ouvrir','pageTabHome('+JSON.stringify(key)+')','btn')
+    +'</div>';
+  }).join('') : '<p class="muted">Aucun tableau créé pour l’instant.</p>';
+
   view(
     '<div class="card">'
       +'<h2>Accueil</h2>'
       +'<div class="row">'
         +b('Ajouter une pièce','pageAddPiece()','btn primary')
-        +b('Installations spécifiques','pageISHome()','btn')
+        +b('Créer un tableau','pageTabCreate()','btn')
       +'</div>'
     +'</div>'
+
     +'<div class="card" style="margin-top:12px;">'
       +'<h2>Pièces ajoutées</h2>'
-      +'<div class="list">'+listHtml+'</div>'
+      +'<div class="list">'+listPieces+'</div>'
     +'</div>'
+
+    +'<div class="card" style="margin-top:12px;">'
+      +'<h2>Tableaux créés</h2>'
+      +'<div class="list">'+listTabs+'</div>'
+    +'</div>'
+
     +'<div class="row" style="margin-top:12px;">'
       +b('Voir l’estimatif','pageEstimatif()','btn')
       +b('Voir les totaux','pageTotaux()','btn')
@@ -475,6 +499,7 @@ function pageAddPiece(){
     +'</div>'
   );
 }
+
 function confirmPieceChoice(){
   var sel    = document.getElementById('piece-choice').value;
   var qualif = (document.getElementById('piece-qualif').value || '').trim();
@@ -487,9 +512,10 @@ function confirmPieceChoice(){
     if(!base) return;
   }
   var etageVal = (etage && etage!=='(aucun)') ? etage : '';
-  var key = createOrGetPiece(base, qualif, etageVal);
+  var key = createOrGetPiece(base, qualif, etageVal); // garantit une clé unique
   goPiece(key);
 }
+
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+formatPieceLabel(key)+' » et toutes ses lignes ?')){
     delete devis[key];
@@ -614,6 +640,7 @@ function setEclairageBranch(branch){
 function goIntervention(interv){
   ctx.intervention = interv;
 
+  // Spécifique (saisie libre)
   if(ctx.category==='Spécifique'){
     var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goCategory('Spécifique');
     var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
@@ -622,10 +649,12 @@ function goIntervention(interv){
     saveLocal();
     return goPiece(ctx.piece);
   }
+
+  // Nouvelle page “one shot” : pose (si nécessaire) + désignation + quantité
   pageOneShotSelection();
 }
 
-// ======== NOUVELLE PAGE "Sélection sur une seule page" ========
+// ======== PAGE "Sélection sur une seule page" ========
 function pageOneShotSelection(){
   var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   var needsPose = (ctx.intervention === 'Création') &&
@@ -660,6 +689,7 @@ function pageOneShotSelection(){
     + '</div>'
   );
 
+  // Listeners d’aperçu
   var $des  = document.getElementById('oneshot-desig');
   var $qty  = document.getElementById('oneshot-qty');
   var $prev = document.getElementById('oneshot-preview');
@@ -712,6 +742,7 @@ function pagePieceSpecifique(){
   saveLocal();
   goPiece(ctx.piece);
 }
+
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
