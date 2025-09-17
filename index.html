@@ -1,5 +1,3 @@
-<!DOCTYPE html>
-<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -35,16 +33,21 @@
   <!-- JSZip (exports ZIP) -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <!-- Cache-busting : force toujours un nouveau ?v=timestamp -->
+  <!-- Cache-busting : ajoute ?v=timestamp une seule fois par onglet -->
   <script>
   (function(){
     try{
-      var u = new URL(location.href);
-      u.searchParams.delete('v');
-      u.searchParams.set('v', Date.now());
-      if(location.href !== u.toString()){
-        location.replace(u.toString());
-      }
+      var url = new URL(location.href);
+      // si un paramètre v existe déjà, on ne touche pas
+      if (url.searchParams.has('v')) return;
+
+      // clé par chemin, valable pour la session (évite les boucles)
+      var onceKey = 'cb_once_' + location.pathname;
+      if (sessionStorage.getItem(onceKey)) return;
+
+      url.searchParams.set('v', Date.now());
+      sessionStorage.setItem(onceKey, '1');
+      location.replace(url.toString());
     }catch(e){}
   })();
   </script>
