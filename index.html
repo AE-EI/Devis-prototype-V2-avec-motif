@@ -234,30 +234,86 @@ var ETAGES = [
 
 // Barèmes Pose Tableau (base 13 modules en saillie, création)
 var TARIFS_TABLEAU = {
-  pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
-  coef: {
-    modules: { 13:1.00, 18:1.30, 24:1.50 },
-    pose: { 'Saillie':1.00, 'Encastré':1.70 },
-    intervention: { 'Création':1.00, 'Avec dépose de l’existant':1.30 }
+  // Pose tableau : prix de base (13 modules, Saillie, Création)
+  pose_base_13: {
+    1: 60,   // 1 rangée 13M
+    2: 80,   // 2 rangées 13M
+    3: 100,  // 3 rangées 13M
+    4: 120   // 4 rangées 13M
   },
-  disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32 },
-  inter_diff: { '40A-AC':60, '40A-A':80, '63A-AC':100, '63A-A':120 },
+
+  // Coefficients supplémentaires
+  coef: {
+    // Modules (par rapport à 13M)
+    modules: {
+      13: 1.00,
+      18: 1.30, // +30%
+      24: 1.50  // +50%
+    },
+    pose: {
+      'Saillie': 1.00,
+      'Encastré': 1.70 // +70%
+    },
+    intervention: {
+      'Création': 1.00,
+      'Avec dépose de l’existant': 1.30 // +30%
+    }
+  },
+
+  // Disjoncteurs (PU)
+  disjoncteurs: {
+    2: 32,
+    10: 25,
+    16: 25,
+    20: 25,
+    32: 32
+  },
+
+  // Interrupteurs différentiels (PU)
+  inter_diff: {
+    '40A-AC': 60,
+    '40A-A': 80,
+    '63A-AC': 100,
+    '63A-A': 120
+  },
+
+  // Commandes & pilotage (PU)
   commandes: {
-    'Télérupteur':50,
-    'Télérupteur silencieux':70,
-    'Horloge mécanique + Disjoncteur 2A':80,
-    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A':130
+    'Télérupteur': 50,
+    'Télérupteur silencieux': 70,
+    'Horloge mécanique + Disjoncteur 2A': 80,
+    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A': 130
   }
 };
 
+/**
+ * Prix de pose du tableau électrique (TTC) selon :
+ * - rang (1..4), modules (13/18/24), type de pose ('Saillie'/'Encastré'),
+ * - intervention ('Création'/'Avec dépose de l’existant')
+ */
 function getTabPrice(rang, modules, pose, intervention){
   var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
   if(!base) return 0;
+
   var cMod = TARIFS_TABLEAU.coef.modules[+modules] || 1.00;
   var cPose = TARIFS_TABLEAU.coef.pose[pose] || 1.00;
-  var cInv  = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
+  var cInv = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
+
   var price = base * cMod * cPose * cInv;
   return Math.round(price * 100) / 100;
+}
+
+/**
+ * Prix unitaire d’un élément « pièce » selon la désignation et l’intervention.
+ * Source : table TARIFS (prise, point de centre, etc.)
+ */
+function getPrix(designation, intervention){
+  var base = TARIFS[designation] || {};
+  if(intervention === 'Création') return base.creation || 0;
+  if(intervention && intervention.indexOf('sans remplacement') >= 0) return base.recablage_sans || 0;
+  if(intervention && intervention.indexOf('avec remplacement') >= 0) return base.recablage_avec || 0;
+  if(intervention && intervention.indexOf('Remplacement') === 0) return base.remplacement || 0;
+  return 0;
 }
 </script>
 
