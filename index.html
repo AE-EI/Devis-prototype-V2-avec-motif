@@ -754,7 +754,7 @@ function editPieceNote(){
 </script>
 
 <!-- =============================
-     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux)
+     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux, sans alerts)
      ============================= -->
 <script>
 /** 1) Créer un nouveau tableau (numéroté automatiquement) */
@@ -851,7 +851,6 @@ function addTabPose(key){
     prixU: pu
   });
   saveLocal();
-  alert("Élément ajouté à « "+key+" ».");
   pageTabHome(key);
 }
 
@@ -886,11 +885,10 @@ function submitTab_ID(key){
     prixU: pu
   });
   saveLocal();
-  alert("Inter diff ajouté.");
   pageTabHome(key);
 }
 
-/** 5) Disjoncteurs (avec petit détail libre) */
+/** 5) Disjoncteurs (avec note libre) */
 function pageTab_Disjoncteurs(key){
   var opts = Object.keys(TARIFS_TABLEAU.disjoncteurs)
     .map(function(a){ return '<option value="'+a+'">'+a+' A ('+euro(TARIFS_TABLEAU.disjoncteurs[a])+')</option>'; })
@@ -923,7 +921,6 @@ function pageTab_DisjSaveDetails(key){
     prixU: pu
   });
   saveLocal();
-  alert("Disjoncteur ajouté.");
   pageTabHome(key);
 }
 
@@ -957,7 +954,6 @@ function submitTabMod_Commandes(key){
     prixU: pu
   });
   saveLocal();
-  alert("Commande ajoutée.");
   pageTabHome(key);
 }
 
@@ -975,7 +971,6 @@ function pageTabMod_Specifique(key){
     prixU: prix
   });
   saveLocal();
-  alert("Ajouté.");
   pageTabHome(key);
 }
 </script>
