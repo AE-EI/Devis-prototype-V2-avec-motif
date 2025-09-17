@@ -35,13 +35,14 @@
   <!-- JSZip (exports ZIP) -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <!-- Cache-busting doux : ajoute ?v=timestamp si absent -->
+  <!-- Cache-busting : force toujours un nouveau ?v=timestamp -->
   <script>
   (function(){
     try{
       var u = new URL(location.href);
-      if(!u.searchParams.has('v')){
-        u.searchParams.set('v', Date.now());
+      u.searchParams.delete('v');
+      u.searchParams.set('v', Date.now());
+      if(location.href !== u.toString()){
         location.replace(u.toString());
       }
     }catch(e){}
