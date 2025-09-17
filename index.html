@@ -1230,7 +1230,7 @@ async function exportZipFull(){
 </script>
 
 <!-- =============================
-     CHAPITRE 8 : DÉMARRAGE & EXPOSE (corrigé V5-onepage)
+     CHAPITRE 8 : DÉMARRAGE & EXPOSE
      ============================= -->
 <script>
 function init(){
@@ -1238,16 +1238,19 @@ function init(){
     loadLocal();
     pageMain();
   }catch(err){
-    const el=document.getElementById("app");
+    var el = document.getElementById('app');
     if(el){
-      el.innerHTML=`<div class="card"><h2>Erreur init()</h2><pre>${(err&&err.stack)||err}</pre></div>`;
+      el.innerHTML =
+        '<div class="card"><h2>Erreur init()</h2><pre>'
+        + ((err && err.stack) || String(err))
+        + '</pre></div>';
     }
   }
 }
 
-/* Expose uniquement les fonctions réellement définies */
+/* Expose — fonctions réellement utilisées dans l’UI */
 Object.assign(window, {
-  // Menu & sauvegarde (chap.4)
+  // Chap.4 — Menu & sauvegarde
   pageMain,
   actionNouveauDevis,
   pageSavedDevis,
@@ -1255,7 +1258,7 @@ Object.assign(window, {
   deleteDevis,
   saveCurrentDevis,
 
-  // Pièces & flux (chap.5 — version onepage)
+  // Chap.5 — Pièces (flux one-page)
   pageHome,
   pageAddPiece,
   confirmPieceChoice,
@@ -1271,24 +1274,21 @@ Object.assign(window, {
   pageOneShotSelection,
   saveOneShotItem,
 
-  // Installations spécifiques & Tableau (chap.6)
-  pageISHome,
-  isSoon,
+  // Chap.6 — Tableaux (multi-tableaux)
+  pageTabCreate,
+  saveTabCustomName,
   pageTabHome,
   pageTabPose,
   addTabPose,
   pageTab_ID,
   submitTab_ID,
   pageTab_Disjoncteurs,
-  pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
-  pageTab_DisjVider,
-  pageTab_DisjValider,
   pageTabMod_Commandes,
   submitTabMod_Commandes,
   pageTabMod_Specifique,
 
-  // Estimatif & exports (chap.7)
+  // Chap.7 — Estimatif & exports
   pageEstimatif,
   pageTotaux,
   exportText,
