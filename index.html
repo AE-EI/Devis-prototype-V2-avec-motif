@@ -1428,7 +1428,7 @@ async function exportZipFull(){
 }
 </script>
 <!-- =============================
-     CHAPITRE 8 : DÉMARRAGE & EXPOSE
+     CHAPITRE 8 : DÉMARRAGE & EXPOSE (corrigé V5-onepage)
      ============================= -->
 <script>
 function init(){
@@ -1443,7 +1443,7 @@ function init(){
   }
 }
 
-/* Expose toutes les fonctions nécessaires */
+/* Expose uniquement les fonctions réellement définies */
 Object.assign(window, {
   // Menu & sauvegarde (chap.4)
   pageMain,
@@ -1453,7 +1453,7 @@ Object.assign(window, {
   deleteDevis,
   saveCurrentDevis,
 
-  // Pièces & flux (chap.5)
+  // Pièces & flux (chap.5 — version onepage)
   pageHome,
   pageAddPiece,
   confirmPieceChoice,
@@ -1466,9 +1466,8 @@ Object.assign(window, {
   goEclairageSub,
   setEclairageBranch,
   goIntervention,
-  goDesignation,
-  pageQuantite,
-  saveItem,
+  pageOneShotSelection,
+  saveOneShotItem,
 
   // Installations spécifiques & Tableau (chap.6)
   pageISHome,
@@ -1495,7 +1494,7 @@ Object.assign(window, {
   exportTextFull,
   exportZipFull,
 
-  // Navigation
+  // Navigation commune
   confirmBackHome
 });
 
