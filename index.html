@@ -413,43 +413,30 @@ function saveCurrentDevis(){
 </script>
 
 <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5-onepage)
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5-onepage, avec support Tableaux nommés)
      ============================= -->
 <script>
 // ---- Accueil
 function pageHome(){
-  // Liste des pièces "classiques" (tout sauf clés commençant par "__" ou "Tableau ")
-  var pieceKeys = Object.keys(devis).filter(function(k){
-    return k.indexOf('__')!==0 && !k.startsWith('Tableau ');
-  });
-
-  var listPieces = pieceKeys.length ? pieceKeys.map(function(key){
+  var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
+  var listHtml = keys.length ? keys.map(function(key){
     var s = devis[key] || {};
     var badges = [
       (s.qualificatif && s.qualificatif.trim()) ? '<span class="badge">'+s.qualificatif+'</span>' : '',
       (s.etage && s.etage.trim()) ? '<span class="badge">'+s.etage+'</span>' : ''
     ].filter(Boolean).join(' ');
+
+    // Gestion tableau spécial
+    var label = pieceDisplayLabel(key); 
+
     return '<div class="pill">'
-      +'<strong>'+formatPieceLabel(key)+'</strong> '
+      +'<strong>'+label+'</strong> '
       +'<small>'+((s.items||[]).length)+' ligne(s)</small> '
       +badges
       +b('Ouvrir','goPiece('+JSON.stringify(key)+')','btn')
       +b('Supprimer','removePiece('+JSON.stringify(key)+')','btn')
     +'</div>';
   }).join('') : '<p class="muted">Aucune pièce ajoutée pour l’instant.</p>';
-
-  // Liste des tableaux (multi-tableaux : "Tableau 1", "Tableau 2", …)
-  var tabKeys = Object.keys(devis).filter(function(k){ return k.startsWith('Tableau '); });
-  var listTabs = tabKeys.length ? tabKeys.map(function(key){
-    var s = devis[key] || {};
-    var custom = s.__customName ? ' — <span class="badge">'+s.__customName+'</span>' : '';
-    var count = (s.items||[]).length;
-    return '<div class="pill">'
-      +'<strong>'+key+'</strong>'+custom+' '
-      +'<small>'+count+' ligne(s)</small> '
-      +b('Ouvrir','pageTabHome('+JSON.stringify(key)+')','btn')
-    +'</div>';
-  }).join('') : '<p class="muted">Aucun tableau créé pour l’instant.</p>';
 
   view(
     '<div class="card">'
@@ -459,17 +446,10 @@ function pageHome(){
         +b('Créer un tableau','pageTabCreate()','btn')
       +'</div>'
     +'</div>'
-
     +'<div class="card" style="margin-top:12px;">'
-      +'<h2>Pièces ajoutées</h2>'
-      +'<div class="list">'+listPieces+'</div>'
+      +'<h2>Pièces & Tableaux ajoutés</h2>'
+      +'<div class="list">'+listHtml+'</div>'
     +'</div>'
-
-    +'<div class="card" style="margin-top:12px;">'
-      +'<h2>Tableaux créés</h2>'
-      +'<div class="list">'+listTabs+'</div>'
-    +'</div>'
-
     +'<div class="row" style="margin-top:12px;">'
       +b('Voir l’estimatif','pageEstimatif()','btn')
       +b('Voir les totaux','pageTotaux()','btn')
@@ -479,9 +459,9 @@ function pageHome(){
 
 // ---- Ajouter une pièce
 function pageAddPiece(){
-  var opts = PIECES_PREDEFINIES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('')
+  var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
            + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
-  var etageOpts = ['(aucun)'].concat(ETAGES).map(function(e){ return '<option value="'+e+'">'+e+'</option>'; }).join('');
+  var etageOpts = ['(aucun)'].concat(ETAGES).map(e=>'<option value="'+e+'">'+e+'</option>').join('');
 
   view(
     '<div class="card">'
@@ -517,7 +497,7 @@ function confirmPieceChoice(){
 }
 
 function removePiece(key){
-  if(confirm('Supprimer la pièce « '+formatPieceLabel(key)+' » et toutes ses lignes ?')){
+  if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
     delete devis[key];
     saveLocal();
     pageHome();
@@ -530,8 +510,8 @@ function goPiece(key){
   ensureSection(key);
 
   var cats = CATEGORIES
-    .filter(function(c){ return c!=='Spécifique'; })
-    .map(function(c){ return b(c,'goCategory('+JSON.stringify(c)+')','btn'); })
+    .filter(c=>c!=='Spécifique')
+    .map(c=> b(c,'goCategory('+JSON.stringify(c)+')','btn'))
     .join('');
 
   var s = devis[key];
@@ -542,18 +522,21 @@ function goPiece(key){
         var total = (+it.prixU||0) * (+it.qty||0);
         var poseTxt = (it.intervention==='Création' && it.pose) ? ' — '+String(it.pose).toLowerCase() : '';
         var unitTxt = it.unit || 'u';
+        var left = it.intervention ? (it.intervention+' — ') : '';
         return '<li>'
-          +(it.intervention?(it.intervention+' — '):'')+it.designation+poseTxt
+          + left + it.designation + poseTxt
           +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
           +b('×','delLine('+JSON.stringify(key)+','+i+')','btn')
         +'</li>';
       }).join('') + '</ul>'
     : '<p class="muted">Aucune ligne pour l’instant.</p>';
 
+  var label = pieceDisplayLabel(key);
+
   view(
     '<div class="card">'
       +b('Retour','pageHome()','btn back')
-      +'<h2>'+formatPieceLabel(key)+'</h2>'
+      +'<h2>'+label+'</h2>'
       +'<div class="row">'+cats+b('Spécifique','pagePieceSpecifique()','btn ghost')+'</div>'
       +'<div class="row" style="margin-top:10px;">'
         +b('Ajouter / modifier la note','editPieceNote()','btn')
@@ -591,14 +574,12 @@ function goCategory(cat){
     interventions = ['Création'];
   }
 
-  var btns = interventions.map(function(i){
-    return b(i,'goIntervention('+JSON.stringify(i)+')','btn');
-  }).join('');
+  var btns = interventions.map(i=> b(i,'goIntervention('+JSON.stringify(i)+')','btn')).join('');
 
   view(
     '<div class="card">'
       +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
-      +'<h2>'+ctx.category+' — '+formatPieceLabel(ctx.piece)+'</h2>'
+      +'<h2>'+ctx.category+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       +'<div class="row">'+btns+'</div>'
     +'</div>'
   );
@@ -609,7 +590,7 @@ function goEclairageSub(){
   view(
     '<div class="card">'
       +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
-      +'<h2>Éclairage — '+formatPieceLabel(ctx.piece)+'</h2>'
+      +'<h2>Éclairage — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       +'<div class="row">'
         +b('Luminaires','setEclairageBranch('+JSON.stringify('Éclairage/Luminaires')+')','btn')
         +b('Commandes','setEclairageBranch('+JSON.stringify('Éclairage/Commandes')+')','btn')
@@ -623,14 +604,12 @@ function setEclairageBranch(branch){
     ? ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire']
     : ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
 
-  var btns = interventions.map(function(i){
-    return b(i,'goIntervention('+JSON.stringify(i)+')','btn');
-  }).join('');
+  var btns = interventions.map(i=> b(i,'goIntervention('+JSON.stringify(i)+')','btn')).join('');
 
   view(
     '<div class="card">'
       +b('Retour','goEclairageSub()','btn back')
-      +'<h2>'+branch+' — '+formatPieceLabel(ctx.piece)+'</h2>'
+      +'<h2>'+branch+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       +'<div class="row">'+btns+'</div>'
     +'</div>'
   );
@@ -640,29 +619,29 @@ function setEclairageBranch(branch){
 function goIntervention(interv){
   ctx.intervention = interv;
 
-  // Spécifique (saisie libre)
+  // Spécifique (saisie libre) — inchangé
   if(ctx.category==='Spécifique'){
     var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goCategory('Spécifique');
     var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
     ensureSection(ctx.piece);
-    devis[ctx.piece].items.push({ category:'Spécifique', intervention:'', pose:'', designation:label, qty:1, prixU:prix });
+    devis[ctx.piece].items.push({ category:'Spécifique', intervention:'', pose:'', designation:label, qty:1, prixU:prix, __tabKey:ctx.piece });
     saveLocal();
     return goPiece(ctx.piece);
   }
 
-  // Nouvelle page “one shot” : pose (si nécessaire) + désignation + quantité
+  // ➜ Nouvelle page "one shot" qui regroupe Pose (si besoin), Désignation et Quantité
   pageOneShotSelection();
 }
 
-// ======== PAGE "Sélection sur une seule page" ========
+// ======== NOUVELLE PAGE "Sélection sur une seule page" ========
 function pageOneShotSelection(){
   var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   var needsPose = (ctx.intervention === 'Création') &&
                   (['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category) >= 0);
 
-  var desigOpts = list.map(function(d){ return '<option value="'+d+'">'+d+'</option>'; }).join('');
-  var poseOpts  = POSES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
-  var qtyOpts   = Array.from({length:30}).map(function(_,i){
+  var desigOpts = list.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
+  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  var qtyOpts   = Array.from({length:30}).map((_,i)=>{
     var q=i+1; return '<option value="'+q+'" '+(q===1?'selected':'')+'>'+q+'</option>';
   }).join('');
 
@@ -671,7 +650,7 @@ function pageOneShotSelection(){
   view(
     '<div class="card">'
       + b('Retour', backFn, 'btn back')
-      + '<h2>'+ctx.category+' — '+formatPieceLabel(ctx.piece)+'</h2>'
+      + '<h2>'+ctx.category+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       + '<div class="pill" style="margin-bottom:10px;"><strong>Intervention :</strong>&nbsp;'+ctx.intervention+'</div>'
       + (needsPose ? ('<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>') : '')
       + '<label style="margin-top:10px;">Désignation</label>'
@@ -689,7 +668,6 @@ function pageOneShotSelection(){
     + '</div>'
   );
 
-  // Listeners d’aperçu
   var $des  = document.getElementById('oneshot-desig');
   var $qty  = document.getElementById('oneshot-qty');
   var $prev = document.getElementById('oneshot-preview');
@@ -721,12 +699,12 @@ function saveOneShotItem(stayHere){
     pose: (ctx.intervention === 'Création') ? (pose || '') : '',
     designation: designation,
     qty: qty,
-    prixU: getPrix(designation, ctx.intervention)
+    prixU: getPrix(designation, ctx.intervention),
+    __tabKey: ctx.piece
   });
   saveLocal();
 
   if(stayHere){
-    alert('Ligne ajoutée.');
     pageOneShotSelection();
   }else{
     goPiece(ctx.piece);
@@ -738,7 +716,7 @@ function pagePieceSpecifique(){
   var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goPiece(ctx.piece);
   var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
   ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({ category:'Spécifique', intervention:'', pose:'', designation:label, qty:1, prixU:prix });
+  devis[ctx.piece].items.push({ category:'Spécifique', intervention:'', pose:'', designation:label, qty:1, prixU:prix, __tabKey:ctx.piece });
   saveLocal();
   goPiece(ctx.piece);
 }
@@ -746,13 +724,12 @@ function pagePieceSpecifique(){
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
-  var n = prompt('Note pour '+formatPieceLabel(ctx.piece), cur);
+  var n = prompt('Note pour '+pieceDisplayLabel(ctx.piece), cur);
   if(n!==null) devis[ctx.piece].note = n.trim();
   saveLocal();
   goPiece(ctx.piece);
 }
 </script>
-
 <!-- =============================
      CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux, corrigé)
      ============================= -->
