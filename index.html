@@ -1,7 +1,9 @@
+<!DOCTYPE html>
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MiniDevis — V3.0 (rebuild chap.1)</title>
+  <title>MiniDevis — V3.0</title>
 
   <!-- Styles de base -->
   <style>
@@ -15,7 +17,6 @@
     main{ max-width:980px; margin:0 auto; padding:16px; }
     h2{ margin:8px 0 12px; }
     .row{ display:flex; gap:8px; flex-wrap:wrap; }
-    .grid-qty{ display:grid; grid-template-columns:repeat(6,56px); gap:8px; }
     .btn{ padding:10px 14px; font-size:16px; background:#eee; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
     .btn.primary{ background:#111; color:#fff; border-color:#000; }
     .btn.back{ background:#ddd; }
@@ -38,13 +39,9 @@
   (function(){
     try{
       var url = new URL(location.href);
-      // si un paramètre v existe déjà, on ne touche pas
       if (url.searchParams.has('v')) return;
-
-      // clé par chemin, valable pour la session (évite les boucles)
       var onceKey = 'cb_once_' + location.pathname;
       if (sessionStorage.getItem(onceKey)) return;
-
       url.searchParams.set('v', Date.now());
       sessionStorage.setItem(onceKey, '1');
       location.replace(url.toString());
@@ -56,13 +53,11 @@
   <header>MiniDevis — V3.0</header>
   <main id="app"></main>
 
-  <!-- Sentinelle ultra-tôt : prouve que HTML + ce script sont chargés -->
+  <!-- Sentinelle ultra-tôt -->
   <script>
   (function(){
     var app = document.getElementById('app');
-    if(app){ app.innerHTML =
-      '<div class="card">Loader OK — en attente des chapitres JS…</div>';
-    }
+    if(app){ app.innerHTML = '<div class="card">Loader OK — en attente des chapitres JS…</div>'; }
   })();
   </script>
 
@@ -70,7 +65,7 @@
      CHAPITRE 2 : ÉTAT & HELPERS
      ============================= -->
 <script>
-// --- Debug global : affiche toute erreur JS dans #app
+// --- Debug : affiche toute erreur JS dans #app
 window.addEventListener('error', function (e) {
   var el = document.getElementById('app');
   if (el) {
@@ -135,13 +130,11 @@ function buildPieceLabel(base, qualif, etage){
   if(etage && etage.trim())   lbl += ' — '+etage.trim();
   return lbl;
 }
-/** Cherche une clé libre si le libellé existe déjà (Salon, Salon (2), …) */
 function nextFreeKey(label){
   if(!devis[label]) return label;
   var n=2; while(devis[label+' ('+n+')']) n++;
   return label+' ('+n+')';
 }
-/** Crée (ou récupère) une section pièce, avec méta conservées */
 function createOrGetPiece(base, qualif, etage){
   var wanted = buildPieceLabel(base,qualif,etage);
   var key    = nextFreeKey(wanted);
@@ -149,12 +142,14 @@ function createOrGetPiece(base, qualif, etage){
   saveLocal();
   return key;
 }
-/** Affiche le libellé complet d’une clé pièce */
 function formatPieceLabel(key){
   var s = devis[key]; if(!s) return key;
   var base = s.__base || key;
   return buildPieceLabel(base, s.qualificatif, s.etage);
 }
+
+// Fallback immédiat (sera enrichi au Chap.7)
+function pieceDisplayLabel(key){ return formatPieceLabel(key); }
 
 // --- Persistance locale
 function ensureSection(key){
@@ -238,41 +233,21 @@ var ETAGES = [
 
 // Barèmes Pose Tableau (base 13 modules en saillie, création)
 var TARIFS_TABLEAU = {
-  // Pose tableau : prix de base (13 modules, Saillie, Création)
-  pose_base_13: {
-    1: 60,   // 1 rangée 13M
-    2: 80,   // 2 rangées 13M
-    3: 100,  // 3 rangées 13M
-    4: 120   // 4 rangées 13M
-  },
-
-  // Coefficients supplémentaires
+  pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
   coef: {
-    // Modules (par rapport à 13M)
-    modules: {
-      13: 1.00,
-      18: 1.30, // +30%
-      24: 1.50  // +50%
-    },
-    pose: {
-      'Saillie': 1.00,
-      'Encastré': 1.70 // +70%
-    },
-    intervention: {
-      'Création': 1.00,
-      'Avec dépose de l’existant': 1.30 // +30%
-    }
+    modules: { 13:1.00, 18:1.30, 24:1.50 },
+    pose: { 'Saillie':1.00, 'Encastré':1.70 },
+    intervention: { 'Création':1.00, 'Avec dépose de l’existant':1.30 }
   },
-
   // Disjoncteurs (PU)
   disjoncteurs: {
     2: 32,
     10: 25,
     16: 25,
     20: 25,
-    32: 32
+    32: 32,
+    40: 45   // ✅ ajouté
   },
-
   // Interrupteurs différentiels (PU)
   inter_diff: {
     '40A-AC': 60,
@@ -280,7 +255,6 @@ var TARIFS_TABLEAU = {
     '63A-AC': 100,
     '63A-A': 120
   },
-
   // Commandes & pilotage (PU)
   commandes: {
     'Télérupteur': 50,
@@ -290,27 +264,14 @@ var TARIFS_TABLEAU = {
   }
 };
 
-/**
- * Prix de pose du tableau électrique (TTC) selon :
- * - rang (1..4), modules (13/18/24), type de pose ('Saillie'/'Encastré'),
- * - intervention ('Création'/'Avec dépose de l’existant')
- */
 function getTabPrice(rang, modules, pose, intervention){
   var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
   if(!base) return 0;
-
   var cMod = TARIFS_TABLEAU.coef.modules[+modules] || 1.00;
-  var cPose = TARIFS_TABLEAU.coef.pose[pose] || 1.00;
+  var cPose= TARIFS_TABLEAU.coef.pose[pose] || 1.00;
   var cInv = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
-
-  var price = base * cMod * cPose * cInv;
-  return Math.round(price * 100) / 100;
+  return Math.round(base * cMod * cPose * cInv * 100) / 100;
 }
-
-/**
- * Prix unitaire d’un élément « pièce » selon la désignation et l’intervention.
- * Source : table TARIFS (prise, point de centre, etc.)
- */
 function getPrix(designation, intervention){
   var base = TARIFS[designation] || {};
   if(intervention === 'Création') return base.creation || 0;
@@ -413,7 +374,7 @@ function saveCurrentDevis(){
 </script>
 
 <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5-onepage, avec support Tableaux nommés)
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5-onepage + Tableaux)
      ============================= -->
 <script>
 // ---- Accueil
@@ -425,10 +386,7 @@ function pageHome(){
       (s.qualificatif && s.qualificatif.trim()) ? '<span class="badge">'+s.qualificatif+'</span>' : '',
       (s.etage && s.etage.trim()) ? '<span class="badge">'+s.etage+'</span>' : ''
     ].filter(Boolean).join(' ');
-
-    // Gestion tableau spécial
-    var label = pieceDisplayLabel(key); 
-
+    var label = pieceDisplayLabel(key);
     return '<div class="pill">'
       +'<strong>'+label+'</strong> '
       +'<small>'+((s.items||[]).length)+' ligne(s)</small> '
@@ -492,7 +450,7 @@ function confirmPieceChoice(){
     if(!base) return;
   }
   var etageVal = (etage && etage!=='(aucun)') ? etage : '';
-  var key = createOrGetPiece(base, qualif, etageVal); // garantit une clé unique
+  var key = createOrGetPiece(base, qualif, etageVal);
   goPiece(key);
 }
 
@@ -615,11 +573,10 @@ function setEclairageBranch(branch){
   );
 }
 
-// ---- Intervention → Page unique (menus déroulants)
+// ---- Intervention → page unique
 function goIntervention(interv){
   ctx.intervention = interv;
 
-  // Spécifique (saisie libre) — inchangé
   if(ctx.category==='Spécifique'){
     var label = prompt('Nom de la prestation spécifique :',''); if(!label) return goCategory('Spécifique');
     var prix  = parseFloat(prompt('Prix estimé (€) :','0'))||0;
@@ -629,11 +586,9 @@ function goIntervention(interv){
     return goPiece(ctx.piece);
   }
 
-  // ➜ Nouvelle page "one shot" qui regroupe Pose (si besoin), Désignation et Quantité
   pageOneShotSelection();
 }
 
-// ======== NOUVELLE PAGE "Sélection sur une seule page" ========
 function pageOneShotSelection(){
   var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   var needsPose = (ctx.intervention === 'Création') &&
@@ -653,10 +608,8 @@ function pageOneShotSelection(){
       + '<h2>'+ctx.category+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       + '<div class="pill" style="margin-bottom:10px;"><strong>Intervention :</strong>&nbsp;'+ctx.intervention+'</div>'
       + (needsPose ? ('<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>') : '')
-      + '<label style="margin-top:10px;">Désignation</label>'
-      + '<select id="oneshot-desig">'+desigOpts+'</select>'
-      + '<label style="margin-top:10px;">Quantité</label>'
-      + '<select id="oneshot-qty">'+qtyOpts+'</select>'
+      + '<label style="margin-top:10px;">Désignation</label><select id="oneshot-desig">'+desigOpts+'</select>'
+      + '<label style="margin-top:10px;">Quantité</label><select id="oneshot-qty">'+qtyOpts+'</select>'
       + '<div id="oneshot-preview" class="muted" style="margin-top:10px;">PU estimé : '
           + euro(getPrix(list[0]||"Élément", ctx.intervention))+' — Total : '
           + euro(getPrix(list[0]||"Élément", ctx.intervention)*1)
@@ -704,11 +657,7 @@ function saveOneShotItem(stayHere){
   });
   saveLocal();
 
-  if(stayHere){
-    pageOneShotSelection();
-  }else{
-    goPiece(ctx.piece);
-  }
+  if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 
 // ---- Spécifique & Notes
@@ -720,7 +669,6 @@ function pagePieceSpecifique(){
   saveLocal();
   goPiece(ctx.piece);
 }
-
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
@@ -730,10 +678,23 @@ function editPieceNote(){
   goPiece(ctx.piece);
 }
 </script>
+
 <!-- =============================
-     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux, corrigé)
+     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux)
      ============================= -->
 <script>
+// État local pour gérer le détail des disjoncteurs
+let tabState = {
+  disj: {
+    2:  { qty:0, details:[] },
+    10: { qty:0, details:[] },
+    16: { qty:0, details:[] },
+    20: { qty:0, details:[] },
+    32: { qty:0, details:[] },
+    40: { qty:0, details:[] }
+  }
+};
+
 /** 1) Créer un nouveau tableau (numéroté automatiquement) */
 function pageTabCreate(){
   var existing = Object.keys(devis).filter(function(k){ return k.startsWith("Tableau "); });
@@ -758,7 +719,6 @@ function pageTabCreate(){
     + '</div>'
   );
 }
-
 function saveTabCustomName(key){
   var name = (document.getElementById("tab-custom").value || "").trim();
   if(devis[key]){
@@ -810,13 +770,11 @@ function pageTabPose(key){
     + '</div>'
   );
 }
-
 function addTabPose(key){
   var rang    = parseInt(document.getElementById("tab-rang").value,10);
   var modules = parseInt(document.getElementById("tab-mod").value,10);
   var pose    = document.getElementById("tab-pose").value;
   var inv     = document.getElementById("tab-inv").value;
-
   var pu = getTabPrice(rang, modules, pose, inv) || 0;
 
   devis[key].items.push({
@@ -850,7 +808,6 @@ function pageTab_ID(key){
     + '</div>'
   );
 }
-
 function submitTab_ID(key){
   var model = document.getElementById("id-model").value;
   var qty   = Math.max(1, parseInt(document.getElementById("id-qty").value,10) || 1);
@@ -889,12 +846,17 @@ function pageTab_Disjoncteurs(key){
     </div>
   `);
 }
-
 function pageTab_DisjDetails(key, rating){
+  // récupère la quantité sélectionnée si la page Disjoncteurs est visible
+  const sel = document.getElementById('djq-'+rating);
+  const selectedQty = sel ? (+sel.value||0) : 0;
+
   var state = tabState.disj[rating] || {qty:0, details:[]};
   if(!state.details) state.details = [];
-  const currentQty = state.qty;
+  // si pas encore défini, on prend la qty sélectionnée
+  const currentQty = selectedQty || state.qty || 0;
 
+  // génère N lignes
   const row = (i, d) => {
     const type = d?.type || '';
     const note = d?.note || '';
@@ -924,22 +886,19 @@ function pageTab_DisjDetails(key, rating){
   };
 
   let out = '';
-  for(let i=0;i<currentQty;i++){
-    out += row(i, state.details[i] || {});
-  }
+  for(let i=0;i<currentQty;i++){ out += row(i, state.details[i] || {}); }
 
   view(`
     <div class="card">
       ${b("Retour","pageTab_Disjoncteurs(${JSON.stringify(key)})","btn back")}
       <h2>Détail circuits — ${rating} A</h2>
-      <div id="dj-detail-container">${out}</div>
+      <div id="dj-detail-container">${out || '<p class="muted">Aucun circuit. Retour pour choisir une quantité.</p>'}</div>
       <div class="row" style="margin-top:12px;">
         ${b("Enregistrer","pageTab_DisjSaveDetails(${JSON.stringify(key)},${rating})","btn primary")}
       </div>
     </div>
   `);
 }
-
 function pageTab_DisjSaveDetails(key, rating){
   const types = Array.from(document.querySelectorAll('.dj-type'));
   const notes = Array.from(document.querySelectorAll('.dj-note'));
@@ -962,15 +921,22 @@ function pageTab_DisjSaveDetails(key, rating){
   saveLocal();
   pageTab_Disjoncteurs(key);
 }
-
 function pageTab_DisjValider(key){
   const PU = TARIFS_TABLEAU.disjoncteurs;
   [2,10,16,20,32,40].forEach(rating=>{
     const state = tabState.disj[rating];
+    // si la page Disjoncteurs est encore visible, on prend la quantité choisie
+    const sel = document.getElementById('djq-'+rating);
+    const selectedQty = sel ? (+sel.value||0) : null;
+    if(selectedQty !== null){
+      if(!tabState.disj[rating]) tabState.disj[rating] = {qty:0, details:[]};
+      tabState.disj[rating].qty = selectedQty;
+    }
+
     if(state && state.qty>0){
       const hasDetail = Array.isArray(state.details) && state.details.some(d=>d && (d.type||d.note));
       const detailText = hasDetail
-        ? ' — circuits : ' + state.details.map((d,i)=> (d.type||'Circuit '+(i+1)) + (d.note?' ('+d.note+')':'' )).join(', ')
+        ? ' — circuits : ' + state.details.map((d,i)=> (d.type||('Circuit '+(i+1))) + (d.note?' ('+d.note+')':'' )).join(', ')
         : '';
       devis[key].items.push({
         category: "Tableau/Modulaire",
@@ -1002,7 +968,6 @@ function pageTabMod_Commandes(key){
     + '</div>'
   );
 }
-
 function submitTabMod_Commandes(key){
   var model = document.getElementById("cmd-model").value;
   var qty   = Math.max(1, parseInt(document.getElementById("cmd-qty").value,10) || 1);
@@ -1034,29 +999,22 @@ function pageTabMod_Specifique(key){
     + '</div>'
   );
 }
-
 function submitTabMod_Specifique(key){
   var label = (document.getElementById("spec-label").value||"").trim();
   var prix  = parseFloat(document.getElementById("spec-price").value)||0;
   var qty   = Math.max(1,parseInt(document.getElementById("spec-qty").value,10)||1);
   if(!label){ pageTabHome(key); return; }
-
-  devis[key].items.push({
-    category:"Tableau/Spécifique",
-    designation:label,
-    qty:qty,
-    prixU:prix,
-    __tabKey:key
-  });
+  devis[key].items.push({ category:"Tableau/Spécifique", designation:label, qty:qty, prixU:prix, __tabKey:key });
   saveLocal();
   pageTabHome(key);
 }
 </script>
+
 <!-- =============================
      CHAPITRE 7 : ESTIMATIF & EXPORTS (affiche n° + nom des Tableaux)
      ============================= -->
 <script>
-// --- Groupes de pièces (créé si absent)
+// Groupes de pièces
 window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
   "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
@@ -1069,7 +1027,6 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
 
-// --- Regroupe l’objet devis par familles affichables
 function groupDevis(){
   var g = {};
   for (var key in devis){
@@ -1083,10 +1040,10 @@ function groupDevis(){
   return g;
 }
 
-/** Libellé affiché d’une pièce, avec ajout du nom personnalisé pour les Tableaux. */
+// Redéfinit pieceDisplayLabel pour inclure nom perso des Tableaux
 function pieceDisplayLabel(key){
   var s = devis[key] || {};
-  var label = formatPieceLabel(key); // fourni au Chapitre 2
+  var label = formatPieceLabel(key);
   var isTab = ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
   if(isTab && s.__customName && s.__customName.trim()){
     label += ' — ' + s.__customName.trim();
@@ -1094,7 +1051,6 @@ function pieceDisplayLabel(key){
   return label;
 }
 
-// --- Helpers d’affichage/export
 function itemLine(it){
   var unit = it.unit || "u";
   var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
@@ -1108,7 +1064,6 @@ function pieceSeparator(label){
   return "\n---------------- " + label + " ----------------\n";
 }
 
-// --- Page : Estimatif détaillé
 function pageEstimatif(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
   var totalGlobal = 0;
@@ -1156,7 +1111,6 @@ function pageEstimatif(){
   view(html);
 }
 
-// --- Page : Totaux par groupe
 function pageTotaux(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
   var totalGlobal = 0;
@@ -1185,8 +1139,6 @@ function pageTotaux(){
 }
 
 /* ===== Exports ===== */
-
-// --- .txt par groupe
 function exportText(){
   var grouped = groupDevis();
   for (var grp in grouped){
@@ -1220,11 +1172,8 @@ function exportText(){
   }
   alert('✅ Export terminé : un fichier .txt par groupe généré.');
 }
-
-// --- .zip par groupe
 async function exportZipGroups(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
-
   var grouped = groupDevis();
   var zip = new JSZip();
   var global = 0;
@@ -1252,7 +1201,6 @@ async function exportZipGroups(){
 
     lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€');
     global += groupTotal;
-
     zip.file('devis_'+grp+'.txt', lines.join('\r\n'));
   }
 
@@ -1266,11 +1214,8 @@ async function exportZipGroups(){
   var a    = document.createElement('a');
   a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_groupes.zip';
   a.click(); URL.revokeObjectURL(url);
-
   alert('✅ Export ZIP (par groupe) généré.');
 }
-
-// --- Texte complet (helper)
 function buildFullText(){
   var grouped = groupDevis();
   var lines = ['=== DEVIS COMPLET ===\n'];
@@ -1303,8 +1248,6 @@ function buildFullText(){
   lines.push('\n=== Total global : '+globalTotal.toFixed(2)+'€ ===\n');
   return lines.join('\r\n');
 }
-
-// --- .txt complet
 function exportTextFull(){
   var name = (devis.__name || 'Devis').trim() || 'Devis';
   var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
@@ -1314,22 +1257,17 @@ function exportTextFull(){
   a.click(); URL.revokeObjectURL(url);
   alert('✅ Export .txt complet généré.');
 }
-
-// --- .zip complet
 async function exportZipFull(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
-
   var name = (devis.__name || 'Devis').trim() || 'Devis';
   var zip  = new JSZip();
   zip.file(name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt', buildFullText());
   zip.file('README.txt', 'Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
-
   var blob = await zip.generateAsync({type:'blob'});
   var url  = URL.createObjectURL(blob);
   var a    = document.createElement('a');
   a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip';
   a.click(); URL.revokeObjectURL(url);
-
   alert('✅ Export .zip complet généré.');
 }
 </script>
@@ -1388,10 +1326,13 @@ Object.assign(window, {
   pageTab_ID,
   submitTab_ID,
   pageTab_Disjoncteurs,
+  pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
+  pageTab_DisjValider,
   pageTabMod_Commandes,
   submitTabMod_Commandes,
   pageTabMod_Specifique,
+  submitTabMod_Specifique,
 
   // Chap.7 — Estimatif & exports
   pageEstimatif,
