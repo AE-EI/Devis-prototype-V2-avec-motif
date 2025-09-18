@@ -745,7 +745,7 @@ function editPieceNote(){
 </script>
 
 <!-- =============================
-     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux)
+     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux — FIX)
      ============================= -->
 <script>
 // Etat local pour détails disjoncteurs
@@ -760,7 +760,7 @@ let tabState = {
   }
 };
 
-// 1) Créer un nouveau tableau : numérotation ordre de création
+/* 1) Créer un nouveau tableau : numérotation ordre de création */
 function pageTabCreate(){
   if(typeof devis.__tabCounter !== 'number') devis.__tabCounter = 0;
   devis.__tabCounter += 1;
@@ -779,11 +779,12 @@ function pageTabCreate(){
       + '<label>Nom personnalisé (optionnel)</label>'
       + '<input id="tab-custom" placeholder="ex: Principal RDC" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Valider","saveTabCustomName('+key.replace(/'/g,"\\'")+')","btn primary")
+        + b("Valider","saveTabCustomName("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
+window.pageTabCreate = pageTabCreate;
 
 function saveTabCustomName(key){
   var name = (document.getElementById("tab-custom").value || "").trim();
@@ -793,8 +794,9 @@ function saveTabCustomName(key){
   }
   pageTabHome(key);
 }
+window.saveTabCustomName = saveTabCustomName;
 
-// 2) Accueil d’un tableau donné
+/* 2) Accueil d’un tableau donné */
 function pageTabHome(key){
   if(!key || !devis[key]) return pageHome();
   var custom = devis[key].__customName ? " — " + devis[key].__customName : "";
@@ -804,18 +806,19 @@ function pageTabHome(key){
       + b("Retour","pageHome()","btn back")
       + '<h2>'+key+custom+'</h2>'
       + '<div class="row" style="margin-top:10px;">'
-        + b("1 · Pose tableau","pageTabPose('+key.replace(/'/g,"\\'")+')","btn primary")
-        + b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs('+key.replace(/'/g,"\\'")+')","btn")
-        + b("3 · Interrupteurs diff.","pageTab_ID('+key.replace(/'/g,"\\'")+')","btn")
-        + b("4 · Commandes / pilotage","pageTabMod_Commandes('+key.replace(/'/g,"\\'")+')","btn")
-        + b("5 · Spécifique (libre + prix)","pageTabMod_Specifique('+key.replace(/'/g,"\\'")+')","btn ghost")
+        + b("1 · Pose tableau","pageTabPose("+JSON.stringify(key)+")","btn primary")
+        + b("2 · Modulaire : Disjoncteurs","pageTab_Disjoncteurs("+JSON.stringify(key)+")","btn")
+        + b("3 · Interrupteurs diff.","pageTab_ID("+JSON.stringify(key)+")","btn")
+        + b("4 · Commandes / pilotage","pageTabMod_Commandes("+JSON.stringify(key)+")","btn")
+        + b("5 · Spécifique (libre + prix)","pageTabMod_Specifique("+JSON.stringify(key)+")","btn ghost")
       + '</div>'
       + '<p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans « '+key+' » uniquement.</p>'
     + '</div>'
   );
 }
+window.pageTabHome = pageTabHome;
 
-// 3) Pose tableau
+/* 3) Pose tableau */
 function pageTabPose(key){
   var rangs   = [1,2,3,4].map(r=>'<option value="'+r+'">'+r+' rangée(s)</option>').join('');
   var modules = [13,18,24].map(m=>'<option value="'+m+'">'+m+' modules</option>').join('');
@@ -824,18 +827,19 @@ function pageTabPose(key){
 
   view(
     '<div class="card">'
-      + b("Retour","pageTabHome('+key.replace(/'/g,"\\'")+')","btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Pose du tableau</h2>'
       + '<label>Nombre de rangées</label><select id="tab-rang">'+rangs+'</select>'
       + '<label>Modules</label><select id="tab-mod">'+modules+'</select>'
       + '<label>Pose</label><select id="tab-pose">'+poses+'</select>'
       + '<label>Intervention</label><select id="tab-inv">'+intervs+'</select>'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,"addTabPose('+key.replace(/'/g,"\\'")+')","btn primary")
+        + b("Ajouter à "+key,"addTabPose("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
+window.pageTabPose = pageTabPose;
 
 function addTabPose(key){
   var rang    = parseInt(document.getElementById("tab-rang").value,10);
@@ -857,8 +861,9 @@ function addTabPose(key){
   saveLocal();
   pageTabHome(key);
 }
+window.addTabPose = addTabPose;
 
-// 4) Interrupteurs différentiels
+/* 4) Interrupteurs différentiels */
 function pageTab_ID(key){
   const opts = Object.keys(TARIFS_TABLEAU.inter_diff)
     .map(label=>'<option value="'+label+'">'+label+' ('+euro(TARIFS_TABLEAU.inter_diff[label])+')</option>')
@@ -866,16 +871,17 @@ function pageTab_ID(key){
 
   view(
     '<div class="card">'
-      + b("Retour","pageTabHome('+key.replace(/'/g,"\\'")+')","btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Interrupteurs différentiels</h2>'
       + '<label>Modèle</label><select id="id-model">'+opts+'</select>'
       + '<label>Quantité</label><input id="id-qty" type="number" min="1" value="1" inputmode="numeric" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,"submitTab_ID('+key.replace(/'/g,"\\'")+')","btn primary")
+        + b("Ajouter à "+key,"submitTab_ID("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
+window.pageTab_ID = pageTab_ID;
 
 function submitTab_ID(key){
   var model = document.getElementById("id-model").value;
@@ -892,8 +898,9 @@ function submitTab_ID(key){
   saveLocal();
   pageTabHome(key);
 }
+window.submitTab_ID = submitTab_ID;
 
-// 5) Disjoncteurs (tout sur une page) + 40A
+/* 5) Disjoncteurs (tout sur une page) + 40A (45€) */
 function pageTab_Disjoncteurs(key){
   const optsQty = max=>[...Array(max+1)].map((_,i)=>`<option value="${i}">${i}</option>`).join('');
 
@@ -920,10 +927,9 @@ function pageTab_Disjoncteurs(key){
     if(tabState.disj[+r]) document.getElementById('djq-'+r).value = tabState.disj[+r].qty || 0;
   });
 }
+window.pageTab_Disjoncteurs = pageTab_Disjoncteurs;
 
-// Détail circuits
 function pageTab_DisjDetails(key, rating){
-  // 1) Si pas de qty en mémoire, on lit la valeur du select actuel (page en cours)
   var sel = document.getElementById('djq-'+rating);
   var currentQty = (tabState.disj[rating] && tabState.disj[rating].qty) || (sel ? +sel.value : 0) || 1;
 
@@ -976,6 +982,7 @@ function pageTab_DisjDetails(key, rating){
     </div>
   `);
 }
+window.pageTab_DisjDetails = pageTab_DisjDetails;
 
 function pageTab_DisjSaveDetails(key, rating){
   const types = Array.from(document.querySelectorAll('.dj-type'));
@@ -999,17 +1006,16 @@ function pageTab_DisjSaveDetails(key, rating){
   saveLocal();
   pageTab_Disjoncteurs(key);
 }
+window.pageTab_DisjSaveDetails = pageTab_DisjSaveDetails;
 
 function pageTab_DisjValider(key){
   const PU = TARIFS_TABLEAU.disjoncteurs;
   [2,10,16,20,32,40].forEach(rating=>{
-    // Mise à jour qty à partir des sélecteurs
     const sel = document.getElementById('djq-'+rating);
     if(sel){
       const qSel = +sel.value || 0;
       if(!tabState.disj[rating]) tabState.disj[rating] = {qty:0, details:[]};
       tabState.disj[rating].qty = qSel;
-      // Si on n'a pas de détails mais qSel>0 et details vide, on crée un tableau de longueur qSel
       if(qSel>0 && (!tabState.disj[rating].details || tabState.disj[rating].details.length!==qSel)){
         tabState.disj[rating].details = Array.from({length:qSel}).map((_,i)=>({type:'',note:''}));
       }
@@ -1032,24 +1038,26 @@ function pageTab_DisjValider(key){
   saveLocal();
   pageTabHome(key);
 }
+window.pageTab_DisjValider = pageTab_DisjValider;
 
-// 6) Commandes & pilotage
+/* 6) Commandes & pilotage */
 function pageTabMod_Commandes(key){
   const opts = Object.keys(TARIFS_TABLEAU.commandes)
     .map(c=>'<option value="'+c+'">'+c+' ('+euro(TARIFS_TABLEAU.commandes[c])+')</option>')
     .join('');
   view(
     '<div class="card">'
-      + b("Retour","pageTabHome('+key.replace(/'/g,"\\'")+')","btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Commande & pilotage</h2>'
       + '<label>Modèle</label><select id="cmd-model">'+opts+'</select>'
       + '<label>Quantité</label><input id="cmd-qty" type="number" min="1" value="1" inputmode="numeric" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,"submitTabMod_Commandes('+key.replace(/'/g,"\\'")+')","btn primary")
+        + b("Ajouter à "+key,"submitTabMod_Commandes("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
+window.pageTabMod_Commandes = pageTabMod_Commandes;
 
 function submitTabMod_Commandes(key){
   var model = document.getElementById("cmd-model").value;
@@ -1066,22 +1074,25 @@ function submitTabMod_Commandes(key){
   saveLocal();
   pageTabHome(key);
 }
+window.submitTabMod_Commandes = submitTabMod_Commandes;
 
-// 7) Spécifique libre + prix (clavier numérique)
+/* 7) Spécifique libre + prix */
 function pageTabMod_Specifique(key){
   view(
     '<div class="card">'
-      + b("Retour","pageTabHome('+key.replace(/'/g,"\\'")+')","btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Élément spécifique</h2>'
       + '<label>Intitulé</label><input id="spec-label" />'
       + '<label>Prix unitaire (€)</label><input id="spec-price" type="number" inputmode="decimal" />'
       + '<label>Quantité</label><input id="spec-qty" type="number" min="1" value="1" inputmode="numeric" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,"submitTabMod_Specifique('+key.replace(/'/g,"\\'")+')","btn primary")
+        + b("Ajouter à "+key,"submitTabMod_Specifique("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
+window.pageTabMod_Specifique = pageTabMod_Specifique;
+
 function submitTabMod_Specifique(key){
   var label = (document.getElementById("spec-label").value||"").trim();
   var prix  = parseFloat(document.getElementById("spec-price").value)||0;
@@ -1092,6 +1103,7 @@ function submitTabMod_Specifique(key){
   saveLocal();
   pageTabHome(key);
 }
+window.submitTabMod_Specifique = submitTabMod_Specifique;
 </script>
 
 <!-- =============================
