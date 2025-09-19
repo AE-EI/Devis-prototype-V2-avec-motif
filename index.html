@@ -1237,10 +1237,15 @@ function submitTabMod_Specifique(key){
 }
 </script>
 <!-- =============================
-     CHAPITRE 7 : ESTIMATIF & EXPORTS (affiche n° + nom des Tableaux)
+     CHAPITRE 7 : ESTIMATIF & EXPORTS
+     (avec tri ID avant Disjoncteurs dans chaque Tableau)
      ============================= -->
 <script>
-// --- Groupes de pièces (créé si absent)
+/* ──────────────────────────────────────────────────────────────
+   §0 • GROUPES & HELPERS COMMUNS
+   ────────────────────────────────────────────────────────────── */
+
+// Groupes d’affichage par type de pièce
 window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
   "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
@@ -1253,7 +1258,7 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
 
-// --- Regroupe l’objet devis par familles affichables
+// Regroupe l’objet devis par familles affichables
 function groupDevis(){
   var g = {};
   for (var key in devis){
@@ -1267,10 +1272,10 @@ function groupDevis(){
   return g;
 }
 
-/** Libellé affiché d’une pièce, avec ajout du nom personnalisé pour les Tableaux. */
+// Libellé affiché (ajoute le nom personnalisé pour les Tableaux)
 function pieceDisplayLabel(key){
   var s = devis[key] || {};
-  var label = formatPieceLabel(key);
+  var label = formatPieceLabel(key); // Chapitre 2
   var isTab = ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
   if(isTab && s.__customName && s.__customName.trim()){
     label += ' — ' + s.__customName.trim();
@@ -1278,10 +1283,10 @@ function pieceDisplayLabel(key){
   return label;
 }
 
-// --- Helpers d’affichage/export
+// Ligne texte d’un item pour export / aperçu
 function itemLine(it){
   var unit = it.unit || "u";
-  var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : (it.pose ? (" - " + String(it.pose).toLowerCase()) : "");
+  var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
   var left = it.intervention ? (it.intervention + " — ") : "";
   var pu = (+it.prixU || 0).toFixed(2);
   var q  = +it.qty || 0;
@@ -1292,7 +1297,35 @@ function pieceSeparator(label){
   return "\n---------------- " + label + " ----------------\n";
 }
 
-// --- Page : Estimatif détaillé
+/* ──────────────────────────────────────────────────────────────
+   §1 • TRI SPÉCIFIQUE POUR LES “TABLEAU N …”
+   ────────────────────────────────────────────────────────────── */
+
+// Détecte si une clé correspond à un tableau
+function isTableauKey(key){
+  var s = devis[key] || {};
+  return ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
+}
+
+// Renvoie les items triés : IDs avant Disjoncteurs (le reste après)
+function sortedItemsForPiece(key, items){
+  if(!isTableauKey(key)) return items.slice(); // pas de tri spécial
+  // On score par groupe pour préserver l’ordre relatif dans chaque groupe
+  function score(it){
+    var d = (it.designation||'').trim();
+    if(/^ID\s/i.test(d)) return 0;              // Interrupteurs différentiels d’abord
+    if(/^Disjoncteur\s/i.test(d)) return 1;     // puis Disjoncteurs
+    return 2;                                   // puis le reste (pose, commandes, spécifique…)
+  }
+  return items
+    .map(function(it, i){ return {it:it, i:i, s:score(it)}; })
+    .sort(function(a,b){ return (a.s - b.s) || (a.i - b.i); })
+    .map(function(x){ return x.it; });
+}
+
+/* ──────────────────────────────────────────────────────────────
+   §2 • PAGE : ESTIMATIF DÉTAILLÉ
+   ────────────────────────────────────────────────────────────── */
 function pageEstimatif(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
   var totalGlobal = 0;
@@ -1309,14 +1342,16 @@ function pageEstimatif(){
       var pieceLabel = pieceDisplayLabel(key);
       var sectionTotal = 0;
 
+      var items = sortedItemsForPiece(key, s.items);
+
       html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
-      s.items.forEach(function(it){
+      items.forEach(function(it){
         var q  = +it.qty || 0;
         var pu = +it.prixU || 0;
         var t  = q * pu;
         sectionTotal += t; groupTotal += t; totalGlobal += t;
 
-        var poseTxt = (it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
+        var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
         var unit    = it.unit || "u";
         var left    = it.intervention ? (it.intervention+" — ") : "";
         html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
@@ -1340,7 +1375,9 @@ function pageEstimatif(){
   view(html);
 }
 
-// --- Page : Totaux par groupe
+/* ──────────────────────────────────────────────────────────────
+   §3 • PAGE : TOTAUX PAR GROUPE
+   ────────────────────────────────────────────────────────────── */
 function pageTotaux(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
   var totalGlobal = 0;
@@ -1351,6 +1388,7 @@ function pageTotaux(){
     for (var key in grouped[grp]){
       var s = grouped[grp][key];
       if (!s || !s.items || !s.items.length) continue;
+      // Ici, l’ordre n’influe pas les totaux
       var st = s.items.reduce(function(sum,it){ return sum + (((+it.prixU)||0)*((+it.qty)||0)); }, 0);
       gt += st; totalGlobal += st;
     }
@@ -1368,9 +1406,9 @@ function pageTotaux(){
   view(html);
 }
 
-/* ===== Exports ===== */
-
-// --- .txt par groupe
+/* ──────────────────────────────────────────────────────────────
+   §4 • EXPORT .TXT PAR GROUPE
+   ────────────────────────────────────────────────────────────── */
 function exportText(){
   var grouped = groupDevis();
   for (var grp in grouped){
@@ -1385,7 +1423,9 @@ function exportText(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      s.items.forEach(function(it){
+      var items = sortedItemsForPiece(key, s.items);
+
+      items.forEach(function(it){
         var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
         st += t; groupTotal += t;
         lines.push(itemLine(it));
@@ -1405,7 +1445,9 @@ function exportText(){
   alert('✅ Export terminé : un fichier .txt par groupe généré.');
 }
 
-// --- .zip par groupe
+/* ──────────────────────────────────────────────────────────────
+   §5 • EXPORT .ZIP PAR GROUPE
+   ────────────────────────────────────────────────────────────── */
 async function exportZipGroups(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
 
@@ -1425,7 +1467,9 @@ async function exportZipGroups(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      s.items.forEach(function(it){
+      var items = sortedItemsForPiece(key, s.items);
+
+      items.forEach(function(it){
         var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
         st += t; groupTotal += t;
         lines.push(itemLine(it));
@@ -1454,7 +1498,11 @@ async function exportZipGroups(){
   alert('✅ Export ZIP (par groupe) généré.');
 }
 
-// --- Texte complet (helper)
+/* ──────────────────────────────────────────────────────────────
+   §6 • EXPORT COMPLET (TXT & ZIP)
+   ────────────────────────────────────────────────────────────── */
+
+// Construit un texte complet avec tri dans les Tableaux
 function buildFullText(){
   var grouped = groupDevis();
   var lines = ['=== DEVIS COMPLET ===\n'];
@@ -1472,7 +1520,9 @@ function buildFullText(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      s.items.forEach(function(it){
+      var items = sortedItemsForPiece(key, s.items);
+
+      items.forEach(function(it){
         var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
         st += t; groupTotal += t; globalTotal += t;
         lines.push(itemLine(it));
@@ -1488,7 +1538,7 @@ function buildFullText(){
   return lines.join('\r\n');
 }
 
-// --- .txt complet
+// .txt complet
 function exportTextFull(){
   var name = (devis.__name || 'Devis').trim() || 'Devis';
   var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
@@ -1499,7 +1549,7 @@ function exportTextFull(){
   alert('✅ Export .txt complet généré.');
 }
 
-// --- .zip complet
+// .zip complet
 async function exportZipFull(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
 
@@ -1517,7 +1567,6 @@ async function exportZipFull(){
   alert('✅ Export .zip complet généré.');
 }
 </script>
-
 <!-- =============================
      CHAPITRE 8 : DÉMARRAGE & EXPOSE
      ============================= -->
