@@ -744,338 +744,283 @@ function editPieceNote(){
 }
 </script>
 
-<!-- =============================
-     CHAPITRE 6 : TABLEAU ÉLECTRIQUE
-     (multi-tableaux — ID avant DJ, calibre perso, détails persistants)
-     ============================= -->
+<!-- =======================================================================
+     CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux)
+     Index :
+       §0  • État local (tabState) + utilitaires
+       §1  • Création / accueil d’un tableau (numérotation + nom perso)
+       §2  • Pose du tableau
+       §3  • Interrupteurs différentiels (avant Disjoncteurs)
+       §4  • Disjoncteurs modulaires (avec calibre personnalisé)
+       §5  • Commandes & pilotage
+       §6  • Élément spécifique (libre)
+     ======================================================================= -->
 <script>
-/* ──────────────────────────────────────────────────────────────
-   §0 • ÉTAT LOCAL + SÉCURITÉS TARIFS
-   ────────────────────────────────────────────────────────────── */
+/* =========================
+   §0 • ÉTAT LOCAL + UTILS
+   ========================= */
+// État local (persistant dans la session) pour les détails de disjoncteurs
 let tabState = {
-  // Quantités + détails des disjoncteurs fixes
+  // par calibre (y.c. 40 + perso)
   disj: {
-    2:  { qty:0, details:[] },
-    10: { qty:0, details:[] },
-    16: { qty:0, details:[] },
-    20: { qty:0, details:[] },
-    32: { qty:0, details:[] },
-    40: { qty:0, details:[] } // déjà demandé (45€ par défaut)
-  },
-  // Calibre personnalisé (un bloc dédié)
-  disjCustom: { label:'', price:0, qty:0, details:[] },
-
-  // Interrupteurs différentiels par modèle (ex: "40A-A")
-  ids: { /* '40A-A': { qty:0, details:[] } */ }
+    2:{qty:0,details:[]}, 10:{qty:0,details:[]}, 16:{qty:0,details:[]},
+    20:{qty:0,details:[]}, 32:{qty:0,details:[]}, 40:{qty:0,details:[]},
+    __custom__: {qty:0, details:[], label:""} // label libre saisi par l’utilisateur
+  }
 };
+// Assure la présence d’un tableau donné
+function ensureTableauKey(key){
+  if(!devis[key]) devis[key]={__base:"Tableau",items:[],note:"",__customName:""};
+}
+function euro(n){ return (+(n||0)).toFixed(2) + " €"; } // sécurité si pas dispo (mais déjà au chap.2)
 
-// Sécu tarifs tableau (au cas où)
-(function(){
-  if(!window.TARIFS_TABLEAU) window.TARIFS_TABLEAU = {};
-  if(!TARIFS_TABLEAU.disjoncteurs) TARIFS_TABLEAU.disjoncteurs = {2:32,10:25,16:25,20:25,32:32,40:45};
-  if(!TARIFS_TABLEAU.inter_diff) TARIFS_TABLEAU.inter_diff = {
-    '40A-AC':60,'40A-A':80,'63A-AC':100,'63A-A':120
-  };
-})();
-
-function ensureTableKey(key){
-  if(!devis[key]) devis[key] = { __base:"Tableau", items:[], note:"", __customName:"" };
+// Enregistre les quantités saisies dans l’écran “Disjoncteurs modulaires”
+function saveDisjQtyFromUI(){
+  const pick = id => +((document.getElementById(id)||{}).value||0);
+  ["2","10","16","20","32","40"].forEach(r=>{
+    const v = pick("djq-"+r);
+    if(!tabState.disj[+r]) tabState.disj[+r]={qty:0,details:[]};
+    tabState.disj[+r].qty = v;
+  });
+  // calibre personnalisé
+  const lbl = (document.getElementById("djq-custom-label")?.value||"").trim();
+  const q   = pick("djq-custom");
+  tabState.disj.__custom__.label = lbl;
+  tabState.disj.__custom__.qty   = q;
 }
 
-/* ──────────────────────────────────────────────────────────────
-   §1 • CRÉER UN NOUVEAU TABLEAU (numéroté par ordre de création)
-   ────────────────────────────────────────────────────────────── */
+/* ==========================================
+   §1 • CRÉATION / ACCUEIL D’UN TABLEAU
+   ========================================== */
+// Créer un nouveau tableau (numérotation ordre de création)
 function pageTabCreate(){
-  if(typeof devis.__tabCounter !== 'number') devis.__tabCounter = 0;
-  devis.__tabCounter += 1; saveLocal();
-
+  // Compteur persistant dans le devis (pas seulement sur l’onglet)
+  if(typeof devis.__tabCounter !== "number") devis.__tabCounter = 0;
+  devis.__tabCounter += 1;
   const key = "Tableau " + devis.__tabCounter;
-  ensureTableKey(key);
+
+  if(!devis[key]) devis[key] = { __base:"Tableau", items:[], note:"", __customName:"" };
+  saveLocal();
 
   view(
     '<div class="card">'
-      + b("Retour",'pageHome()',"btn back")
+      + b("Retour","pageHome()","btn back")
       + '<h2>Nouveau tableau</h2>'
-      + '<p>Identifiant : <strong>'+key+'</strong></p>'
+      + '<p>Identifiant automatique : <strong>'+key+'</strong></p>'
       + '<label>Nom personnalisé (optionnel)</label>'
-      + '<input id="tab-custom" placeholder="ex : Principal RDC" />'
+      + '<input id="tab-custom" placeholder="ex: Principal RDC" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Valider",'saveTabCustomName('+JSON.stringify(key)+')',"btn primary")
+        + b("Valider","saveTabCustomName("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
 function saveTabCustomName(key){
-  ensureTableKey(key);
-  const name = (document.getElementById('tab-custom').value||'').trim();
-  devis[key].__customName = name; saveLocal();
+  const name = (document.getElementById("tab-custom").value||"").trim();
+  if(devis[key]){ devis[key].__customName = name; saveLocal(); }
   pageTabHome(key);
 }
 
-/* ──────────────────────────────────────────────────────────────
-   §2 • ACCUEIL D’UN TABLEAU (ordre : ID puis Disjoncteurs)
-   ────────────────────────────────────────────────────────────── */
+// Accueil d’un tableau
 function pageTabHome(key){
   if(!key || !devis[key]) return pageHome();
-  const custom = devis[key].__customName ? ' — '+devis[key].__customName : '';
+  const custom = devis[key].__customName ? " — " + devis[key].__customName : "";
   view(
     '<div class="card">'
-      + b("Retour",'pageHome()',"btn back")
+      + b("Retour","pageHome()","btn back")
       + '<h2>'+key+custom+'</h2>'
       + '<div class="row" style="margin-top:10px;">'
-        + b("1 · Interrupteurs différentiels",'pageTab_ID('+JSON.stringify(key)+')',"btn primary")
-        + b("2 · Disjoncteurs modulaires",'pageTab_Disjoncteurs('+JSON.stringify(key)+')',"btn")
-        + b("3 · Pose tableau",'pageTabPose('+JSON.stringify(key)+')',"btn")
-        + b("4 · Commandes / pilotage",'pageTabMod_Commandes('+JSON.stringify(key)+')',"btn")
-        + b("5 · Spécifique (libre + prix)",'pageTabMod_Specifique('+JSON.stringify(key)+')',"btn ghost")
+        + b("1 · Pose du tableau","pageTabPose("+JSON.stringify(key)+")","btn primary")
+        + b("2 · Interrupteurs différentiels","pageTab_ID("+JSON.stringify(key)+")","btn")  <!-- ID AVANT -->
+        + b("3 · Disjoncteurs modulaires","pageTab_Disjoncteurs("+JSON.stringify(key)+")","btn")
+        + b("4 · Commandes / pilotage","pageTabMod_Commandes("+JSON.stringify(key)+")","btn")
+        + b("5 · Spécifique (libre + prix)","pageTabMod_Specifique("+JSON.stringify(key)+")","btn ghost")
       + '</div>'
-      + '<p class="muted" style="margin-top:8px;">Les éléments ajoutés ici sont rangés dans « '+key+' » uniquement.</p>'
+      + '<p class="muted" style="margin-top:8px;">Les éléments ajoutés ici restent dans « '+key+' ».</p>'
     + '</div>'
   );
 }
 
-/* ──────────────────────────────────────────────────────────────
-   §3 • POSE DU TABLEAU
-   ────────────────────────────────────────────────────────────── */
+/* ================================
+   §2 • POSE DU TABLEAU
+   ================================ */
 function pageTabPose(key){
-  ensureTableKey(key);
-  const o = (arr)=>arr.map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+  const rangs   = [1,2,3,4].map(r=>`<option value="${r}">${r} rangée(s)</option>`).join('');
+  const modules = [13,18,24].map(m=>`<option value="${m}">${m} modules</option>`).join('');
+  const poses   = ['Saillie','Encastré'].map(p=>`<option value="${p}">${p}</option>`).join('');
+  const intervs = ['Création','Avec dépose de l’existant'].map(i=>`<option value="${i}">${i}</option>`).join('');
+
   view(
     '<div class="card">'
-      + b("Retour",'pageTabHome('+JSON.stringify(key)+')',"btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Pose du tableau</h2>'
-      + '<label>Nombre de rangées</label><select id="tab-rang">'+o([1,2,3,4])+'</select>'
-      + '<label>Modules</label><select id="tab-mod">'+o([13,18,24])+'</select>'
-      + '<label>Pose</label><select id="tab-pose">'+o(['Saillie','Encastré'])+'</select>'
-      + '<label>Intervention</label><select id="tab-inv">'+o(['Création',"Avec dépose de l’existant"])+'</select>'
+      + '<label>Nombre de rangées</label><select id="tab-rang">'+rangs+'</select>'
+      + '<label>Modules</label><select id="tab-mod">'+modules+'</select>'
+      + '<label>Pose</label><select id="tab-pose">'+poses+'</select>'
+      + '<label>Intervention</label><select id="tab-inv">'+intervs+'</select>'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,'addTabPose('+JSON.stringify(key)+')',"btn primary")
+        + b("Ajouter à "+key,"addTabPose("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
 function addTabPose(key){
-  ensureTableKey(key);
-  const rang    = +document.getElementById('tab-rang').value;
-  const modules = +document.getElementById('tab-mod').value;
-  const pose    = document.getElementById('tab-pose').value;
-  const inv     = document.getElementById('tab-inv').value;
-  const pu      = (typeof getTabPrice==='function') ? (getTabPrice(rang,modules,pose,inv)||0) : 0;
+  const r   = +document.getElementById("tab-rang").value;
+  const m   = +document.getElementById("tab-mod").value;
+  const pos = document.getElementById("tab-pose").value;
+  const itv = document.getElementById("tab-inv").value;
+  const pu  = (typeof getTabPrice==='function') ? getTabPrice(r,m,pos,itv) : 0;
 
+  ensureTableauKey(key);
   devis[key].items.push({
     category:"Tableau & distribution",
-    intervention:inv, pose:pose,
-    designation:`Pose tableau — ${rang} rangée(s), ${modules} modules`,
+    intervention: itv,
+    pose: pos,
+    designation:`Pose tableau — ${r} rangée(s), ${m} modules`,
     qty:1, prixU:pu, __tabKey:key
   });
-  saveLocal(); pageTabHome(key);
+  saveLocal();
+  pageTabHome(key);
 }
 
-/* ──────────────────────────────────────────────────────────────
-   §4 • INTERRUPTEURS DIFFÉRENTIELS (comme les disjoncteurs)
-   ────────────────────────────────────────────────────────────── */
+/* ==================================================
+   §3 • INTERRUPTEURS DIFFÉRENTIELS (LISTE COMPLÈTE)
+   ================================================== */
 function pageTab_ID(key){
-  ensureTableKey(key);
-  const models = Object.keys(TARIFS_TABLEAU.inter_diff||{});
-  // état par modèle
-  models.forEach(m=>{ if(!tabState.ids[m]) tabState.ids[m]={qty:0,details:[]}; });
-
-  const optsQty = (max=20)=>Array.from({length:max+1},(_,i)=>`<option value="${i}">${i}</option>`).join('');
-  const rows = models.map(m=>{
-    const id = 'idq-'+m.replace(/[^a-z0-9]/ig,'_');
-    return `
-      <label>
-        ${m} — PU ${euro(TARIFS_TABLEAU.inter_diff[m]||0)}
-        <select id="${id}" onchange="(function(v){ tabState.ids[${JSON.stringify(m)}].qty=+v; }) (this.value)">
-          ${optsQty(20)}
-        </select>
-        ${b("Détail circuits",'pageTab_IDDetails('+JSON.stringify(key)+','+JSON.stringify(m)+')')}
-      </label>`;
-  }).join('');
+  // Même UX que “Disjoncteurs modulaires” : lignes multi-modèles
+  const MODELS = [
+    { id:"40A-A",  label:"ID 30mA - 40A - Type A"  },
+    { id:"40A-AC", label:"ID 30mA - 40A - Type AC" },
+    { id:"63A-A",  label:"ID 30mA - 63A - Type A"  },
+    { id:"63A-AC", label:"ID 30mA - 63A - Type AC" }
+  ];
+  const opts = (n=20)=>Array.from({length:n+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
+  const price = id => (TARIFS_TABLEAU && TARIFS_TABLEAU.inter_diff ? (TARIFS_TABLEAU.inter_diff[id]||0) : 0);
 
   view(
     '<div class="card">'
-      + b("Retour",'pageTabHome('+JSON.stringify(key)+')',"btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Interrupteurs différentiels</h2>'
-      + '<div class="list">'+rows+'</div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Ajouter à "+key,'pageTab_IDValider('+JSON.stringify(key)+')',"btn primary")
+      + '<div class="list">'
+        + MODELS.map(m=>(
+            `<label>${m.label} — <span class="muted">${euro(price(m.id))}</span> `
+          + `<select id="idq-${m.id.replace(/[^a-z0-9]/ig,'_')}">${opts(20)}</select></label>`
+          )).join('')
       + '</div>'
-      + '<p class="muted" style="margin-top:6px;">Astuce : le détail est facultatif ; les quantités restent mémorisées.</p>'
-    + '</div>'
-  );
-
-  // Restaure visuellement les quantités mémorisées
-  models.forEach(m=>{
-    const id = 'idq-'+m.replace(/[^a-z0-9]/ig,'_');
-    const el = document.getElementById(id);
-    if(el) el.value = tabState.ids[m].qty || 0;
-  });
-}
-
-function pageTab_IDDetails(key, model){
-  const state = tabState.ids[model] || {qty:0, details:[]};
-  const qty = state.qty || 0;
-
-  const row = (i, d={})=>{
-    const t = d.type||'', n = d.note||'';
-    return `
-      <div class="pill" style="width:100%;">
-        <select data-idx="${i}" class="id-type">
-          <option value="">(non défini)</option>
-          <option value="Circuits en aval" ${t==='Circuits en aval'?'selected':''}>Circuits en aval</option>
-          <option value="Chauffe-eau" ${t==='Chauffe-eau'?'selected':''}>Chauffe-eau</option>
-          <option value="Cuisine" ${t==='Cuisine'?'selected':''}>Cuisine</option>
-          <option value="Autre" ${t==='Autre'?'selected':''}>Autre</option>
-        </select>
-        <input class="id-note" data-idx="${i}" placeholder="Note (facultatif)" value="${n.replace(/"/g,'&quot;')}" />
-      </div>`;
-  };
-
-  let out = '';
-  for(let i=0;i<qty;i++) out += row(i, state.details[i]||{});
-
-  view(
-    '<div class="card">'
-      + b("Retour",'pageTab_ID('+JSON.stringify(key)+')',"btn back")
-      + '<h2>Détails — '+model+'</h2>'
-      + (qty>0 ? '<div id="id-detail">'+out+'</div>' : '<p class="muted">Définis d’abord une quantité sur la page précédente.</p>')
       + '<div class="row" style="margin-top:12px;">'
-        + b("Enregistrer",'pageTab_IDSaveDetails('+JSON.stringify(key)+','+JSON.stringify(model)+')',"btn primary")
+        + b("Ajouter à "+key,"submitTab_ID("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
-function pageTab_IDSaveDetails(key, model){
-  const state = tabState.ids[model] || {qty:0, details:[]};
-  const types = Array.from(document.querySelectorAll('.id-type'));
-  const notes = Array.from(document.querySelectorAll('.id-note'));
-  const details = [];
-  for(let i=0;i<types.length;i++){
-    details.push({ type: types[i]?.value||'', note: notes[i]?.value||'' });
-  }
-  state.details = details; tabState.ids[model] = state;
-  saveLocal(); pageTab_ID(key);
-}
+function submitTab_ID(key){
+  const pick=id=>+document.getElementById(id).value||0;
+  const mapIdDom = id => `idq-${id.replace(/[^a-z0-9]/ig,'_')}`;
 
-function pageTab_IDValider(key){
-  ensureTableKey(key);
-  const PU = TARIFS_TABLEAU.inter_diff || {};
-  Object.keys(tabState.ids).forEach(model=>{
-    const { qty, details } = tabState.ids[model] || {};
-    if(qty>0){
-      const txt = (details && details.some(d=>d && (d.type||d.note)))
-        ? ' — circuits : ' + details.map((d,i)=> (d.type||'Circuit '+(i+1)) + (d.note?(' ('+d.note+')'):'')).join(', ')
-        : '';
-      devis[key].items.push({
-        category:"Tableau/Modulaire",
-        designation:'ID 30mA — '+model.replace('-',' - ')+txt,
-        qty:qty, prixU:PU[model]||0, __tabKey:key
-      });
-    }
+  const lines = ["40A-A","40A-AC","63A-A","63A-AC"].map(id=>({id, q: pick(mapIdDom(id))}))
+                  .filter(x=>x.q>0);
+
+  if(!lines.length){ pageTabHome(key); return; }
+
+  ensureTableauKey(key);
+  lines.forEach(x=>{
+    const pu = (TARIFS_TABLEAU && TARIFS_TABLEAU.inter_diff ? (TARIFS_TABLEAU.inter_diff[x.id]||0) : 0);
+    devis[key].items.push({
+      category:"Tableau/Modulaire",
+      designation:`ID 30mA — ${x.id.replace('-', ' - ')}`,
+      qty:x.q, prixU:pu, __tabKey:key
+    });
   });
-  saveLocal(); pageTabHome(key);
+  saveLocal();
+  pageTabHome(key);
 }
 
-// Compat : ancienne fonction
-function submitTab_ID(key){ pageTab_IDValider(key); }
-
-/* ──────────────────────────────────────────────────────────────
-   §5 • DISJONCTEURS MODULAIRES (calibre perso + détails persistants)
-   ────────────────────────────────────────────────────────────── */
+/* ======================================================
+   §4 • DISJONCTEURS MODULAIRES (avec calibre personnalisé)
+   ====================================================== */
 function pageTab_Disjoncteurs(key){
-  ensureTableKey(key);
-  const optsQty = (max=30)=>Array.from({length:max+1},(_,i)=>`<option value="${i}">${i}</option>`).join('');
-
-  // Rangées standard
-  const stdRow = (rating)=>`
-    <label>
-      ${rating} A — PU ${euro((TARIFS_TABLEAU.disjoncteurs||{})[rating]||0)}
-      <select id="djq-${rating}" onchange="(function(v){ tabState.disj[${rating}].qty=+v; }) (this.value)">
-        ${optsQty(30)}
-      </select>
-      ${b("Détail circuits",'pageTab_DisjDetails('+JSON.stringify(key)+','+rating+')')}
-    </label>`;
-
-  // Bloc calibre personnalisé
-  const custom = tabState.disjCustom || {label:'',price:0,qty:0,details:[]};
-  const customBlock = `
-    <div class="card" style="margin-top:10px;">
-      <h3 style="margin:0 0 6px;">Calibre personnalisé</h3>
-      <label>Libellé (ex : 45 A)</label>
-      <input id="djx-label" placeholder="ex : 45 A" value="${(custom.label||'').replace(/"/g,'&quot;')}" />
-      <label style="margin-top:6px;">Prix unitaire (€)</label>
-      <input id="djx-price" type="number" inputmode="decimal" value="${custom.price||0}" />
-      <label style="margin-top:6px;">Quantité</label>
-      <input id="djx-qty" type="number" inputmode="numeric" min="0" value="${custom.qty||0}" />
-      <div class="row" style="margin-top:6px;">
-        ${b("Détail circuits","pageTab_DisjDetailsCustom("+JSON.stringify(key)+")")}
-      </div>
-    </div>
-  `;
+  const opts = (max=30)=>Array.from({length:max+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
+  // Construire le bloc “détail circuits” + restauration des sélections
+  const line = (amp)=>(
+    `<label>${amp} A <select id="djq-${amp}">${opts(30)}</select> `
+    + `${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+","+amp+")")}</label>`
+  );
 
   view(
     '<div class="card">'
-      + b("Retour",'pageTabHome('+JSON.stringify(key)+')',"btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Disjoncteurs modulaires</h2>'
       + '<div class="list">'
-        + stdRow(2) + stdRow(10) + stdRow(16) + stdRow(20) + stdRow(32) + stdRow(40)
+        + line(2) + line(10) + line(16) + line(20) + line(32) + line(40)
+        + `<label>Calibre personnalisé
+             <input id="djq-custom-label" placeholder="ex: 50 A, 3x20A…">
+             Qté <select id="djq-custom">${opts(30)}</select>
+             ${b("Détail circuits","pageTab_DisjDetails("+JSON.stringify(key)+", '__custom__')")}
+           </label>`
       + '</div>'
-      + customBlock
       + '<div class="row" style="margin-top:12px;">'
-        + b("Ajouter à "+key,'pageTab_DisjValider('+JSON.stringify(key)+')',"btn primary")
+        + b("Ajouter à "+key,"pageTab_DisjValider("+JSON.stringify(key)+")","btn primary")
       + '</div>'
-      + '<p class="muted" style="margin-top:6px;">Les quantités restent mémorisées ; le détail est facultatif.</p>'
     + '</div>'
   );
 
-  // Restaure quantités standard
-  [2,10,16,20,32,40].forEach(r=>{
-    const el = document.getElementById('djq-'+r);
-    if(el) el.value = tabState.disj[r].qty || 0;
+  // Restaure les quantités précédemment saisies
+  ["2","10","16","20","32","40"].forEach(r=>{
+    const el = document.getElementById("djq-"+r);
+    if(el && tabState.disj[+r]) el.value = tabState.disj[+r].qty||0;
   });
+  if(document.getElementById("djq-custom")){
+    document.getElementById("djq-custom").value = tabState.disj.__custom__.qty||0;
+    document.getElementById("djq-custom-label").value = tabState.disj.__custom__.label||"";
+  }
 }
-
+// Détail circuits (ne redemande pas la quantité : on prend l’existante)
 function pageTab_DisjDetails(key, rating){
-  const state = tabState.disj[rating] || {qty:0, details:[]};
-  const qty = state.qty || 0;
+  // Sauvegarde d’abord les qté de l’écran courant pour ne rien perdre
+  saveDisjQtyFromUI();
 
-  const row = (i, d={})=>{
-    const t = d.type||'', n = d.note||'';
+  const state = tabState.disj[rating] || {qty:0,details:[]};
+  const qty   = state.qty || 0;
+  if(!state.details) state.details = [];
+
+  const row = (i, d) => {
+    const type = d?.type || '';
+    const note = d?.note || '';
     return `
       <div class="pill" style="width:100%;">
         <select data-idx="${i}" class="dj-type">
           <option value="">(non défini)</option>
-          <option value="Circuit prise" ${t==='Circuit prise'?'selected':''}>Circuit prise</option>
-          <option value="Circuit éclairage" ${t==='Circuit éclairage'?'selected':''}>Circuit éclairage</option>
+          <option value="Circuit prise" ${type==='Circuit prise'?'selected':''}>Circuit prise</option>
+          <option value="Circuit éclairage" ${type==='Circuit éclairage'?'selected':''}>Circuit éclairage</option>
           <optgroup label="Circuits spécialisés">
-            <option value="Four" ${t==='Four'?'selected':''}>Four</option>
-            <option value="Plaque de cuisson" ${t==='Plaque de cuisson'?'selected':''}>Plaque de cuisson</option>
-            <option value="Lave-linge" ${t==='Lave-linge'?'selected':''}>Lave-linge</option>
-            <option value="Lave-vaisselle" ${t==='Lave-vaisselle'?'selected':''}>Lave-vaisselle</option>
-            <option value="Sèche-linge" ${t==='Sèche-linge'?'selected':''}>Sèche-linge</option>
-            <option value="Cumulus" ${t==='Cumulus'?'selected':''}>Cumulus</option>
-            <option value="VMC" ${t==='VMC'?'selected':''}>VMC</option>
-            <option value="Chauffage" ${t==='Chauffage'?'selected':''}>Chauffage</option>
-            <option value="Climatisation" ${t==='Climatisation'?'selected':''}>Climatisation</option>
-            <option value="Prise extérieure étanche" ${t==='Prise extérieure étanche'?'selected':''}>Prise extérieure étanche</option>
+            <option value="Four" ${type==='Four'?'selected':''}>Four</option>
+            <option value="Plaque de cuisson" ${type==='Plaque de cuisson'?'selected':''}>Plaque de cuisson</option>
+            <option value="Lave-linge" ${type==='Lave-linge'?'selected':''}>Lave-linge</option>
+            <option value="Lave-vaisselle" ${type==='Lave-vaisselle'?'selected':''}>Lave-vaisselle</option>
+            <option value="Sèche-linge" ${type==='Sèche-linge'?'selected':''}>Sèche-linge</option>
+            <option value="Cumulus" ${type==='Cumulus'?'selected':''}>Cumulus</option>
+            <option value="VMC" ${type==='VMC'?'selected':''}>VMC</option>
+            <option value="Chauffage" ${type==='Chauffage'?'selected':''}>Chauffage</option>
+            <option value="Climatisation" ${type==='Climatisation'?'selected':''}>Climatisation</option>
+            <option value="Prise extérieure étanche" ${type==='Prise extérieure étanche'?'selected':''}>Prise extérieure étanche</option>
             <option value="__custom__">Nom personnalisé…</option>
           </optgroup>
         </select>
-        <input class="dj-note" data-idx="${i}" placeholder="Caractéristique / nom (facultatif)" value="${(n||'').replace(/"/g,'&quot;')}" />
-      </div>`;
+        <input data-idx="${i}" class="dj-note" placeholder="Caractéristique / nom (facultatif)" value="${(note||'').replace(/"/g,'&quot;')}" />
+      </div>
+    `;
   };
 
   let out = '';
-  for(let i=0;i<qty;i++) out += row(i, state.details[i]||{});
+  for(let i=0;i<qty;i++){ out += row(i, state.details[i] || {}); }
 
   view(
     '<div class="card">'
-      + b("Retour",'pageTab_Disjoncteurs('+JSON.stringify(key)+')',"btn back")
-      + '<h2>Détail circuits — '+rating+' A</h2>'
-      + (qty>0 ? ('<div id="dj-detail">'+out+'</div>') : '<p class="muted">Définis d’abord une quantité sur la page précédente.</p>')
+      + b("Retour","pageTab_Disjoncteurs("+JSON.stringify(key)+")","btn back")
+      + '<h2>Détail circuits — '+(rating==='__custom__' ? (tabState.disj.__custom__.label||'Calibre personnalisé') : (rating+' A'))+'</h2>'
+      + '<div id="dj-detail-container">'+out+'</div>'
       + '<div class="row" style="margin-top:12px;">'
-        + b("Enregistrer",'pageTab_DisjSaveDetails('+JSON.stringify(key)+','+rating+')',"btn primary")
+        + b("Enregistrer","pageTab_DisjSaveDetails("+JSON.stringify(key)+","+JSON.stringify(rating)+")","btn primary")
       + '</div>'
     + '</div>'
   );
@@ -1083,74 +1028,36 @@ function pageTab_DisjDetails(key, rating){
 function pageTab_DisjSaveDetails(key, rating){
   const types = Array.from(document.querySelectorAll('.dj-type'));
   const notes = Array.from(document.querySelectorAll('.dj-note'));
+
   const details = [];
   for(let i=0;i<types.length;i++){
     let t = types[i]?.value || '';
-    if(t==='__custom__') t = prompt('Nom personnalisé du circuit :','') || ('Circuit '+(i+1));
-    details.push({ type:t, note:notes[i]?.value||'' });
+    if(t==="__custom__"){ t = prompt("Nom personnalisé du circuit :","") || ("Circuit "+(i+1)); }
+    const n = notes[i]?.value || '';
+    details.push({ type:t, note:n });
   }
-  if(!tabState.disj[rating]) tabState.disj[rating] = {qty:types.length,details:[]};
+  if(!tabState.disj[rating]) tabState.disj[rating]={qty:0,details:[]};
   tabState.disj[rating].details = details;
-  saveLocal(); pageTab_Disjoncteurs(key);
+
+  saveLocal();
+  pageTab_Disjoncteurs(key); // retour sans perdre les autres sélections
 }
-
-/* — Calibre personnalisé : détails — */
-function pageTab_DisjDetailsCustom(key){
-  const st = tabState.disjCustom || {label:'',price:0,qty:0,details:[]};
-  const qty = +document.getElementById('djx-qty').value || 0;
-  // on mémorise avant d’ouvrir
-  tabState.disjCustom = {
-    label: (document.getElementById('djx-label').value||'').trim(),
-    price: parseFloat(document.getElementById('djx-price').value)||0,
-    qty: qty,
-    details: st.details || []
-  };
-
-  const row = (i, d={})=>{
-    const t = d.type||'', n = d.note||'';
-    return `
-      <div class="pill" style="width:100%;">
-        <input class="djx-type" data-idx="${i}" placeholder="Nom du circuit (ex: Atelier)" value="${(t||'').replace(/"/g,'&quot;')}" />
-        <input class="djx-note" data-idx="${i}" placeholder="Note (facultatif)" value="${(n||'').replace(/"/g,'&quot;')}" />
-      </div>`;
-  };
-
-  let out = '';
-  for(let i=0;i<qty;i++) out += row(i, (tabState.disjCustom.details||[])[i]||{});
-
-  view(
-    '<div class="card">'
-      + b("Retour",'pageTab_Disjoncteurs('+JSON.stringify(key)+')',"btn back")
-      + '<h2>Détail circuits — Calibre personnalisé</h2>'
-      + (qty>0 ? ('<div>'+out+'</div>') : '<p class="muted">Définis d’abord une quantité sur la page précédente.</p>')
-      + '<div class="row" style="margin-top:12px;">'
-        + b("Enregistrer",'pageTab_DisjSaveDetailsCustom('+JSON.stringify(key)+')',"btn primary")
-      + '</div>'
-    + '</div>'
-  );
-}
-function pageTab_DisjSaveDetailsCustom(key){
-  const qty = tabState.disjCustom.qty || 0;
-  const types = Array.from(document.querySelectorAll('.djx-type'));
-  const notes = Array.from(document.querySelectorAll('.djx-note'));
-  const details = [];
-  for(let i=0;i<qty;i++){
-    details.push({ type: types[i]?.value||('Circuit '+(i+1)), note: notes[i]?.value||'' });
-  }
-  tabState.disjCustom.details = details;
-  saveLocal(); pageTab_Disjoncteurs(key);
-}
-
+// Valider et pousser dans le devis
 function pageTab_DisjValider(key){
-  ensureTableKey(key);
-  const PU = TARIFS_TABLEAU.disjoncteurs || {};
+  // Mets à jour l’état depuis l’UI avant d’ajouter
+  saveDisjQtyFromUI();
 
-  // 1) calibres standards
+  // Prix : base depuis TARIFS_TABLEAU + 40A=45€
+  const PU = Object.assign({}, (TARIFS_TABLEAU && TARIFS_TABLEAU.disjoncteurs) ? TARIFS_TABLEAU.disjoncteurs : {}, {40:45});
+  ensureTableauKey(key);
+
+  // Calibres “fixes”
   [2,10,16,20,32,40].forEach(rating=>{
     const st = tabState.disj[rating];
     if(st && st.qty>0){
-      const detailText = (st.details && st.details.some(d=>d && (d.type||d.note)))
-        ? ' — circuits : ' + st.details.map((d,i)=> (d.type||'Circuit '+(i+1)) + (d.note?(' ('+d.note+')'):'')).join(', ')
+      const hasDetail = Array.isArray(st.details) && st.details.some(d=>d && (d.type||d.note));
+      const detailText = hasDetail
+        ? ' — circuits : ' + st.details.map((d,i)=> (d.type||('Circuit '+(i+1))) + (d.note?(' ('+d.note+')'):'') ).join(', ')
         : '';
       devis[key].items.push({
         category:"Tableau/Modulaire",
@@ -1160,88 +1067,102 @@ function pageTab_DisjValider(key){
     }
   });
 
-  // 2) calibre personnalisé (si renseigné)
-  const cx = tabState.disjCustom || {};
-  if((cx.qty||0)>0 && (cx.label||'').trim()){
-    const txt = (cx.details && cx.details.some(d=>d && (d.type||d.note)))
-      ? ' — circuits : ' + cx.details.map((d,i)=> (d.type||'Circuit '+(i+1)) + (d.note?(' ('+d.note+')'):'')).join(', ')
+  // Calibre personnalisé
+  const c = tabState.disj.__custom__;
+  if(c && c.qty>0){
+    const label = (c.label||"Calibre personnalisé").trim();
+    const hasDetail = Array.isArray(c.details) && c.details.some(d=>d && (d.type||d.note));
+    const detailText = hasDetail
+      ? ' — circuits : ' + c.details.map((d,i)=> (d.type||('Circuit '+(i+1))) + (d.note?(' ('+d.note+')'):'') ).join(', ')
       : '';
+    // prix demandé à l’instant (clavier numérique)
+    const puStr = prompt("Prix unitaire pour « "+label+" » (€) :", "0");
+    const pu = parseFloat(puStr||"0")||0;
+
     devis[key].items.push({
       category:"Tableau/Modulaire",
-      designation: `Disjoncteur ${cx.label.trim()}${txt}`,
-      qty: cx.qty, prixU: +cx.price||0, __tabKey:key
+      designation:`Disjoncteur ${label}${detailText}`,
+      qty:c.qty, prixU:pu, __tabKey:key
     });
   }
 
-  saveLocal(); pageTabHome(key);
+  saveLocal();
+  pageTabHome(key);
 }
 
-/* ──────────────────────────────────────────────────────────────
-   §6 • COMMANDES & PILOTAGE
-   ────────────────────────────────────────────────────────────── */
+/* ===============================
+   §5 • COMMANDES & PILOTAGE
+   =============================== */
 function pageTabMod_Commandes(key){
-  ensureTableKey(key);
-  const models = Object.keys(TARIFS_TABLEAU.commandes||{});
-  const opts = models.map(m=>'<option value="'+m+'">'+m+' ('+euro(TARIFS_TABLEAU.commandes[m]) +')</option>').join('');
+  const PC = (TARIFS_TABLEAU && TARIFS_TABLEAU.commandes) ? TARIFS_TABLEAU.commandes : {};
+  const opts = Object.keys(PC).map(k=>`<option value="${k}">${k} (${euro(PC[k]||0)})</option>`).join('');
   view(
     '<div class="card">'
-      + b("Retour",'pageTabHome('+JSON.stringify(key)+')',"btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Commande & pilotage</h2>'
       + '<label>Modèle</label><select id="cmd-model">'+opts+'</select>'
       + '<label>Quantité</label><input id="cmd-qty" type="number" min="1" value="1" inputmode="numeric" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,'submitTabMod_Commandes('+JSON.stringify(key)+')',"btn primary")
+        + b("Ajouter à "+key,"submitTabMod_Commandes("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
 function submitTabMod_Commandes(key){
-  const model = document.getElementById('cmd-model').value;
-  const qty   = Math.max(1, parseInt(document.getElementById('cmd-qty').value,10) || 1);
-  const pu    = (TARIFS_TABLEAU.commandes||{})[model] || 0;
-  devis[key].items.push({
-    category:"Tableau/Commandes",
-    designation:model, qty:qty, prixU:pu, __tabKey:key
-  });
-  saveLocal(); pageTabHome(key);
+  const model = document.getElementById("cmd-model").value;
+  const qty   = Math.max(1, parseInt(document.getElementById("cmd-qty").value,10) || 1);
+  const pu    = (TARIFS_TABLEAU && TARIFS_TABLEAU.commandes) ? (TARIFS_TABLEAU.commandes[model]||0) : 0;
+
+  ensureTableauKey(key);
+  devis[key].items.push({ category:"Tableau/Commandes", designation:model, qty, prixU:pu, __tabKey:key });
+  saveLocal();
+  pageTabHome(key);
 }
 
-/* ──────────────────────────────────────────────────────────────
-   §7 • SPÉCIFIQUE (libre + prix — clavier numérique)
-   ────────────────────────────────────────────────────────────── */
+/* ===============================
+   §6 • SPÉCIFIQUE (libre + prix)
+   =============================== */
 function pageTabMod_Specifique(key){
-  ensureTableKey(key);
   view(
     '<div class="card">'
-      + b("Retour",'pageTabHome('+JSON.stringify(key)+')',"btn back")
+      + b("Retour","pageTabHome("+JSON.stringify(key)+")","btn back")
       + '<h2>Élément spécifique</h2>'
       + '<label>Intitulé</label><input id="spec-label" />'
       + '<label>Prix unitaire (€)</label><input id="spec-price" type="number" inputmode="decimal" />'
       + '<label>Quantité</label><input id="spec-qty" type="number" min="1" value="1" inputmode="numeric" />'
       + '<div class="row" style="margin-top:10px;">'
-        + b("Ajouter à "+key,'submitTabMod_Specifique('+JSON.stringify(key)+')',"btn primary")
+        + b("Ajouter à "+key,"submitTabMod_Specifique("+JSON.stringify(key)+")","btn primary")
       + '</div>'
     + '</div>'
   );
 }
 function submitTabMod_Specifique(key){
-  const label = (document.getElementById('spec-label').value||'').trim();
-  const prix  = parseFloat(document.getElementById('spec-price').value)||0;
-  const qty   = Math.max(1, parseInt(document.getElementById('spec-qty').value,10)||1);
+  const label = (document.getElementById("spec-label").value||"").trim();
+  const prix  = parseFloat(document.getElementById("spec-price").value)||0;
+  const qty   = Math.max(1,parseInt(document.getElementById("spec-qty").value,10)||1);
   if(!label){ pageTabHome(key); return; }
-  devis[key].items.push({
-    category:"Tableau/Spécifique",
-    designation:label, qty:qty, prixU:prix, __tabKey:key
-  });
-  saveLocal(); pageTabHome(key);
+
+  ensureTableauKey(key);
+  devis[key].items.push({ category:"Tableau/Spécifique", designation:label, qty, prixU:prix, __tabKey:key });
+  saveLocal();
+  pageTabHome(key);
 }
 </script>
-<!-- =============================
+<!-- =======================================================================
      CHAPITRE 7 : ESTIMATIF & EXPORTS
-     (tri: ID avant Disjoncteurs dans chaque Tableau)
-     ============================= -->
+     Index :
+       §0  • Groupes + helpers (pieceDisplayLabel, etc.)
+       §1  • Tri spécifique pour les Tableaux (ID avant Disjoncteurs)
+       §2  • Page Estimatif détaillé
+       §3  • Page Totaux par groupe
+       §4  • Export .txt par groupe
+       §5  • Export .zip par groupe
+       §6  • Export complet (txt + zip)
+     ======================================================================= -->
 <script>
-/* §0 • GROUPES & HELPERS COMMUNS */
+/* ===============================
+   §0 • GROUPES & HELPERS
+   =============================== */
 window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
   "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
@@ -1254,90 +1175,89 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
 function groupDevis(){
-  var g = {};
-  for (var key in devis){
-    if (key.indexOf("__") === 0) continue;
-    var s = devis[key];
-    var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
-    var grp  = window.PIECE_GROUPS[base] || "Divers";
-    if (!g[grp]) g[grp] = {};
-    g[grp][key] = s;
+  const g={};
+  for(const key in devis){
+    if(key.indexOf("__")===0) continue;
+    const s=devis[key];
+    const base=(s&&s.__base)?s.__base:key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
+    const grp=window.PIECE_GROUPS[base]||"Divers";
+    if(!g[grp]) g[grp]={};
+    g[grp][key]=s;
   }
   return g;
 }
 function pieceDisplayLabel(key){
-  var s = devis[key] || {};
-  var label = formatPieceLabel(key);
-  var isTab = ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
+  const s=devis[key]||{};
+  let label = formatPieceLabel(key);
+  const isTab = ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
   if(isTab && s.__customName && s.__customName.trim()){
     label += ' — ' + s.__customName.trim();
   }
   return label;
 }
 function itemLine(it){
-  var unit = it.unit || "u";
-  var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
-  var left = it.intervention ? (it.intervention + " — ") : "";
-  var pu = (+it.prixU || 0).toFixed(2);
-  var q  = +it.qty || 0;
-  var total = (q * (+it.prixU || 0)).toFixed(2);
+  const unit = it.unit || "u";
+  const poseTxt = (it.intervention==="Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
+  const left = it.intervention ? (it.intervention + " — ") : "";
+  const pu = (+it.prixU||0).toFixed(2);
+  const q  = +it.qty||0;
+  const total = (q*(+it.prixU||0)).toFixed(2);
   return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
 }
-function pieceSeparator(label){
-  return "\n---------------- " + label + " ----------------\n";
-}
+function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
 
-/* §1 • TRI SPÉCIFIQUE POUR LES “TABLEAU N …” */
+/* ========================================================
+   §1 • TRI DES ÉLÉMENTS POUR LES “TABLEAU N …”
+        (Interrupteurs différentiels avant Disjoncteurs)
+   ======================================================== */
 function isTableauKey(key){
-  var s = devis[key] || {};
+  const s=devis[key]||{};
   return ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
 }
 function sortedItemsForPiece(key, items){
   if(!isTableauKey(key)) return items.slice();
   function score(it){
-    var d = (it.designation||'').trim();
-    if(/^ID\s/i.test(d)) return 0;          // Interrupteurs différentiels d’abord
-    if(/^Disjoncteur\s/i.test(d)) return 1; // puis Disjoncteurs
-    return 2;                               // puis le reste
+    const d=(it.designation||'').trim();
+    if(/^ID\s/i.test(d)) return 0;          // 1. ID
+    if(/^Disjoncteur\s/i.test(d)) return 1; // 2. Disjoncteurs
+    return 2;                               // 3. le reste
   }
   return items
-    .map(function(it, i){ return {it:it, i:i, s:score(it)}; })
-    .sort(function(a,b){ return (a.s - b.s) || (a.i - b.i); })
-    .map(function(x){ return x.it; });
+    .map((it,i)=>({it,i,s:score(it)}))
+    .sort((a,b)=>(a.s-b.s)||(a.i-b.i))
+    .map(x=>x.it);
 }
 
-/* §2 • PAGE : ESTIMATIF DÉTAILLÉ */
+/* ===============================
+   §2 • PAGE : ESTIMATIF DÉTAILLÉ
+   =============================== */
 function pageEstimatif(){
-  var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
-  var totalGlobal = 0;
-  var grouped = groupDevis();
+  let html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
+  let totalGlobal = 0;
+  const grouped = groupDevis();
 
-  for (var grp in grouped){
+  for(const grp in grouped){
     html += '<h2 style="border-top:2px solid #000; padding-top:8px;">'+grp+'</h2>';
-    var groupTotal = 0;
+    let groupTotal = 0;
 
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
+    for(const key in grouped[grp]){
+      const s = grouped[grp][key];
+      if(!s || !s.items || !s.items.length) continue;
 
-      var pieceLabel = pieceDisplayLabel(key);
-      var sectionTotal = 0;
-      var items = sortedItemsForPiece(key, s.items);
+      const pieceLabel = pieceDisplayLabel(key);
+      let sectionTotal = 0;
+      const items = sortedItemsForPiece(key, s.items);
 
       html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
-      items.forEach(function(it){
-        var q  = +it.qty || 0;
-        var pu = +it.prixU || 0;
-        var t  = q * pu;
-        sectionTotal += t; groupTotal += t; totalGlobal += t;
-
-        var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
-        var unit    = it.unit || "u";
-        var left    = it.intervention ? (it.intervention+" — ") : "";
-        html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
+      items.forEach(it=>{
+        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
+        sectionTotal+=t; groupTotal+=t; totalGlobal+=t;
+        const poseTxt=(it.intervention==="Création" && it.pose)?(" "+String(it.pose).toLowerCase()):"";
+        const unit=it.unit||"u";
+        const left=it.intervention?(it.intervention+" — "):"";
+        html += '<li>'+left+it.designation+poseTxt+' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
       });
-      if (s.note) html += '<li><em>Note : '+s.note+'</em></li>';
-
+      if(s.note) html += '<li><em>Note : '+s.note+'</em></li>';
       html += '</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
     }
 
@@ -1355,18 +1275,20 @@ function pageEstimatif(){
   view(html);
 }
 
-/* §3 • PAGE : TOTAUX PAR GROUPE */
+/* =============================
+   §3 • PAGE : TOTAUX PAR GROUPE
+   ============================= */
 function pageTotaux(){
-  var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
-  var totalGlobal = 0;
-  var grouped = groupDevis();
+  let html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
+  let totalGlobal = 0;
+  const grouped = groupDevis();
 
-  for (var grp in grouped){
-    var gt = 0;
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-      var st = s.items.reduce(function(sum,it){ return sum + (((+it.prixU)||0)*((+it.qty)||0)); }, 0);
+  for(const grp in grouped){
+    let gt = 0;
+    for(const key in grouped[grp]){
+      const s = grouped[grp][key];
+      if(!s || !s.items || !s.items.length) continue;
+      const st = s.items.reduce((sum,it)=> sum + (((+it.prixU)||0)*((+it.qty)||0)), 0);
       gt += st; totalGlobal += st;
     }
     html += '<p><strong>'+grp+'</strong> : '+euro(gt)+'</p>';
@@ -1383,71 +1305,70 @@ function pageTotaux(){
   view(html);
 }
 
-/* §4 • EXPORT .TXT PAR GROUPE */
+/* ===============================
+   §4 • EXPORT .TXT PAR GROUPE
+   =============================== */
 function exportText(){
-  var grouped = groupDevis();
-  for (var grp in grouped){
-    var lines = ['=== '+grp+' ===\n'];
-    var groupTotal = 0;
+  const grouped = groupDevis();
+  for(const grp in grouped){
+    const lines = ['=== '+grp+' ===\n'];
+    let groupTotal = 0;
 
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
+    for(const key in grouped[grp]){
+      const s = grouped[grp][key];
+      if(!s || !s.items || !s.items.length) continue;
 
-      var label = pieceDisplayLabel(key);
-      var st = 0;
+      const label = pieceDisplayLabel(key);
+      let st = 0;
       lines.push(pieceSeparator(label));
 
-      var items = sortedItemsForPiece(key, s.items);
-
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t;
+      sortedItemsForPiece(key, s.items).forEach(it=>{
+        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
+        st+=t; groupTotal+=t;
         lines.push(itemLine(it));
       });
-      if (s.note) lines.push('Note : '+s.note);
+      if(s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
 
     lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€');
 
-    var blob = new Blob([lines.join('\r\n')], {type:'text/plain;charset=utf-8'});
-    var url  = URL.createObjectURL(blob);
-    var a    = document.createElement('a');
-    a.href = url; a.download = 'devis_'+grp+'.txt'; a.click();
+    const blob=new Blob([lines.join('\r\n')],{type:'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='devis_'+grp+'.txt'; a.click();
     URL.revokeObjectURL(url);
   }
   alert('✅ Export terminé : un fichier .txt par groupe généré.');
 }
 
-/* §5 • EXPORT .ZIP PAR GROUPE */
+/* ==============================
+   §5 • EXPORT .ZIP PAR GROUPE
+   ============================== */
 async function exportZipGroups(){
-  if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
+  if(typeof JSZip==='undefined'){ alert('JSZip non chargé.'); return; }
+  const grouped = groupDevis();
+  const zip = new JSZip();
+  let global = 0;
 
-  var grouped = groupDevis();
-  var zip = new JSZip();
-  var global = 0;
+  for(const grp in grouped){
+    const lines = ['=== '+grp+' ===\n'];
+    let groupTotal = 0;
 
-  for (var grp in grouped){
-    var lines = ['=== '+grp+' ===\n'];
-    var groupTotal = 0;
+    for(const key in grouped[grp]){
+      const s = grouped[grp][key];
+      if(!s || !s.items || !s.items.length) continue;
 
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-
-      var label = pieceDisplayLabel(key);
-      var st = 0;
+      const label = pieceDisplayLabel(key);
+      let st = 0;
       lines.push(pieceSeparator(label));
 
-      var items = sortedItemsForPiece(key, s.items);
-
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t;
+      sortedItemsForPiece(key, s.items).forEach(it=>{
+        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
+        st+=t; groupTotal+=t;
         lines.push(itemLine(it));
       });
-      if (s.note) lines.push('Note : '+s.note);
+      if(s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
 
@@ -1457,46 +1378,46 @@ async function exportZipGroups(){
     zip.file('devis_'+grp+'.txt', lines.join('\r\n'));
   }
 
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var readme = 'Récapitulatif — '+name+'\nDate: '+new Date().toLocaleString()
-             + '\n\nTotal global: '+global.toFixed(2)+'€\n';
+  const name=(devis.__name||'Devis').trim()||'Devis';
+  const readme='Récapitulatif — '+name+'\nDate: '+new Date().toLocaleString()
+              +'\n\nTotal global: '+global.toFixed(2)+'€\n';
   zip.file('README.txt', readme);
 
-  var blob = await zip.generateAsync({type:'blob'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_groupes.zip';
+  const blob = await zip.generateAsync({type:'blob'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href=url; a.download=name.replace(/\s+/g,'_').toLowerCase()+'_groupes.zip';
   a.click(); URL.revokeObjectURL(url);
 
   alert('✅ Export ZIP (par groupe) généré.');
 }
 
-/* §6 • EXPORT COMPLET (TXT & ZIP) */
+/* ==========================
+   §6 • EXPORT COMPLET
+   ========================== */
 function buildFullText(){
-  var grouped = groupDevis();
-  var lines = ['=== DEVIS COMPLET ===\n'];
-  var globalTotal = 0;
+  const grouped = groupDevis();
+  const lines = ['=== DEVIS COMPLET ===\n'];
+  let globalTotal = 0;
 
-  for (var grp in grouped){
+  for(const grp in grouped){
     lines.push('\n## '+grp+' ##\n');
-    var groupTotal = 0;
+    let groupTotal = 0;
 
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
+    for(const key in grouped[grp]){
+      const s = grouped[grp][key];
+      if(!s || !s.items || !s.items.length) continue;
 
-      var label = pieceDisplayLabel(key);
-      var st = 0;
+      const label = pieceDisplayLabel(key);
+      let st = 0;
       lines.push(pieceSeparator(label));
 
-      var items = sortedItemsForPiece(key, s.items);
-
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t; globalTotal += t;
+      sortedItemsForPiece(key, s.items).forEach(it=>{
+        const q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
+        st+=t; groupTotal+=t; globalTotal+=t;
         lines.push(itemLine(it));
       });
-      if (s.note) lines.push('Note : '+s.note);
+      if(s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
 
@@ -1507,24 +1428,24 @@ function buildFullText(){
   return lines.join('\r\n');
 }
 function exportTextFull(){
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt';
+  const name=(devis.__name||'Devis').trim()||'Devis';
+  const blob=new Blob([buildFullText()],{type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt';
   a.click(); URL.revokeObjectURL(url);
   alert('✅ Export .txt complet généré.');
 }
 async function exportZipFull(){
-  if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var zip  = new JSZip();
+  if(typeof JSZip==='undefined'){ alert('JSZip non chargé.'); return; }
+  const name=(devis.__name||'Devis').trim()||'Devis';
+  const zip=new JSZip();
   zip.file(name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt', buildFullText());
-  zip.file('README.txt', 'Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
-  var blob = await zip.generateAsync({type:'blob'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip';
+  zip.file('README.txt','Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
+  const blob=await zip.generateAsync({type:'blob'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip';
   a.click(); URL.revokeObjectURL(url);
   alert('✅ Export .zip complet généré.');
 }
