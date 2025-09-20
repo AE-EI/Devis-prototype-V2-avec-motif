@@ -1195,24 +1195,13 @@ function submitTabMod_Specifique(key){
 </script>
 
 <!-- =======================================================================
-     CHAPITRE 6.2 : VENTILATION — v1
-     Index :
-       §0  • État local (ventState) + utilitaires
-       §1  • Accueil Ventilation (multi-ventilations) + création / nom perso
-       §2  • Menu Intervention (Création / Retirage des conduits / Entretien)
-       §3  • Intervention : CRÉATION
-             ├─ Kit VMC (réf, bouches, conduits multiples, percements multiples)
-             ├─ Extracteur (réf, Ø, conduits multiples, percements multiples)
-             └─ Ventilateur de conduit (réf, Ø, type conduit, longueur, percements multiples)
-       §4  • Intervention : RETIRAGE DES CONDUITS
-       §5  • Intervention : ENTRETIEN
+     CHAPITRE 6.2 : VENTILATION — corrigé
      ======================================================================= -->
 <script>
 /* =========================
    §0 • ÉTAT LOCAL + UTILS
    ========================= */
-// État UI temporaire par ventilation (clé => données de formulaire)
-var ventState = {}; // { [key]: { creation:{...}, retirage:{...}, entretien:{...} } }
+var ventState = {}; 
 
 function ensureVentKey(key){
   if(!devis[key]) devis[key] = { __base:"VMC", __customName:"", items:[], note:"" };
@@ -1233,26 +1222,18 @@ function ensureVentKey(key){
         percements:[{support:"Placo", qty:0}]
       }
     },
-    retirage: {
-      n80:0, n125:0, conduits:[{type:"Gaine isolée"}]
-    },
-    entretien: {
-      type:"Groupe VMC", nb:0
-    }
+    retirage: { n80:0, n125:0, conduits:[{type:"Gaine isolée"}] },
+    entretien: { type:"Groupe VMC", nb:0 }
   };
 }
 function pickVal(id, def){ var el=document.getElementById(id); return (el?el.value:def); }
 function pickNum(id, def){ var el=document.getElementById(id); var v=parseFloat(el?el.value:NaN); return isNaN(v)?(def||0):v; }
-function euro(n){ return (+(n||0)).toFixed(2)+" €"; } // garde-fou
 
 /* ======================================================
-   §1 • ACCUEIL VENTILATION (multi-ventilations)
+   §1 • ACCUEIL VENTILATION
    ====================================================== */
 function pageVentAccueil(){
-  // Si la numérotation n'existe pas encore
   if(typeof devis.__ventCounter!=="number") devis.__ventCounter = 0;
-
-  // Liste des ventilations existantes
   var keys = Object.keys(devis).filter(function(k){
     if(k.indexOf('__')===0) return false;
     var s = devis[k]||{};
@@ -1274,107 +1255,80 @@ function pageVentAccueil(){
     '<div class="card">'
       + b('Retour','pageHome()','btn back')
       + '<h2>Ventilation</h2>'
-      + '<div class="row">'+ b('➕ Ajouter une ventilation','pageVentNew()','btn primary') + '</div>'
+      + b('➕ Ajouter une ventilation','pageVentNew()','btn primary')
     + '</div>'
     + '<div class="card" style="margin-top:12px;">'
       + '<h2>Liste</h2>'
-      + '<div class="list">'+list+'</div>'
+      + list
     + '</div>'
   );
 }
-
 function pageVentNew(){
-  devis.__ventCounter = (typeof devis.__ventCounter==="number"?devis.__ventCounter:0) + 1;
+  devis.__ventCounter++;
   var key = 'Ventilation '+devis.__ventCounter;
   ensureVentKey(key); saveLocal();
-
   view(
     '<div class="card">'
       + b('Retour','pageVentAccueil()','btn back')
       + '<h2>Nouvelle ventilation</h2>'
-      + '<p>Identifiant : <strong>'+key+'</strong></p>'
-      + '<label>Nom personnalisé (optionnel)</label>'
-      + '<input id="vent-name" placeholder="ex : VMC logement RDC" />'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('Valider','saveVentName('+JSON.stringify(key)+')','btn primary')
-      + '</div>'
+      + '<p><strong>'+key+'</strong></p>'
+      + '<label>Nom personnalisé</label>'
+      + '<input id="vent-name" />'
+      + b('Valider','saveVentName('+JSON.stringify(key)+')','btn primary')
     + '</div>'
   );
 }
 function saveVentName(key){
   var name = (document.getElementById('vent-name').value||'').trim();
   if(devis[key]) devis[key].__customName = name;
-  saveLocal();
-  pageVentHome(key);
+  saveLocal(); pageVentHome(key);
 }
 function ventDelete(key){
-  if(!confirm('Supprimer « '+key+' » et toutes ses lignes ?')) return;
+  if(!confirm('Supprimer « '+key+' » ?')) return;
   delete devis[key]; saveLocal(); pageVentAccueil();
 }
-
 function pageVentHome(key){
-  if(!key || !devis[key]) return pageVentAccueil();
   ensureVentKey(key);
   var custom = devis[key].__customName ? ' — '+devis[key].__customName : '';
   view(
     '<div class="card">'
       + b('Retour','pageVentAccueil()','btn back')
       + '<h2>'+key+custom+'</h2>'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('1 · Création','pageVentCreation('+JSON.stringify(key)+')','btn primary')
-        + b('2 · Retirage des conduits','pageVentRetirage('+JSON.stringify(key)+')','btn')
-        + b('3 · Entretien','pageVentEntretien('+JSON.stringify(key)+')','btn')
-      + '</div>'
-      + '<p class="muted" style="margin-top:8px;">Les lignes ajoutées resteront dans « '+key+' ».</p>'
+      + b('1 · Création','pageVentCreation('+JSON.stringify(key)+')','btn primary')
+      + b('2 · Retirage des conduits','pageVentRetirage('+JSON.stringify(key)+')','btn')
+      + b('3 · Entretien','pageVentEntretien('+JSON.stringify(key)+')','btn')
     + '</div>'
   );
 }
 
-/* ===================================
-   §2 • MENU INTERVENTION — (raccourci)
-   =================================== */
-// (Le menu est directement dans pageVentHome)
-
-/* ===================================
-   §3 • INTERVENTION : CRÉATION
-   =================================== */
+/* ======================================================
+   §3 • CRÉATION (kit, extracteur, ventilateur)
+   ====================================================== */
 function pageVentCreation(key){
   ensureVentKey(key);
   var st = ventState[key].creation;
 
-  // Helpers de lignes dynamiques (conduits & percements)
-  function conduitsBlock(name, arr, addFn, delPrefix){
-    var options = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
-      .map(function(t){ return '<option '+(t===arr[0]?.type?'selected':'')+' value="'+t+'">'+t+'</option>'; })
-      .join('');
-    var html = arr.map(function(c, i){
+  // helpers blocs dynamiques
+  function conduitsBlock(arr, mutFn, prefix){
+    return arr.map(function(c,i){
       var sel = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
-        .map(function(t){ return '<option '+(t===c.type?'selected':'')+' value="'+t+'">'+t+'</option>'; }).join('');
-      return '<div class="row" style="gap:8px; align-items:center; margin:6px 0;">'
-         +  '<label style="flex:1;">Type de conduit '
-         +  '<select id="'+delPrefix+'-type-'+i+'">'+sel+'</select></label>'
-         +  (i>0 ? b('×',''+addFn+'("del",'+i+')','btn') : '')
-         + '</div>';
-    }).join('');
-    return html
-      + '<div class="row" style="margin-top:6px;">'
-      +   b('Ajouter un type de conduit', addFn+'("add")','btn')
-      + '</div>';
-  }
-  function percementsBlock(name, arr, addFn, delPrefix){
-    var supports = ['Placo','Briquette','Ourdi béton'];
-    var html = arr.map(function(p, i){
-      var opts = supports.map(function(s){ return '<option '+(s===p.support?'selected':'')+' value="'+s+'">'+s+'</option>'; }).join('');
-      return '<div class="row" style="gap:8px; align-items:center; margin:6px 0;">'
-        + '<label style="flex:1;">Support <select id="'+delPrefix+'-sup-'+i+'">'+opts+'</select></label>'
-        + '<label style="width:160px;">Nombre <input id="'+delPrefix+'-qty-'+i+'" type="number" inputmode="numeric" value="'+(p.qty||0)+'"/></label>'
-        + (i>0 ? b('×', addFn+'("del",'+i+')','btn') : '')
+        .map(t=>'<option '+(t===c.type?'selected':'')+'>'+t+'</option>').join('');
+      return '<div class="row">'
+        + '<select id="'+prefix+'-type-'+i+'">'+sel+'</select>'
+        + (i>0? b('×',mutFn+'('+JSON.stringify(key)+',"del",'+i+')','btn'):"")
         + '</div>';
-    }).join('');
-    return html
-      + '<div class="row" style="margin-top:6px;">'
-      +   b('Ajouter un type de percement', addFn+'("add")','btn')
-      + '</div>';
+    }).join('') + b('Ajouter conduit',mutFn+'('+JSON.stringify(key)+',"add")','btn');
+  }
+  function percementsBlock(arr, mutFn, prefix){
+    var supports=['Placo','Briquette','Ourdi béton'];
+    return arr.map(function(p,i){
+      var opts=supports.map(s=>'<option '+(s===p.support?'selected':'')+'>'+s+'</option>').join('');
+      return '<div class="row">'
+        + '<select id="'+prefix+'-sup-'+i+'">'+opts+'</select>'
+        + '<input id="'+prefix+'-qty-'+i+'" type="number" value="'+(p.qty||0)+'"/>'
+        + (i>0? b('×',mutFn+'('+JSON.stringify(key)+',"del",'+i+')','btn'):"")
+        + '</div>';
+    }).join('') + b('Ajouter percement',mutFn+'('+JSON.stringify(key)+',"add")','btn');
   }
 
   view(
@@ -1382,303 +1336,102 @@ function pageVentCreation(key){
       + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
       + '<h2>Création</h2>'
 
-      // --- Kit VMC -------------------------------------------------------
-      + '<div class="card" style="border-left:4px solid #eee;">'
-      +   '<label>Référence matériel</label>'
-      +   '<input id="kit-ref" placeholder="(à définir plus tard)" value="'+(st.kit.ref||'')+'"/>'
-      +   '<div class="row" style="margin-top:8px; gap:8px;">'
-      +     '<label style="flex:1;">Bouches D80</label>'
-      +     '<input id="kit-d80" type="number" inputmode="numeric" value="'+(st.kit.d80||1)+'" style="width:140px;"/>'
-      +     '<label style="flex:1;">Bouches D125</label>'
-      +     '<input id="kit-d125" type="number" inputmode="numeric" value="'+(st.kit.d125||1)+'" style="width:140px;"/>'
-      +   '</div>'
-      +   '<div style="margin-top:10px;"><strong class="muted">Type(s) de conduit</strong></div>'
-      +   '<div id="kit-conduits">'+conduitsBlock('kit', st.kit.conduits, 'kitConduitMut', 'kitc')+'</div>'
-      +   '<div style="margin-top:10px;"><strong class="muted">Percement(s)</strong></div>'
-      +   '<div id="kit-perc">'+percementsBlock('kit', st.kit.percements, 'kitPercMut', 'kitp')+'</div>'
-      +   '<div class="row" style="margin-top:10px;">'
-      +     b('Ajouter « Kit VMC »','ventAddKit('+JSON.stringify(key)+')','btn primary')
-      +   '</div>'
-      + '</div>'
+      // Kit VMC
+      + '<h3>Kit VMC</h3>'
+      + '<input id="kit-ref" placeholder="Réf." value="'+st.kit.ref+'"/>'
+      + '<input id="kit-d80" type="number" value="'+st.kit.d80+'"/> D80'
+      + '<input id="kit-d125" type="number" value="'+st.kit.d125+'"/> D125'
+      + conduitsBlock(st.kit.conduits,"kitConduitMut","kitc")
+      + percementsBlock(st.kit.percements,"kitPercMut","kitp")
+      + b('Ajouter Kit VMC','ventAddKit('+JSON.stringify(key)+')','btn primary')
 
-      // --- Extracteur ----------------------------------------------------
-      + '<div class="card" style="border-left:4px solid #eee;">'
-      +   '<label>Référence matériel (extracteur)</label>'
-      +   '<input id="ex-ref" placeholder="(à définir plus tard)" value="'+(st.extracteur.ref||'')+'"/>'
-      +   '<label style="margin-top:8px;">Diamètre</label>'
-      +   '<select id="ex-diam">'
-      +     ['80','100','125'].map(function(d){ return "<option "+(d===st.extracteur.diam?'selected':'')+" value='"+d+"'>"+d+"</option>"; }).join('')
-      +   '</select>'
-      +   '<div style="margin-top:10px;"><strong class="muted">Type(s) de conduit</strong></div>'
-      +   '<div id="ex-conduits">'+conduitsBlock('ex', st.extracteur.conduits, 'exConduitMut', 'exc')+'</div>'
-      +   '<div style="margin-top:10px;"><strong class="muted">Percement(s)</strong></div>'
-      +   '<div id="ex-perc">'+percementsBlock('ex', st.extracteur.percements, 'exPercMut', 'exp')+'</div>'
-      +   '<div class="row" style="margin-top:10px;">'
-      +     b('Ajouter « Extracteur »','ventAddExtracteur('+JSON.stringify(key)+')','btn primary')
-      +   '</div>'
-      + '</div>'
+      // Extracteur
+      + '<h3>Extracteur</h3>'
+      + '<input id="ex-ref" placeholder="Réf." value="'+st.extracteur.ref+'"/>'
+      + '<select id="ex-diam">'+['80','100','125'].map(d=>'<option '+(d===st.extracteur.diam?'selected':'')+'>'+d+'</option>').join('')+'</select>'
+      + conduitsBlock(st.extracteur.conduits,"exConduitMut","exc")
+      + percementsBlock(st.extracteur.percements,"exPercMut","exp")
+      + b('Ajouter Extracteur','ventAddExtracteur('+JSON.stringify(key)+')','btn primary')
 
-      // --- Ventilateur de conduit ---------------------------------------
-      + '<div class="card" style="border-left:4px solid #eee;">'
-      +   '<label>Référence matériel (ventilateur de conduit)</label>'
-      +   '<input id="vc-ref" placeholder="(à définir plus tard)" value="'+(st.ventilateur.ref||'')+'"/>'
-      +   '<label style="margin-top:8px;">Diamètre</label>'
-      +   '<select id="vc-diam">'
-      +     ['80','100','125','150'].map(function(d){ return "<option "+(d===st.ventilateur.diam?'selected':'')+" value='"+d+"'>"+d+"</option>"; }).join('')
-      +   '</select>'
-      +   '<label style="margin-top:8px;">Type de conduit</label>'
-      +   '<select id="vc-type">'
-      +     ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
-      +       .map(function(t){ return "<option "+(t===st.ventilateur.typeConduit?'selected':'')+" value='"+t+"'>"+t+"</option>"; }).join('')
-      +   '</select>'
-      +   '<label style="margin-top:8px;">Longueur de conduit (m)</label>'
-      +   '<input id="vc-len" type="number" inputmode="decimal" value="'+(st.ventilateur.longueur||0)+'"/>'
-      +   '<div style="margin-top:10px;"><strong class="muted">Percement(s)</strong></div>'
-      +   '<div id="vc-perc">'+percementsBlock('vc', st.ventilateur.percements, 'vcPercMut', 'vcp')+'</div>'
-      +   '<div class="row" style="margin-top:10px;">'
-      +     b('Ajouter « Ventilateur de conduit »','ventAddVentilateur('+JSON.stringify(key)+')','btn primary')
-      +   '</div>'
-      + '</div>'
+      // Ventilateur
+      + '<h3>Ventilateur de conduit</h3>'
+      + '<input id="vc-ref" placeholder="Réf." value="'+st.ventilateur.ref+'"/>'
+      + '<select id="vc-diam">'+['80','100','125','150'].map(d=>'<option '+(d===st.ventilateur.diam?'selected':'')+'>'+d+'</option>').join('')+'</select>'
+      + '<select id="vc-type">'+['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée'].map(t=>'<option '+(t===st.ventilateur.typeConduit?'selected':'')+'>'+t+'</option>').join('')+'</select>'
+      + '<input id="vc-len" type="number" value="'+st.ventilateur.longueur+'"/> m'
+      + percementsBlock(st.ventilateur.percements,"vcPercMut","vcp")
+      + b('Ajouter Ventilateur','ventAddVentilateur('+JSON.stringify(key)+')','btn primary')
     + '</div>'
   );
 }
 
-/* -- Mutateurs UI (ajout/suppression lignes dynamiques) -- */
-function kitConduitMut(cmd, idx){
-  var key = Object.keys(ventState).find(Boolean); // utilisé sur page en cours
-  if(!key) return;
-  var arr = ventState[key].creation.kit.conduits;
-  if(cmd==="add") arr.push({type:"Gaine isolée"});
-  if(cmd==="del") arr.splice(idx,1);
-  pageVentCreation(key);
-}
-function kitPercMut(cmd, idx){
-  var key = Object.keys(ventState).find(Boolean); if(!key) return;
-  var arr = ventState[key].creation.kit.percements;
-  if(cmd==="add") arr.push({support:"Placo", qty:0});
-  if(cmd==="del") arr.splice(idx,1);
-  pageVentCreation(key);
-}
-function exConduitMut(cmd, idx){
-  var key = Object.keys(ventState).find(Boolean); if(!key) return;
-  var arr = ventState[key].creation.extracteur.conduits;
-  if(cmd==="add") arr.push({type:"Gaine isolée"});
-  if(cmd==="del") arr.splice(idx,1);
-  pageVentCreation(key);
-}
-function exPercMut(cmd, idx){
-  var key = Object.keys(ventState).find(Boolean); if(!key) return;
-  var arr = ventState[key].creation.extracteur.percements;
-  if(cmd==="add") arr.push({support:"Placo", qty:0});
-  if(cmd==="del") arr.splice(idx,1);
-  pageVentCreation(key);
-}
-function vcPercMut(cmd, idx){
-  var key = Object.keys(ventState).find(Boolean); if(!key) return;
-  var arr = ventState[key].creation.ventilateur.percements;
-  if(cmd==="add") arr.push({support:"Placo", qty:0});
-  if(cmd==="del") arr.splice(idx,1);
-  pageVentCreation(key);
-}
+// Mutateurs dynamiques (corrigés avec key en paramètre)
+function kitConduitMut(key,cmd,idx){ var arr=ventState[key].creation.kit.conduits; if(cmd==="add") arr.push({type:"Gaine isolée"}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key);}
+function kitPercMut(key,cmd,idx){ var arr=ventState[key].creation.kit.percements; if(cmd==="add") arr.push({support:"Placo",qty:0}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key);}
+function exConduitMut(key,cmd,idx){ var arr=ventState[key].creation.extracteur.conduits; if(cmd==="add") arr.push({type:"Gaine isolée"}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key);}
+function exPercMut(key,cmd,idx){ var arr=ventState[key].creation.extracteur.percements; if(cmd==="add") arr.push({support:"Placo",qty:0}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key);}
+function vcPercMut(key,cmd,idx){ var arr=ventState[key].creation.ventilateur.percements; if(cmd==="add") arr.push({support:"Placo",qty:0}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key);}
 
-/* -- Sauvegardes (ajout de lignes au devis) -- */
+// Ajout lignes devis
 function ventAddKit(key){
-  ensureVentKey(key);
-  // Lire UI
-  var ref = pickVal('kit-ref','').trim();
-  var d80 = Math.max(0, pickNum('kit-d80',1));
-  var d125= Math.max(0, pickNum('kit-d125',1));
-  // Conduits
-  var conduits=[];
-  var cNodes = document.querySelectorAll('[id^="kitc-type-"]');
-  cNodes.forEach(function(sel){ conduits.push({type: sel.value}); });
-  // Percements
-  var perc=[];
-  var pSup = document.querySelectorAll('[id^="kitp-sup-"]');
-  pSup.forEach(function(sel,i){
-    var q = pickNum('kitp-qty-'+i,0);
-    perc.push({support: sel.value, qty:q});
-  });
-
-  // Si rien de pertinent, ne rien ajouter
-  if(!ref && d80===0 && d125===0 && conduits.length===0 && perc.length===0){ pageVentCreation(key); return; }
-
-  var details=[];
-  if(ref) details.push('réf. '+ref);
-  details.push('bouches: D80='+d80+', D125='+d125);
-  if(conduits.length) details.push('conduits: '+conduits.map(c=>c.type).join(' + '));
-  if(perc.some(p=>p.qty>0)) details.push('percements: '+perc.filter(p=>p.qty>0).map(p=>p.support+' x'+p.qty).join(', '));
-
-  devis[key].items.push({
-    category:'Ventilation/Création',
-    designation: 'Kit VMC — '+details.join(' — '),
-    qty: 1, prixU: 0, __tabKey:key
-  });
+  var ref=pickVal('kit-ref',''), d80=pickNum('kit-d80',1), d125=pickNum('kit-d125',1);
+  var conduits=[...document.querySelectorAll('[id^="kitc-type-"]')].map(sel=>({type:sel.value}));
+  var perc=[...document.querySelectorAll('[id^="kitp-sup-"]')].map((sel,i)=>({support:sel.value,qty:pickNum('kitp-qty-'+i,0)}));
+  devis[key].items.push({category:'Ventilation/Création',designation:'Kit VMC — '+ref+' D80='+d80+' D125='+d125,qty:1,prixU:0,__tabKey:key});
   saveLocal(); pageVentHome(key);
 }
-
 function ventAddExtracteur(key){
-  ensureVentKey(key);
-  var ref = pickVal('ex-ref','').trim();
-  var diam= pickVal('ex-diam','100');
-  var conduits=[];
-  document.querySelectorAll('[id^="exc-type-"]').forEach(function(sel){ conduits.push({type: sel.value}); });
-  var perc=[];
-  document.querySelectorAll('[id^="exp-sup-"]').forEach(function(sel,i){
-    var q = pickNum('exp-qty-'+i,0); perc.push({support: sel.value, qty:q});
-  });
-
-  if(!ref && !diam && conduits.length===0 && perc.length===0){ pageVentCreation(key); return; }
-
-  var details=[];
-  if(ref) details.push('réf. '+ref);
-  details.push('Ø'+diam);
-  if(conduits.length) details.push('conduits: '+conduits.map(c=>c.type).join(' + '));
-  if(perc.some(p=>p.qty>0)) details.push('percements: '+perc.filter(p=>p.qty>0).map(p=>p.support+' x'+p.qty).join(', '));
-
-  devis[key].items.push({
-    category:'Ventilation/Création',
-    designation:'Extracteur — '+details.join(' — '),
-    qty:1, prixU:0, __tabKey:key
-  });
+  var ref=pickVal('ex-ref',''), diam=pickVal('ex-diam','100');
+  devis[key].items.push({category:'Ventilation/Création',designation:'Extracteur — '+ref+' Ø'+diam,qty:1,prixU:0,__tabKey:key});
   saveLocal(); pageVentHome(key);
 }
-
 function ventAddVentilateur(key){
-  ensureVentKey(key);
-  var ref = pickVal('vc-ref','').trim();
-  var diam= pickVal('vc-diam','100');
-  var type= pickVal('vc-type','Gaine isolée');
-  var len = Math.max(0, pickNum('vc-len',0));
-  var perc=[];
-  document.querySelectorAll('[id^="vcp-sup-"]').forEach(function(sel,i){
-    var q = pickNum('vcp-qty-'+i,0); perc.push({support: sel.value, qty:q});
-  });
-
-  if(!ref && !diam && !type && len===0 && perc.length===0){ pageVentCreation(key); return; }
-
-  var details=[];
-  if(ref) details.push('réf. '+ref);
-  details.push('Ø'+diam);
-  details.push(type);
-  details.push('L='+len+' m');
-  if(perc.some(p=>p.qty>0)) details.push('percements: '+perc.filter(p=>p.qty>0).map(p=>p.support+' x'+p.qty).join(', '));
-
-  devis[key].items.push({
-    category:'Ventilation/Création',
-    designation:'Ventilateur de conduit — '+details.join(' — '),
-    qty:1, prixU:0, __tabKey:key
-  });
+  var ref=pickVal('vc-ref',''), diam=pickVal('vc-diam','100'), type=pickVal('vc-type','Gaine isolée'), len=pickNum('vc-len',0);
+  devis[key].items.push({category:'Ventilation/Création',designation:'Ventilateur — '+ref+' Ø'+diam+' '+type+' L='+len+'m',qty:1,prixU:0,__tabKey:key});
   saveLocal(); pageVentHome(key);
 }
 
-/* ===================================
-   §4 • INTERVENTION : RETIRAGE
-   =================================== */
+/* ======================================================
+   §4 • RETIRAGE
+   ====================================================== */
 function pageVentRetirage(key){
-  ensureVentKey(key);
-  var st = ventState[key].retirage;
-
-  function conduitsBlock(arr){
-    var html = arr.map(function(c, i){
-      var sel = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
-        .map(function(t){ return '<option '+(t===c.type?'selected':'')+' value="'+t+'">'+t+'</option>'; }).join('');
-      return '<div class="row" style="gap:8px; align-items:center; margin:6px 0;">'
-        + '<label style="flex:1;">Type de conduit <select id="rt-type-'+i+'">'+sel+'</select></label>'
-        + (i>0 ? b('×','rtConduitMut("del",'+i+')','btn') : '')
-        + '</div>';
-    }).join('');
-    return html + '<div class="row" style="margin-top:6px;">'
-         + b('Ajouter un type de conduit','rtConduitMut("add")','btn') + '</div>';
-  }
-
+  ensureVentKey(key); var st=ventState[key].retirage;
   view(
     '<div class="card">'
       + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
-      + '<h2>Retirage des conduits</h2>'
-      + '<div class="row" style="gap:8px;">'
-      +   '<label style="flex:1;">Nombre de conduits Ø80</label>'
-      +   '<input id="rt-80" type="number" inputmode="numeric" value="'+(st.n80||0)+'" style="width:160px;" />'
-      +   '<label style="flex:1;">Nombre de conduits Ø125</label>'
-      +   '<input id="rt-125" type="number" inputmode="numeric" value="'+(st.n125||0)+'" style="width:160px;" />'
-      + '</div>'
-      + '<div style="margin-top:10px;"><strong class="muted">Type(s) de conduit</strong></div>'
-      + '<div id="rt-conduits">'+conduitsBlock(st.conduits)+'</div>'
-      + '<div class="row" style="margin-top:10px;">'
-      +   b('Ajouter la ligne','ventAddRetirage('+JSON.stringify(key)+')','btn primary')
-      + '</div>'
+      + '<h2>Retirage</h2>'
+      + '<input id="rt-80" type="number" value="'+st.n80+'"/> Ø80'
+      + '<input id="rt-125" type="number" value="'+st.n125+'"/> Ø125'
+      + b('Ajouter Retirage','ventAddRetirage('+JSON.stringify(key)+')','btn primary')
     + '</div>'
   );
 }
-function rtConduitMut(cmd, idx){
-  var key = Object.keys(ventState).find(Boolean); if(!key) return;
-  var arr = ventState[key].retirage.conduits;
-  if(cmd==="add") arr.push({type:"Gaine isolée"});
-  if(cmd==="del") arr.splice(idx,1);
-  pageVentRetirage(key);
-}
 function ventAddRetirage(key){
-  ensureVentKey(key);
-  var n80  = Math.max(0, pickNum('rt-80',0));
-  var n125 = Math.max(0, pickNum('rt-125',0));
-  var conduits=[];
-  document.querySelectorAll('[id^="rt-type-"]').forEach(function(sel){ conduits.push({type: sel.value}); });
-
-  if(n80===0 && n125===0 && conduits.length===0){ pageVentRetirage(key); return; }
-
-  var details=[];
-  if(n80>0)  details.push('Ø80 x'+n80);
-  if(n125>0) details.push('Ø125 x'+n125);
-  if(conduits.length) details.push('type(s): '+conduits.map(c=>c.type).join(' + '));
-
-  devis[key].items.push({
-    category:'Ventilation/Retirage',
-    designation:'Retirage des conduits — '+details.join(' — '),
-    qty:1, prixU:0, __tabKey:key
-  });
+  var n80=pickNum('rt-80',0), n125=pickNum('rt-125',0);
+  devis[key].items.push({category:'Ventilation/Retirage',designation:'Retirage Ø80='+n80+' Ø125='+n125,qty:1,prixU:0,__tabKey:key});
   saveLocal(); pageVentHome(key);
 }
 
-/* ===================================
-   §5 • INTERVENTION : ENTRETIEN
-   =================================== */
+/* ======================================================
+   §5 • ENTRETIEN
+   ====================================================== */
 function pageVentEntretien(key){
-  ensureVentKey(key);
-  var st = ventState[key].entretien;
-
+  ensureVentKey(key); var st=ventState[key].entretien;
   view(
     '<div class="card">'
       + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
       + '<h2>Entretien</h2>'
-      + '<label>Type d\'équipement</label>'
-      + '<select id="ent-type">'
-      +   ['Groupe VMC','Extracteur','Ventilateur de conduit'].map(function(t){
-            return '<option '+(t===st.type?'selected':'')+' value="'+t+'">'+t+'</option>';
-          }).join('')
-      + '</select>'
-      + '<label style="margin-top:8px;">Nombre de bouches / gaines</label>'
-      + '<input id="ent-nb" type="number" inputmode="numeric" value="'+(st.nb||0)+'" />'
-      + '<div class="row" style="margin-top:10px;">'
-      +   b('Ajouter la ligne','ventAddEntretien('+JSON.stringify(key)+')','btn primary')
-      + '</div>'
+      + '<select id="ent-type">'+['Groupe VMC','Extracteur','Ventilateur de conduit'].map(t=>'<option '+(t===st.type?'selected':'')+'>'+t+'</option>').join('')+'</select>'
+      + '<input id="ent-nb" type="number" value="'+st.nb+'"/>'
+      + b('Ajouter Entretien','ventAddEntretien('+JSON.stringify(key)+')','btn primary')
     + '</div>'
   );
 }
 function ventAddEntretien(key){
-  ensureVentKey(key);
-  var type = pickVal('ent-type','Groupe VMC');
-  var nb   = Math.max(0, pickNum('ent-nb',0));
-  if(nb===0 && !type){ pageVentEntretien(key); return; }
-
-  devis[key].items.push({
-    category:'Ventilation/Entretien',
-    designation:'Entretien '+type+' — éléments: '+nb,
-    qty:1, prixU:0, __tabKey:key
-  });
+  var type=pickVal('ent-type','Groupe VMC'), nb=pickNum('ent-nb',0);
+  devis[key].items.push({category:'Ventilation/Entretien',designation:'Entretien '+type+' — nb='+nb,qty:1,prixU:0,__tabKey:key});
   saveLocal(); pageVentHome(key);
 }
-
-/* (Fin chapitre 6.2) */
 </script>
   <!-- ============================================================
      CHAPITRE 7 : ESTIMATIF & EXPORTS — vNEXT
