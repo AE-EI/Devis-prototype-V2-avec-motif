@@ -64,11 +64,17 @@
   })();
   </script>
 
-<!-- =============================
+  <!-- =============================
      CHAPITRE 2 : ÉTAT & HELPERS
+     Index :
+       §2.1 • Gestion erreurs globales
+       §2.2 • État global & contexte courant
+       §2.3 • Identifiants & helpers DOM/UI
+       §2.4 • Libellés de pièces (build/format)
+       §2.5 • Persistance locale (save/load)
      ============================= -->
 <script>
-// --- Debug global : affiche toute erreur JS dans #app
+// §2.1 • Gestion erreurs globales
 window.addEventListener('error', function (e) {
   var el = document.getElementById('app');
   if (el) {
@@ -80,27 +86,19 @@ window.addEventListener('error', function (e) {
   }
 });
 
-// --- État global
+// §2.2 • État global & contexte courant
 var devis = {}; // contiendra aussi __id, __name, __tabCounter
 var ctx   = { piece:null, category:null, intervention:null, pose:null, designation:null };
 
-// --- Identifiants
+// §2.3 • Identifiants & helpers DOM/UI
 function genId(){ return 'dv_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function ensureId(){ if(!devis.__id) devis.__id = genId(); }
-
-// --- DOM & helpers UI
 function $app(){ return document.getElementById('app'); }
-
-/** Crée un bouton (fn = string comme "goPiece('Salon')") */
 function b(label, fn, cls){
   cls = cls || 'btn';
   return '<button class="'+cls+'" onclick=\''+fn+'\'>'+label+'</button>';
 }
-
-/** Format € */
 function euro(n){ return (+(n||0)).toFixed(2) + ' €'; }
-
-/** Rendu principal avec footer Sauvegarde/Accueil (désactivable par noFooter=true) */
 function view(html, noFooter){
   if(!noFooter){
     html += '<div class="row" style="margin-top:16px; gap:12px;">'
@@ -110,8 +108,6 @@ function view(html, noFooter){
   }
   $app().innerHTML = html;
 }
-
-/** Confirmation retour accueil si données non vides */
 function confirmBackHome(){
   var hasData = Object.keys(devis)
     .filter(function(k){ return k.indexOf('__') !== 0; })
@@ -126,20 +122,18 @@ function confirmBackHome(){
   }
 }
 
-// --- Libellés des pièces (base + qualificatif + étage)
+// §2.4 • Libellés de pièces (build/format)
 function buildPieceLabel(base, qualif, etage){
   var lbl = base || '';
   if(qualif && qualif.trim()) lbl += ' ('+qualif.trim()+')';
   if(etage && etage.trim())   lbl += ' — '+etage.trim();
   return lbl;
 }
-/** Cherche une clé libre si le libellé existe déjà (Salon, Salon (2), …) */
 function nextFreeKey(label){
   if(!devis[label]) return label;
   var n=2; while(devis[label+' ('+n+')']) n++;
   return label+' ('+n+')';
 }
-/** Crée (ou récupère) une section pièce, avec méta conservées */
 function createOrGetPiece(base, qualif, etage){
   var wanted = buildPieceLabel(base,qualif,etage);
   var key    = nextFreeKey(wanted);
@@ -147,14 +141,13 @@ function createOrGetPiece(base, qualif, etage){
   saveLocal();
   return key;
 }
-/** Affiche le libellé complet d’une clé pièce */
 function formatPieceLabel(key){
   var s = devis[key]; if(!s) return key;
   var base = s.__base || key;
   return buildPieceLabel(base, s.qualificatif, s.etage);
 }
 
-// --- Persistance locale
+// §2.5 • Persistance locale (save/load)
 function ensureSection(key){
   if(!devis[key]) devis[key] = { items:[], note:'', qualificatif:'', etage:'' };
 }
@@ -168,11 +161,17 @@ function loadLocal(){
 }
 </script>
 
-<!-- =============================
+  <!-- =============================
      CHAPITRE 3 : CONSTANTES
+     Index :
+       §3.1 • Listes (pièces, catégories, poses, sections câble)
+       §3.2 • Désignations par catégorie
+       §3.3 • Tarifs unitaires par désignation
+       §3.4 • Étages
+       §3.5 • Tarifs Tableau & Distribution (+ helpers)
      ============================= -->
 <script>
-// Pièces prédéfinies
+// §3.1 • Listes
 var PIECES_PREDEFINIES = [
   'Salon','Cuisine','Salle à manger','Salle de bain','Salle d\'eau',
   'Chambre 1','Chambre 2','Chambre 3','Toilettes','Bureau',
@@ -180,25 +179,14 @@ var PIECES_PREDEFINIES = [
   'Débarras','Extérieur','Grenier/Combles','Atelier',
   'Abri de jardin','Entrée','Bibliothèque'
 ];
-
-// Catégories standards
-var CATEGORIES = [
-  'Prises','Éclairage','Circuit spécialisé','Spécifique'
-];
-
-// Modes de pose
+var CATEGORIES = ['Prises','Éclairage','Circuit spécialisé','Spécifique'];
 var POSES = [
   'Encastré maçonnerie','Placo','Semi-encastré',
   'Sur-mesure','Saillie avec moulure','Sous tube IRL'
 ];
+var SECTIONS_CABLE = [ '0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée…' ];
 
-// Sections de câblage (avec option personnalisée)
-var SECTIONS_CABLE = [
-  '0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée…'
-];
-
-// Désignations possibles par catégorie
-// ⚠️ pas d’"Autre circuit spécialisé" (remplacé par champ libre dans l’UI)
+// §3.2 • Désignations
 var DESIGNATIONS_PAR_CATEGORIE = {
   'Prises': ['Prise'],
   'Éclairage/Luminaires': ['Point de centre','Applique'],
@@ -210,7 +198,7 @@ var DESIGNATIONS_PAR_CATEGORIE = {
   ]
 };
 
-// Tarifs de base (pièces classiques)
+// §3.3 • Tarifs unitaires par désignation
 var TARIFS = {
   'Prise': { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
   'Point de centre': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
@@ -229,15 +217,10 @@ var TARIFS = {
   'Prise extérieure étanche': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
 };
 
-// Étages prédéfinis
-var ETAGES = [
-  'Rez-de-chaussée','1er étage','2e étage',
-  'Sous-sol','Combles','Annexe'
-];
+// §3.4 • Étages
+var ETAGES = ['Rez-de-chaussée','1er étage','2e étage','Sous-sol','Combles','Annexe'];
 
-/* ======================================================
-   TARIFS — TABLEAU & DISTRIBUTION (pose, modulaires, etc.)
-   ====================================================== */
+// §3.5 • Tarifs Tableau & Distribution (+ helpers)
 var TARIFS_TABLEAU = {
   pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
   coef: {
@@ -245,8 +228,7 @@ var TARIFS_TABLEAU = {
     pose: { 'Saillie':1.00, 'Encastré':1.70 },
     intervention: { 'Création':1.00, 'Avec dépose de l’existant':1.30 }
   },
-  // + ajout 40A = 45€
-  disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32, 40:45 },
+  disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32, 40:45 }, // +40A=45€
   inter_diff: { '40A-AC':60, '40A-A':80, '63A-AC':100, '63A-A':120 },
   commandes: {
     'Télérupteur':50,
@@ -255,7 +237,6 @@ var TARIFS_TABLEAU = {
     'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A':130
   }
 };
-
 function getTabPrice(rang, modules, pose, intervention){
   var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
   if(!base) return 0;
@@ -274,10 +255,15 @@ function getPrix(designation, intervention){
 }
 </script>
 
-<!-- =============================
+  <!-- =============================
      CHAPITRE 4 : MENU PRINCIPAL
+     Index :
+       §4.1 • Accueil principal
+       §4.2 • Nouveau devis / Ouverture / Suppression
+       §4.3 • Sauvegarde complète
      ============================= -->
 <script>
+// §4.1 • Accueil principal
 function pageMain(){
   view(
     '<div class="card">'
@@ -289,6 +275,8 @@ function pageMain(){
     +'</div>'
   , true);
 }
+
+// §4.2 • Nouveau devis / Ouverture / Suppression
 function actionNouveauDevis(){
   devis = { __id: genId(), __name: '' };
   saveLocal();
@@ -335,6 +323,8 @@ function deleteDevis(idx){
   localStorage.setItem('savedDevisList', JSON.stringify(saved));
   pageSavedDevis();
 }
+
+// §4.3 • Sauvegarde complète
 function saveCurrentDevis(){
   ensureId();
   var saved = JSON.parse(localStorage.getItem('savedDevisList')||'[]');
@@ -365,11 +355,18 @@ function saveCurrentDevis(){
 }
 </script>
 
-<!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5-onepage + améliorations)
+  <!-- =============================
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5)
+     Index :
+       §5.1 • Accueil
+       §5.2 • Ajout de pièce
+       §5.3 • Détail d’une pièce
+       §5.4 • Choix catégorie / sous-menus Éclairage
+       §5.5 • Page unique d’ajout (one-shot)
+       §5.6 • Spécifique (formulaire libre)
      ============================= -->
 <script>
-// ---- Accueil
+// §5.1 • Accueil
 function pageHome(){
   var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
   var listHtml = keys.length ? keys.map(function(key){
@@ -407,7 +404,7 @@ function pageHome(){
   );
 }
 
-// ---- Ajouter une pièce
+// §5.2 • Ajout de pièce
 function pageAddPiece(){
   var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
            + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
@@ -452,7 +449,7 @@ function removePiece(key){
   }
 }
 
-// ---- Détail d’une pièce
+// §5.3 • Détail d’une pièce
 function goPiece(key){
   ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
@@ -503,7 +500,7 @@ function delLine(key, idx){
   goPiece(key);
 }
 
-// ---- Choix catégorie → intervention
+// §5.4 • Choix catégorie / Éclairage
 function goCategory(cat){
   ctx.category = cat;
   if(cat==='Éclairage') return goEclairageSub();
@@ -532,8 +529,6 @@ function goCategory(cat){
     +'</div>'
   );
 }
-
-// Sous-menu Éclairage
 function goEclairageSub(){
   view(
     '<div class="card">'
@@ -563,28 +558,21 @@ function setEclairageBranch(branch){
   );
 }
 
-// ---- Intervention → page unique améliorée
+// §5.5 • Page unique d’ajout
 function goIntervention(interv){
   ctx.intervention = interv;
   if(ctx.category==='Spécifique'){ return pageSpecifiqueForm(); }
   pageOneShotSelection();
 }
-
-// ======== Page "one-shot" (pose toujours visible, section câble pour Circuit spécialisé) ========
 function pageOneShotSelection(){
   var isElecStd = ['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category) >= 0;
-
   var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   var desigOpts = list.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
-
   var customDesigBlock = (ctx.category==='Circuit spécialisé')
-    ? '<label style="margin-top:10px;">Nom personnalisé (remplace la liste ci-dessus)</label>'
-      +'<input id="oneshot-custom-desig" placeholder="ex : Pompe à chaleur" />'
+    ? '<label style="margin-top:10px;">Nom personnalisé (remplace la liste ci-dessus)</label><input id="oneshot-custom-desig" placeholder="ex : Pompe à chaleur" />'
     : '';
-
   var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
   var poseBlock = isElecStd ? ('<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>') : '';
-
   var sectionBlock = '';
   if(ctx.category==='Circuit spécialisé'){
     var sectOpts = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
@@ -592,13 +580,11 @@ function pageOneShotSelection(){
       '<label style="margin-top:10px;">Section de câblage</label>'
      +'<select id="oneshot-section">'+sectOpts+'</select>';
   }
-
   var qtyOpts   = Array.from({length:30}).map((_,i)=>{
     var q=i+1; return '<option value="'+q+'" '+(q===1?'selected':'')+'>'+q+'</option>';
   }).join('');
 
   var backFn = (ctx.category.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goCategory('+JSON.stringify(ctx.category)+')';
-
   var defaultDesig = (DESIGNATIONS_PAR_CATEGORIE[ctx.category] && DESIGNATIONS_PAR_CATEGORIE[ctx.category][0]) || 'Élément';
   var defaultPU = getPrix(defaultDesig, ctx.intervention) || 0;
 
@@ -638,7 +624,6 @@ function pageOneShotSelection(){
   if($qty) $qty.addEventListener('change', refreshPreview);
   refreshPreview();
 }
-
 function saveOneShotItem(stayHere){
   var $des  = document.getElementById('oneshot-desig');
   var $qty  = document.getElementById('oneshot-qty');
@@ -673,7 +658,7 @@ function saveOneShotItem(stayHere){
   if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 
-/* ======== Spécifique : nouvelle page formulaire ======== */
+// §5.6 • Spécifique (form libre)
 function pageSpecifiqueForm(){
   var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
   var sectOpts  = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
@@ -733,7 +718,6 @@ function saveSpecifique(stayHere){
 
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
 }
-
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
@@ -744,22 +728,20 @@ function editPieceNote(){
 }
 </script>
 
-<!-- =======================================================================
+  <!-- =======================================================================
      CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux) — vNEXT
      Index :
-       §0  • État local (tabState) + utilitaires
-       §1  • Création / accueil d’un tableau (numérotation + nom perso)
-       §2  • Pose du tableau
-       §3  • Interrupteurs différentiels
-       §3bis• Coupure générale (NOUVEAU)
-       §4  • Disjoncteurs modulaires (avec calibre personnalisé + détails circuits)
-       §5  • Commandes & pilotage
-       §6  • Élément spécifique (libre)
+       §6.0 • État local (tabState) + utilitaires
+       §6.1 • Création / accueil d’un tableau (numérotation + nom perso)
+       §6.2 • Pose du tableau
+       §6.3 • Interrupteurs différentiels
+       §6.3b• Coupure générale
+       §6.4 • Disjoncteurs modulaires (calibre perso + détails circuits)
+       §6.5 • Commandes & pilotage
+       §6.6 • Élément spécifique (libre)
      ======================================================================= -->
 <script>
-/* =========================
-   §0 • ÉTAT LOCAL + UTILS
-   ========================= */
+// §6.0 • État local + utils
 let tabState = {
   disj: {
     2:{qty:0,details:[]}, 10:{qty:0,details:[]}, 16:{qty:0,details:[]},
@@ -770,8 +752,6 @@ let tabState = {
 function ensureTableauKey(key){
   if(!devis[key]) devis[key]={__base:"Tableau",items:[],note:"",__customName:""};
 }
-function euro(n){ return (+(n||0)).toFixed(2)+" €"; } // garde-fou (déjà défini au chap.2)
-
 function saveDisjQtyFromUI(){
   const pick=id=>+((document.getElementById(id)||{}).value||0);
   ["2","10","16","20","32","40"].forEach(r=>{
@@ -785,9 +765,7 @@ function saveDisjQtyFromUI(){
   tabState.disj.__custom__.qty=q;
 }
 
-/* ==========================================
-   §1 • CRÉATION / ACCUEIL D’UN TABLEAU
-   ========================================== */
+// §6.1 • Création / accueil
 function pageTabCreate(){
   if(typeof devis.__tabCounter!=="number") devis.__tabCounter=0;
   devis.__tabCounter+=1;
@@ -814,7 +792,6 @@ function saveTabCustomName(key){
   if(devis[key]){ devis[key].__customName=name; saveLocal(); }
   pageTabHome(key);
 }
-
 function pageTabHome(key){
   if(!key || !devis[key]) return pageHome();
   const custom = devis[key].__customName ? " — "+devis[key].__customName : "";
@@ -825,7 +802,7 @@ function pageTabHome(key){
       + '<div class="row" style="margin-top:10px;">'
         + b("1 · Pose du tableau","pageTabPose("+JSON.stringify(key)+")","btn primary")
         + b("2 · Interrupteurs différentiels","pageTab_ID("+JSON.stringify(key)+")","btn")
-        + b("3 · Coupure générale","pageTab_Coupure("+JSON.stringify(key)+")","btn")             <!-- NOUVEAU -->
+        + b("3 · Coupure générale","pageTab_Coupure("+JSON.stringify(key)+")","btn") /* NOUVEAU */
         + b("4 · Disjoncteurs modulaires","pageTab_Disjoncteurs("+JSON.stringify(key)+")","btn")
         + b("5 · Commandes / pilotage","pageTabMod_Commandes("+JSON.stringify(key)+")","btn")
         + b("6 · Spécifique (libre + prix)","pageTabMod_Specifique("+JSON.stringify(key)+")","btn ghost")
@@ -835,9 +812,7 @@ function pageTabHome(key){
   );
 }
 
-/* ================================
-   §2 • POSE DU TABLEAU
-   ================================ */
+// §6.2 • Pose du tableau
 function pageTabPose(key){
   const rangs=[1,2,3,4].map(r=>`<option value="${r}">${r} rangée(s)</option>`).join('');
   const modules=[13,18,24].map(m=>`<option value="${m}">${m} modules</option>`).join('');
@@ -874,9 +849,7 @@ function addTabPose(key){
   saveLocal(); pageTabHome(key);
 }
 
-/* ==================================================
-   §3 • INTERRUPTEURS DIFFÉRENTIELS (multi-sélection)
-   ================================================== */
+// §6.3 • Interrupteurs différentiels
 function pageTab_ID(key){
   const MODELS=[
     { id:"40A-A",  label:"ID 30mA - 40A - Type A"  },
@@ -921,14 +894,10 @@ function submitTab_ID(key){
   saveLocal(); pageTabHome(key);
 }
 
-/* =========================================
-   §3bis • COUPURE GÉNÉRALE (NOUVEAU)
-   ========================================= */
+// §6.3b • Coupure générale
 function pageTab_Coupure(key){
-  const MODELS=[
-    { id:"45A", label:"Coupure générale 45 A", pu:80 },
-    { id:"60A", label:"Coupure générale 60 A", pu:110 }
-  ];
+  const MODELS=[ { id:"45A", label:"Coupure générale 45 A", pu:80 },
+                 { id:"60A", label:"Coupure générale 60 A", pu:110 } ];
   const opts=(n=20)=>Array.from({length:n+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
   view(
     '<div class="card">'
@@ -965,9 +934,7 @@ function submitTab_Coupure(key){
   saveLocal(); pageTabHome(key);
 }
 
-/* ======================================================
-   §4 • DISJONCTEURS MODULAIRES (avec calibre personnalisé)
-   ====================================================== */
+// §6.4 • Disjoncteurs modulaires
 function pageTab_Disjoncteurs(key){
   const opts=(max=30)=>Array.from({length:max+1},(_,i)=>`<option value="${i}" ${i===0?'selected':''}>${i}</option>`).join('');
   const line = amp => (
@@ -1088,9 +1055,7 @@ function pageTab_DisjValider(key){
   saveLocal(); pageTabHome(key);
 }
 
-/* ===============================
-   §5 • COMMANDES & PILOTAGE
-   =============================== */
+// §6.5 • Commandes & pilotage
 function pageTabMod_Commandes(key){
   const PC=(TARIFS_TABLEAU && TARIFS_TABLEAU.commandes)?TARIFS_TABLEAU.commandes:{};
   const opts=Object.keys(PC).map(k=>`<option value="${k}">${k} (${euro(PC[k]||0)})</option>`).join('');
@@ -1115,9 +1080,7 @@ function submitTabMod_Commandes(key){
   saveLocal(); pageTabHome(key);
 }
 
-/* ===============================
-   §6 • SPÉCIFIQUE (libre + prix)
-   =============================== */
+// §6.6 • Spécifique (libre + prix)
 function pageTabMod_Specifique(key){
   view(
     '<div class="card">'
@@ -1142,21 +1105,18 @@ function submitTabMod_Specifique(key){
   saveLocal(); pageTabHome(key);
 }
 </script>
-<!-- ============================================================
+
+  <!-- ============================================================
      CHAPITRE 7 : ESTIMATIF & EXPORTS — vNEXT
      Index :
-       §0  • Détection / libellé des pièces (Tableaux inclus)
-       §1  • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
-       §2  • Pages : Estimatif détaillé & Totaux par groupe
-       §3  • Exports : .txt par groupe / .zip par groupe
-       §4  • Exports : complet .txt / complet .zip
+       §7.0 • Détection / libellé des pièces (Tableaux inclus)
+       §7.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
+       §7.2 • Pages : Estimatif détaillé & Totaux par groupe
+       §7.3 • Exports : .txt par groupe / .zip par groupe
+       §7.4 • Exports : complet .txt / complet .zip
      ============================================================ -->
 <script>
-/* ============================================
-   §0 • Détection & libellés de pièces
-   ============================================ */
-
-// Groupes (si non définis ailleurs)
+// §7.0 • Détection & libellés
 window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
   "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
@@ -1168,8 +1128,6 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
   "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
-
-// Regroupe l’objet devis par familles
 function groupDevis(){
   var g = {};
   for (var key in devis){
@@ -1182,14 +1140,10 @@ function groupDevis(){
   }
   return g;
 }
-
-// Est-ce un tableau ?
 function isTableauKey(key){
   var s = devis[key] || {};
   return ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
 }
-
-// Libellé affiché d’une pièce (ajoute nom perso pour les Tableaux)
 function pieceDisplayLabel(key){
   var s = devis[key] || {};
   var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
@@ -1199,43 +1153,33 @@ function pieceDisplayLabel(key){
   if(isTableauKey(key) && s.__customName && s.__customName.trim()){
     label = key + ' — ' + s.__customName.trim();
   }else{
-    // Si ce n'est pas un tableau nommé, on recompose avec la clé formatée
     if(!isTableauKey(key)){
       label = (typeof formatPieceLabel === 'function') ? formatPieceLabel(key) : key;
     }else{
-      label = key; // ex: "Tableau 1"
+      label = key;
     }
   }
   return label;
 }
 
-/* ==========================================================
-   §1 • Tri dédié aux Tableaux (ordre demandé)
-        1. Interrupteurs différentiels
-        2. Coupure générale
-        3. Disjoncteurs modulaires
-        4. Le reste
-   ========================================================== */
+// §7.1 • Tri dédié Tableaux
 function sortedItemsForPiece(key, items){
   if(!Array.isArray(items)) return [];
-  if(!isTableauKey(key)) return items.slice(); // pas de tri spécial hors Tableaux
+  if(!isTableauKey(key)) return items.slice();
 
   function score(it){
     var d = (it && it.designation ? String(it.designation) : '').trim();
-    if (/^ID\s/i.test(d))                       return 0; // Interrupteurs différentiels
-    if (/^Coupure générale/i.test(d))           return 1; // Coupure générale
-    if (/^Disjoncteur\s/i.test(d))              return 2; // Disjoncteurs modulaires
-    return 3;                                           // Le reste (pose, commandes, spécifique…)
+    if (/^ID\s/i.test(d))             return 0;
+    if (/^Coupure générale/i.test(d)) return 1;
+    if (/^Disjoncteur\s/i.test(d))    return 2;
+    return 3;
   }
-  // Tri stable (par index initial en clé secondaire)
   return items.map(function(it, i){ return {it:it, i:i, s:score(it)}; })
               .sort(function(a,b){ return (a.s - b.s) || (a.i - b.i); })
               .map(function(x){ return x.it; });
 }
 
-/* ============================================
-   §2 • Pages : Estimatif + Totaux par groupe
-   ============================================ */
+// §7.2 • Pages : Estimatif + Totaux
 function itemLine(it){
   var unit = it.unit || "u";
   var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
@@ -1245,11 +1189,8 @@ function itemLine(it){
   var total = (q * (+it.prixU || 0)).toFixed(2);
   return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
 }
-function pieceSeparator(label){
-  return "\n---------------- " + label + " ----------------\n";
-}
+function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
 
-// Estimatif détaillé
 function pageEstimatif(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
   var totalGlobal = 0;
@@ -1298,7 +1239,6 @@ function pageEstimatif(){
   view(html);
 }
 
-// Totaux par groupe
 function pageTotaux(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
   var totalGlobal = 0;
@@ -1327,11 +1267,7 @@ function pageTotaux(){
   view(html);
 }
 
-/* ===================================================
-   §3 • Exports : TXT par groupe / ZIP par groupe
-   =================================================== */
-
-// .txt par groupe
+// §7.3 • Exports : TXT/ZIP par groupe
 function exportText(){
   var grouped = groupDevis();
   for (var grp in grouped){
@@ -1367,7 +1303,6 @@ function exportText(){
   alert('✅ Export terminé : un fichier .txt par groupe généré.');
 }
 
-// .zip par groupe
 async function exportZipGroups(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
 
@@ -1417,9 +1352,7 @@ async function exportZipGroups(){
   alert('✅ Export ZIP (par groupe) généré.');
 }
 
-/* =============================================
-   §4 • Exports : COMPLET (.txt et .zip)
-   ============================================= */
+// §7.4 • Exports : COMPLET (.txt/.zip)
 function buildFullText(){
   var grouped = groupDevis();
   var lines = ['=== DEVIS COMPLET ===\n'];
@@ -1453,7 +1386,6 @@ function buildFullText(){
   lines.push('\n=== Total global : '+globalTotal.toFixed(2)+'€ ===\n');
   return lines.join('\r\n');
 }
-
 function exportTextFull(){
   var name = (devis.__name || 'Devis').trim() || 'Devis';
   var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
@@ -1463,7 +1395,6 @@ function exportTextFull(){
   a.click(); URL.revokeObjectURL(url);
   alert('✅ Export .txt complet généré.');
 }
-
 async function exportZipFull(){
   if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
 
@@ -1481,10 +1412,16 @@ async function exportZipFull(){
   alert('✅ Export .zip complet généré.');
 }
 </script>
-<!-- =============================
+
+  <!-- =============================
      CHAPITRE 8 : DÉMARRAGE & EXPOSE
+     Index :
+       §8.1 • init()
+       §8.2 • Exposition des fonctions (window)
+       §8.3 • Lancement
      ============================= -->
 <script>
+// §8.1 • init()
 function init(){
   try{
     loadLocal();
@@ -1500,7 +1437,7 @@ function init(){
   }
 }
 
-/* Expose — fonctions réellement utilisées dans l’UI */
+// §8.2 • Expose (fonctions appelées par l’UI)
 Object.assign(window, {
   // Chap.4 — Menu & sauvegarde
   pageMain,
@@ -1536,6 +1473,8 @@ Object.assign(window, {
   addTabPose,
   pageTab_ID,
   submitTab_ID,
+  pageTab_Coupure,
+  submitTab_Coupure,
   pageTab_Disjoncteurs,
   pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
@@ -1557,7 +1496,7 @@ Object.assign(window, {
   confirmBackHome
 });
 
-// Lancement
+// §8.3 • Lancement
 init();
 </script>
 </body>
