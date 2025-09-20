@@ -1730,7 +1730,7 @@ Object.assign(window, {
   deleteDevis,
   saveCurrentDevis,
 
-  // Chap.5 — Pièces (flux one-page) + Ventilation (raccourci)
+  // Chap.5 — Pièces (flux one-page) + raccourci Ventilation
   pageHome,
   pageAddPiece,
   confirmPieceChoice,
@@ -1740,14 +1740,14 @@ Object.assign(window, {
   editPieceNote,
   pageSpecifiqueForm,
   saveSpecifique,
-  pagePieceSpecifique: pageSpecifiqueForm, // alias
+  pagePieceSpecifique: pageSpecifiqueForm,
   goCategory,
   goEclairageSub,
   setEclairageBranch,
   goIntervention,
   pageOneShotSelection,
   saveOneShotItem,
-  goVent, // bouton "Ventilation" (redirige vers pageVentAccueil si chargée)
+  goVent, // bouton "Ventilation" depuis l'accueil
 
   // Chap.6 — Tableaux (multi-tableaux)
   pageTabCreate,
@@ -1757,8 +1757,8 @@ Object.assign(window, {
   addTabPose,
   pageTab_ID,
   submitTab_ID,
-  pageTab_Coupure,       // (coupure générale)
-  submitTab_Coupure,     // (coupure générale)
+  pageTab_Coupure,
+  submitTab_Coupure,
   pageTab_Disjoncteurs,
   pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
@@ -1768,17 +1768,25 @@ Object.assign(window, {
   pageTabMod_Specifique,
   submitTabMod_Specifique,
 
-    // Chap. 6.2 — Ventilation
+  // Chap.6.2 — Ventilation (corrigé, sans rtConduitMut)
   pageVentAccueil,
   pageVentNew,
   saveVentName,
   ventDelete,
   pageVentHome,
   pageVentCreation,
-  kitConduitMut, kitPercMut, exConduitMut, exPercMut, vcPercMut,
-  ventAddKit, ventAddExtracteur, ventAddVentilateur,
-  pageVentRetirage, rtConduitMut, ventAddRetirage,
-  pageVentEntretien, ventAddEntretien,
+  kitConduitMut,
+  kitPercMut,
+  exConduitMut,
+  exPercMut,
+  vcPercMut,
+  ventAddKit,
+  ventAddExtracteur,
+  ventAddVentilateur,
+  pageVentRetirage,
+  ventAddRetirage,
+  pageVentEntretien,
+  ventAddEntretien,
 
   // Chap.7 — Estimatif & exports
   pageEstimatif,
@@ -1788,10 +1796,10 @@ Object.assign(window, {
   exportTextFull,
   exportZipFull,
 
-  // Navigation commune
+  // Commun
   confirmBackHome
 });
 
-// Lancement auto
+// Lancement
 init();
 </script>
