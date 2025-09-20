@@ -1194,587 +1194,492 @@ function submitTabMod_Specifique(key){
 }
 </script>
 
-  <!-- ============================================================
-     CHAPITRE 6.2 : VENTILATION — v1 (prix vides)
+<!-- =======================================================================
+     CHAPITRE 6.2 : VENTILATION — v1
      Index :
-       §0  • État / helpers / clé "Ventilation"
-       §1  • Accueil Ventilation (choix intervention)
-       §2  • Création (Kit VMC / Extracteur / Ventilateur de conduit)
-       §3  • Retirage des conduits
-       §4  • Entretien
-       §5  • Génération des lignes & sauvegarde
-     ============================================================ -->
+       §0  • État local (ventState) + utilitaires
+       §1  • Accueil Ventilation (multi-ventilations) + création / nom perso
+       §2  • Menu Intervention (Création / Retirage des conduits / Entretien)
+       §3  • Intervention : CRÉATION
+             ├─ Kit VMC (réf, bouches, conduits multiples, percements multiples)
+             ├─ Extracteur (réf, Ø, conduits multiples, percements multiples)
+             └─ Ventilateur de conduit (réf, Ø, type conduit, longueur, percements multiples)
+       §4  • Intervention : RETIRAGE DES CONDUITS
+       §5  • Intervention : ENTRETIEN
+     ======================================================================= -->
 <script>
-/* ===============================
-   §0 • État / helpers
-   =============================== */
-function ensureVentPiece(){
-  if(!devis['Ventilation'])
-    devis['Ventilation'] = { __base:'Ventilation', items:[], note:'' };
-}
-function pickVal(id){ var el=document.getElementById(id); return el?el.value:''; }
-function pickNum(id){
-  var el=document.getElementById(id); 
-  var v = el ? (el.value||'') : '';
-  var n = parseFloat(v.replace(',', '.'));
-  return isNaN(n) ? 0 : n;
-}
-function addSep(){ return '<hr style="border:none;border-top:1px dashed #ddd;margin:12px 0;">'; }
+/* =========================
+   §0 • ÉTAT LOCAL + UTILS
+   ========================= */
+// État UI temporaire par ventilation (clé => données de formulaire)
+var ventState = {}; // { [key]: { creation:{...}, retirage:{...}, entretien:{...} } }
 
-let ventState = {
-  creation:{
-    kit:{
-      ref:'', nbD80:1, nbD125:1,
-      conduits:[{type:'Gaine isolée'}],
-      percements:[{support:'Placo', qte:0}]
+function ensureVentKey(key){
+  if(!devis[key]) devis[key] = { __base:"VMC", __customName:"", items:[], note:"" };
+  if(!ventState[key]) ventState[key] = {
+    creation: {
+      kit: {
+        ref:"", d80:1, d125:1,
+        conduits:[{type:"Gaine isolée"}],
+        percements:[{support:"Placo", qty:0}]
+      },
+      extracteur: {
+        ref:"", diam:"100",
+        conduits:[{type:"Gaine isolée"}],
+        percements:[{support:"Placo", qty:0}]
+      },
+      ventilateur: {
+        ref:"", diam:"100", typeConduit:"Gaine isolée", longueur:0,
+        percements:[{support:"Placo", qty:0}]
+      }
     },
-    extracteur:{
-      ref:'', diam:'80',
-      conduits:[{type:'Gaine isolée'}],
-      percements:[{support:'Placo', qte:0}]
+    retirage: {
+      n80:0, n125:0, conduits:[{type:"Gaine isolée"}]
     },
-    ventilateur:{
-      ref:'', diam:'80', lg:0,
-      conduits:[{type:'Gaine isolée'}],
-      percements:[{support:'Placo', qte:0}]
+    entretien: {
+      type:"Groupe VMC", nb:0
     }
-  },
-  retirage:{
-    nb80:0, nb125:0,
-    conduits:[{type:'Gaine isolée'}]
-  },
-  entretien:{
-    type:'Groupe VMC',
-    nbBouchesGaines:0
-  }
-};
-
-// UI helpers — select de référence matériel (listes vides pour l’instant)
-function refSelectHtml(id, arr, cur){
-  var opts = ['<option value="">— Sélectionner —</option>']
-    .concat(arr.map(x=>'<option value="'+x+'">'+x+'</option>'))
-    .concat(['<option value="__custom__">Référence personnalisée…</option>'])
-    .join('');
-  return '<select id="'+id+'">'+opts+'</select>'
-       + '<input id="'+id+'-custom" style="display:none;margin-top:6px;" placeholder="Saisir la référence" />';
+  };
 }
-function wireRefCustom(id){
-  var sel = document.getElementById(id);
-  var inp = document.getElementById(id+'-custom');
-  if(!sel || !inp) return;
-  sel.addEventListener('change', function(){
-    if(this.value==='__custom__'){ inp.style.display='block'; }
-    else { inp.style.display='none'; inp.value=''; }
+function pickVal(id, def){ var el=document.getElementById(id); return (el?el.value:def); }
+function pickNum(id, def){ var el=document.getElementById(id); var v=parseFloat(el?el.value:NaN); return isNaN(v)?(def||0):v; }
+function euro(n){ return (+(n||0)).toFixed(2)+" €"; } // garde-fou
+
+/* ======================================================
+   §1 • ACCUEIL VENTILATION (multi-ventilations)
+   ====================================================== */
+function pageVentAccueil(){
+  // Si la numérotation n'existe pas encore
+  if(typeof devis.__ventCounter!=="number") devis.__ventCounter = 0;
+
+  // Liste des ventilations existantes
+  var keys = Object.keys(devis).filter(function(k){
+    if(k.indexOf('__')===0) return false;
+    var s = devis[k]||{};
+    return (s.__base||"").toLowerCase()==="vmc";
   });
-}
 
-// Ligne “type de conduit” (avec ajout dynamique)
-function conduitRowHtml(groupKey, i, current){
-  var opts = VENT_CONDUITS.map(t=>'<option '+(current===t?'selected':'')+' value="'+t+'">'+t+'</option>').join('');
-  return '<div class="pill" style="width:100%;align-items:stretch;">'
-       +   '<label style="flex:1;">Type de conduit'
-       +     '<select data-idx="'+i+'" data-group="'+groupKey+'" class="vent-conduit">'+opts+'</select>'
-       +   '</label>'
-       +   '<button class="btn" onclick="ventAddConduit(\''+groupKey+'\')">+ autre type</button>'
-       +   (i>0?'<button class="btn" onclick="ventDelConduit(\''+groupKey+'\','+i+')">×</button>':'')
-       + '</div>';
-}
-function percementRowHtml(groupKey, i, current){
-  var supOpts = VENT_SUPPORTS.map(t=>'<option '+(current.support===t?'selected':'')+' value="'+t+'">'+t+'</option>').join('');
-  var q = current.qte||0;
-  return '<div class="pill" style="width:100%;align-items:stretch;">'
-       +   '<label style="flex:1;">Support'
-       +     '<select data-idx="'+i+'" data-group="'+groupKey+'" class="vent-perc-support">'+supOpts+'</select>'
-       +   '</label>'
-       +   '<label style="width:180px;">Nb percements'
-       +     '<input data-idx="'+i+'" data-group="'+groupKey+'" class="vent-perc-qte" type="number" inputmode="numeric" min="0" value="'+q+'"/>'
-       +   '</label>'
-       +   '<button class="btn" onclick="ventAddPercement(\''+groupKey+'\')">+ autre support</button>'
-       +   (i>0?'<button class="btn" onclick="ventDelPercement(\''+groupKey+'\','+i+')">×</button>':'')
-       + '</div>';
-}
+  var list = keys.length ? keys.map(function(k){
+    var s=devis[k]||{};
+    var titre = k + (s.__customName?(" — "+s.__customName):"");
+    var nb = (s.items||[]).length;
+    return '<div class="pill">'
+          +'<strong>'+titre+'</strong> <small>'+nb+' ligne(s)</small>'
+          + b('Ouvrir','pageVentHome('+JSON.stringify(k)+')','btn')
+          + b('Supprimer','ventDelete('+JSON.stringify(k)+')','btn')
+          +'</div>';
+  }).join('') : '<p class="muted">Aucune ventilation pour l’instant.</p>';
 
-// Ajout/suppression conduits & percements
-function ventAddConduit(groupKey){
-  var g = ventState.creation[groupKey] || ventState.retirage || ventState.entretien;
-  if(groupKey==='retirage') g = ventState.retirage;
-  else g = ventState.creation[groupKey];
-  g.conduits.push({type:'Gaine isolée'}); ventRenderCreation(); ventRenderRetirage();
-}
-function ventDelConduit(groupKey, idx){
-  var g = (groupKey==='retirage') ? ventState.retirage : ventState.creation[groupKey];
-  g.conduits.splice(idx,1); ventRenderCreation(); ventRenderRetirage();
-}
-function ventAddPercement(groupKey){
-  var g = ventState.creation[groupKey];
-  g.percements.push({support:'Placo', qte:0}); ventRenderCreation();
-}
-function ventDelPercement(groupKey, idx){
-  var g = ventState.creation[groupKey];
-  g.percements.splice(idx,1); ventRenderCreation();
-}
-
-/* ===============================
-   §1 • Accueil Ventilation
-   =============================== */
-function pageVentilationHome(){
   view(
     '<div class="card">'
       + b('Retour','pageHome()','btn back')
       + '<h2>Ventilation</h2>'
-      + '<p class="muted">Choisir un type d’intervention :</p>'
-      + '<div class="row">'
-        + b('Création','pageVent_Creation()','btn primary')
-        + b('Retirage des conduits','pageVent_Retirage()','btn')
-        + b('Entretien','pageVent_Entretien()','btn')
-      + '</div>'
+      + '<div class="row">'+ b('➕ Ajouter une ventilation','pageVentNew()','btn primary') + '</div>'
+    + '</div>'
+    + '<div class="card" style="margin-top:12px;">'
+      + '<h2>Liste</h2>'
+      + '<div class="list">'+list+'</div>'
     + '</div>'
   );
 }
 
-/* ===============================
-   §2 • Création
-   =============================== */
-function pageVent_Creation(){
+function pageVentNew(){
+  devis.__ventCounter = (typeof devis.__ventCounter==="number"?devis.__ventCounter:0) + 1;
+  var key = 'Ventilation '+devis.__ventCounter;
+  ensureVentKey(key); saveLocal();
+
   view(
     '<div class="card">'
-      + b('Retour','pageVentilationHome()','btn back')
-      + '<h2>Ventilation — Création</h2>'
-      // --- Kit VMC ---
-      + '<div id="vent-kit" class="card" style="padding:10px;">'
-        + refSelectHtml('vent-kit-ref', VENT_REFS.kit_vmc, ventState.creation.kit.ref)
-        + '<div class="row" style="margin-top:8px;gap:8px;">'
-          + '<label style="width:220px;">Bouches D80'
-          +   '<input id="vent-kit-d80" type="number" inputmode="numeric" min="0" value="'+(ventState.creation.kit.nbD80||1)+'" />'
-          + '</label>'
-          + '<label style="width:220px;">Bouches D125'
-          +   '<input id="vent-kit-d125" type="number" inputmode="numeric" min="0" value="'+(ventState.creation.kit.nbD125||1)+'" />'
-          + '</label>'
-        + '</div>'
-        + addSep()
-        + '<div id="vent-kit-conduits"></div>'
-        + addSep()
-        + '<div id="vent-kit-percements"></div>'
-      + '</div>'
-
-      // --- Extracteur ---
-      + '<div id="vent-extr" class="card" style="padding:10px;">'
-        + refSelectHtml('vent-extr-ref', VENT_REFS.extracteur, ventState.creation.extracteur.ref)
-        + '<label style="margin-top:8px;">Diamètre'
-        +   '<select id="vent-extr-diam">'
-        +     VENT_DIAMS_EXTRACTEUR.map(d=>'<option value="'+d+'">'+d+'</option>').join('')
-        +   '</select>'
-        + '</label>'
-        + addSep()
-        + '<div id="vent-extr-conduits"></div>'
-        + addSep()
-        + '<div id="vent-extr-percements"></div>'
-      + '</div>'
-
-      // --- Ventilateur de conduit ---
-      + '<div id="vent-vent" class="card" style="padding:10px;">'
-        + refSelectHtml('vent-vent-ref', VENT_REFS.ventilateur_conduit, ventState.creation.ventilateur.ref)
-        + '<div class="row" style="margin-top:8px;gap:8px;">'
-          + '<label style="width:220px;">Diamètre'
-          +   '<select id="vent-vent-diam">'
-          +     VENT_DIAMS_VENTILATEUR.map(d=>'<option value="'+d+'">'+d+'</option>').join('')
-          +   '</select>'
-          + '</label>'
-          + '<label style="width:220px;">Longueur conduit (m)'
-          +   '<input id="vent-vent-lg" type="number" inputmode="decimal" min="0" step="0.1" value="'+(ventState.creation.ventilateur.lg||0)+'" />'
-          + '</label>'
-        + '</div>'
-        + addSep()
-        + '<div id="vent-vent-conduits"></div>'
-        + addSep()
-        + '<div id="vent-vent-percements"></div>'
-      + '</div>'
-
-      + '<div class="row" style="margin-top:12px;">'
-        + b('Ajouter à Ventilation','ventSubmitCreation()','btn primary')
+      + b('Retour','pageVentAccueil()','btn back')
+      + '<h2>Nouvelle ventilation</h2>'
+      + '<p>Identifiant : <strong>'+key+'</strong></p>'
+      + '<label>Nom personnalisé (optionnel)</label>'
+      + '<input id="vent-name" placeholder="ex : VMC logement RDC" />'
+      + '<div class="row" style="margin-top:10px;">'
+        + b('Valider','saveVentName('+JSON.stringify(key)+')','btn primary')
       + '</div>'
     + '</div>'
   );
-
-  // brancher “référence personnalisée…”
-  wireRefCustom('vent-kit-ref');
-  wireRefCustom('vent-extr-ref');
-  wireRefCustom('vent-vent-ref');
-
-  ventRenderCreation();
+}
+function saveVentName(key){
+  var name = (document.getElementById('vent-name').value||'').trim();
+  if(devis[key]) devis[key].__customName = name;
+  saveLocal();
+  pageVentHome(key);
+}
+function ventDelete(key){
+  if(!confirm('Supprimer « '+key+' » et toutes ses lignes ?')) return;
+  delete devis[key]; saveLocal(); pageVentAccueil();
 }
 
-function ventRenderCreation(){
-  // **** Kit VMC
-  var kitC = document.getElementById('vent-kit-conduits');
-  var kitP = document.getElementById('vent-kit-percements');
-  if(kitC){
-    kitC.innerHTML = ventState.creation.kit.conduits
-      .map((c,i)=>conduitRowHtml('kit', i, c.type)).join('');
-  }
-  if(kitP){
-    kitP.innerHTML = ventState.creation.kit.percements
-      .map((p,i)=>percementRowHtml('kit', i, p)).join('');
-  }
-
-  // **** Extracteur
-  var exC = document.getElementById('vent-extr-conduits');
-  var exP = document.getElementById('vent-extr-percements');
-  if(exC){
-    exC.innerHTML = ventState.creation.extracteur.conduits
-      .map((c,i)=>conduitRowHtml('extracteur', i, c.type)).join('');
-  }
-  if(exP){
-    exP.innerHTML = ventState.creation.extracteur.percements
-      .map((p,i)=>percementRowHtml('extracteur', i, p)).join('');
-  }
-
-  // **** Ventilateur
-  var veC = document.getElementById('vent-vent-conduits');
-  var veP = document.getElementById('vent-vent-percements');
-  if(veC){
-    veC.innerHTML = ventState.creation.ventilateur.conduits
-      .map((c,i)=>conduitRowHtml('ventilateur', i, c.type)).join('');
-  }
-  if(veP){
-    veP.innerHTML = ventState.creation.ventilateur.percements
-      .map((p,i)=>percementRowHtml('ventilateur', i, p)).join('');
-  }
-
-  // Sync des sélecteurs dynamiques
-  document.querySelectorAll('.vent-conduit').forEach(function(sel){
-    sel.addEventListener('change', function(){
-      var group=this.getAttribute('data-group'); var i=+this.getAttribute('data-idx');
-      ventState.creation[group].conduits[i].type=this.value;
-    });
-  });
-  document.querySelectorAll('.vent-perc-support').forEach(function(sel){
-    sel.addEventListener('change', function(){
-      var group=this.getAttribute('data-group'); var i=+this.getAttribute('data-idx');
-      ventState.creation[group].percements[i].support=this.value;
-    });
-  });
-  document.querySelectorAll('.vent-perc-qte').forEach(function(inp){
-    inp.addEventListener('input', function(){
-      var group=this.getAttribute('data-group'); var i=+this.getAttribute('data-idx');
-      ventState.creation[group].percements[i].qte = parseInt(this.value||'0',10)||0;
-    });
-  });
-
-  // Sync champs simples
-  var d80=document.getElementById('vent-kit-d80');
-  var d125=document.getElementById('vent-kit-d125');
-  if(d80) d80.oninput=function(){ ventState.creation.kit.nbD80 = parseInt(this.value||'0',10)||0; };
-  if(d125) d125.oninput=function(){ ventState.creation.kit.nbD125 = parseInt(this.value||'0',10)||0; };
-
-  var ed=document.getElementById('vent-extr-diam'); if(ed) ed.onchange=function(){ ventState.creation.extracteur.diam=this.value; };
-  var vd=document.getElementById('vent-vent-diam'); if(vd) vd.onchange=function(){ ventState.creation.ventilateur.diam=this.value; };
-  var vg=document.getElementById('vent-vent-lg'  ); if(vg) vg.oninput=function(){ ventState.creation.ventilateur.lg = parseFloat((this.value||'0').replace(',','.'))||0; };
-
-  // Références
-  var rk=document.getElementById('vent-kit-ref');
-  var rkc=document.getElementById('vent-kit-ref-custom');
-  if(rk){ rk.onchange=function(){ ventState.creation.kit.ref = (this.value==='__custom__')?(rkc.value||''):this.value; }; }
-  if(rkc){ rkc.oninput=function(){ if((rk&&rk.value==='__custom__')||!rk) ventState.creation.kit.ref=this.value; }; }
-
-  var re=document.getElementById('vent-extr-ref');
-  var rec=document.getElementById('vent-extr-ref-custom');
-  if(re){ re.onchange=function(){ ventState.creation.extracteur.ref = (this.value==='__custom__')?(rec.value||''):this.value; }; }
-  if(rec){ rec.oninput=function(){ if((re&&re.value==='__custom__')||!re) ventState.creation.extracteur.ref=this.value; }; }
-
-  var rv=document.getElementById('vent-vent-ref');
-  var rvc=document.getElementById('vent-vent-ref-custom');
-  if(rv){ rv.onchange=function(){ ventState.creation.ventilateur.ref = (this.value==='__custom__')?(rvc.value||''):this.value; }; }
-  if(rvc){ rvc.oninput=function(){ if((rv&&rv.value==='__custom__')||!rv) ventState.creation.ventilateur.ref=this.value; }; }
-}
-
-/* ===============================
-   §3 • Retirage des conduits
-   =============================== */
-function pageVent_Retirage(){
+function pageVentHome(key){
+  if(!key || !devis[key]) return pageVentAccueil();
+  ensureVentKey(key);
+  var custom = devis[key].__customName ? ' — '+devis[key].__customName : '';
   view(
     '<div class="card">'
-      + b('Retour','pageVentilationHome()','btn back')
-      + '<h2>Ventilation — Retirage des conduits</h2>'
-      + '<div class="row" style="gap:8px;">'
-        + '<label style="width:240px;">Nb conduits Ø80'
-        +   '<input id="vent-ret-80" type="number" inputmode="numeric" min="0" value="'+(ventState.retirage.nb80||0)+'"/>'
-        + '</label>'
-        + '<label style="width:240px;">Nb conduits Ø125'
-        +   '<input id="vent-ret-125" type="number" inputmode="numeric" min="0" value="'+(ventState.retirage.nb125||0)+'"/>'
-        + '</label>'
+      + b('Retour','pageVentAccueil()','btn back')
+      + '<h2>'+key+custom+'</h2>'
+      + '<div class="row" style="margin-top:10px;">'
+        + b('1 · Création','pageVentCreation('+JSON.stringify(key)+')','btn primary')
+        + b('2 · Retirage des conduits','pageVentRetirage('+JSON.stringify(key)+')','btn')
+        + b('3 · Entretien','pageVentEntretien('+JSON.stringify(key)+')','btn')
       + '</div>'
-      + addSep()
-      + '<div id="vent-ret-conduits"></div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b('Ajouter à Ventilation','ventSubmitRetirage()','btn primary')
-      + '</div>'
+      + '<p class="muted" style="margin-top:8px;">Les lignes ajoutées resteront dans « '+key+' ».</p>'
     + '</div>'
   );
-  ventRenderRetirage();
-}
-function ventRenderRetirage(){
-  var cont=document.getElementById('vent-ret-conduits');
-  if(cont){
-    cont.innerHTML = ventState.retirage.conduits
-      .map((c,i)=>conduitRowHtml('retirage', i, c.type)).join('');
-  }
-  document.getElementById('vent-ret-80')?.addEventListener('input', e=>{
-    ventState.retirage.nb80 = parseInt(e.target.value||'0',10)||0;
-  });
-  document.getElementById('vent-ret-125')?.addEventListener('input', e=>{
-    ventState.retirage.nb125 = parseInt(e.target.value||'0',10)||0;
-  });
-  document.querySelectorAll('.vent-conduit').forEach(function(sel){
-    sel.addEventListener('change', function(){
-      var i=+this.getAttribute('data-idx');
-      ventState.retirage.conduits[i].type=this.value;
-    });
-  });
 }
 
-/* ===============================
-   §4 • Entretien
-   =============================== */
-function pageVent_Entretien(){
+/* ===================================
+   §2 • MENU INTERVENTION — (raccourci)
+   =================================== */
+// (Le menu est directement dans pageVentHome)
+
+/* ===================================
+   §3 • INTERVENTION : CRÉATION
+   =================================== */
+function pageVentCreation(key){
+  ensureVentKey(key);
+  var st = ventState[key].creation;
+
+  // Helpers de lignes dynamiques (conduits & percements)
+  function conduitsBlock(name, arr, addFn, delPrefix){
+    var options = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
+      .map(function(t){ return '<option '+(t===arr[0]?.type?'selected':'')+' value="'+t+'">'+t+'</option>'; })
+      .join('');
+    var html = arr.map(function(c, i){
+      var sel = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
+        .map(function(t){ return '<option '+(t===c.type?'selected':'')+' value="'+t+'">'+t+'</option>'; }).join('');
+      return '<div class="row" style="gap:8px; align-items:center; margin:6px 0;">'
+         +  '<label style="flex:1;">Type de conduit '
+         +  '<select id="'+delPrefix+'-type-'+i+'">'+sel+'</select></label>'
+         +  (i>0 ? b('×',''+addFn+'("del",'+i+')','btn') : '')
+         + '</div>';
+    }).join('');
+    return html
+      + '<div class="row" style="margin-top:6px;">'
+      +   b('Ajouter un type de conduit', addFn+'("add")','btn')
+      + '</div>';
+  }
+  function percementsBlock(name, arr, addFn, delPrefix){
+    var supports = ['Placo','Briquette','Ourdi béton'];
+    var html = arr.map(function(p, i){
+      var opts = supports.map(function(s){ return '<option '+(s===p.support?'selected':'')+' value="'+s+'">'+s+'</option>'; }).join('');
+      return '<div class="row" style="gap:8px; align-items:center; margin:6px 0;">'
+        + '<label style="flex:1;">Support <select id="'+delPrefix+'-sup-'+i+'">'+opts+'</select></label>'
+        + '<label style="width:160px;">Nombre <input id="'+delPrefix+'-qty-'+i+'" type="number" inputmode="numeric" value="'+(p.qty||0)+'"/></label>'
+        + (i>0 ? b('×', addFn+'("del",'+i+')','btn') : '')
+        + '</div>';
+    }).join('');
+    return html
+      + '<div class="row" style="margin-top:6px;">'
+      +   b('Ajouter un type de percement', addFn+'("add")','btn')
+      + '</div>';
+  }
+
   view(
     '<div class="card">'
-      + b('Retour','pageVentilationHome()','btn back')
-      + '<h2>Ventilation — Entretien</h2>'
-      + '<label>Type'
-      +   '<select id="vent-ent-type">'
-      +     ['Groupe VMC','Extracteur','Ventilateur de conduit'].map(t=>'<option value="'+t+'">'+t+'</option>').join('')
+      + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
+      + '<h2>Création</h2>'
+
+      // --- Kit VMC -------------------------------------------------------
+      + '<div class="card" style="border-left:4px solid #eee;">'
+      +   '<label>Référence matériel</label>'
+      +   '<input id="kit-ref" placeholder="(à définir plus tard)" value="'+(st.kit.ref||'')+'"/>'
+      +   '<div class="row" style="margin-top:8px; gap:8px;">'
+      +     '<label style="flex:1;">Bouches D80</label>'
+      +     '<input id="kit-d80" type="number" inputmode="numeric" value="'+(st.kit.d80||1)+'" style="width:140px;"/>'
+      +     '<label style="flex:1;">Bouches D125</label>'
+      +     '<input id="kit-d125" type="number" inputmode="numeric" value="'+(st.kit.d125||1)+'" style="width:140px;"/>'
+      +   '</div>'
+      +   '<div style="margin-top:10px;"><strong class="muted">Type(s) de conduit</strong></div>'
+      +   '<div id="kit-conduits">'+conduitsBlock('kit', st.kit.conduits, 'kitConduitMut', 'kitc')+'</div>'
+      +   '<div style="margin-top:10px;"><strong class="muted">Percement(s)</strong></div>'
+      +   '<div id="kit-perc">'+percementsBlock('kit', st.kit.percements, 'kitPercMut', 'kitp')+'</div>'
+      +   '<div class="row" style="margin-top:10px;">'
+      +     b('Ajouter « Kit VMC »','ventAddKit('+JSON.stringify(key)+')','btn primary')
+      +   '</div>'
+      + '</div>'
+
+      // --- Extracteur ----------------------------------------------------
+      + '<div class="card" style="border-left:4px solid #eee;">'
+      +   '<label>Référence matériel (extracteur)</label>'
+      +   '<input id="ex-ref" placeholder="(à définir plus tard)" value="'+(st.extracteur.ref||'')+'"/>'
+      +   '<label style="margin-top:8px;">Diamètre</label>'
+      +   '<select id="ex-diam">'
+      +     ['80','100','125'].map(function(d){ return "<option "+(d===st.extracteur.diam?'selected':'')+" value='"+d+"'>"+d+"</option>"; }).join('')
       +   '</select>'
-      + '</label>'
-      + '<label style="margin-top:8px;">Nb bouches d’extraction & gaines'
-      +   '<input id="vent-ent-nb" type="number" inputmode="numeric" min="0" value="'+(ventState.entretien.nbBouchesGaines||0)+'" />'
-      + '</label>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b('Ajouter à Ventilation','ventSubmitEntretien()','btn primary')
+      +   '<div style="margin-top:10px;"><strong class="muted">Type(s) de conduit</strong></div>'
+      +   '<div id="ex-conduits">'+conduitsBlock('ex', st.extracteur.conduits, 'exConduitMut', 'exc')+'</div>'
+      +   '<div style="margin-top:10px;"><strong class="muted">Percement(s)</strong></div>'
+      +   '<div id="ex-perc">'+percementsBlock('ex', st.extracteur.percements, 'exPercMut', 'exp')+'</div>'
+      +   '<div class="row" style="margin-top:10px;">'
+      +     b('Ajouter « Extracteur »','ventAddExtracteur('+JSON.stringify(key)+')','btn primary')
+      +   '</div>'
+      + '</div>'
+
+      // --- Ventilateur de conduit ---------------------------------------
+      + '<div class="card" style="border-left:4px solid #eee;">'
+      +   '<label>Référence matériel (ventilateur de conduit)</label>'
+      +   '<input id="vc-ref" placeholder="(à définir plus tard)" value="'+(st.ventilateur.ref||'')+'"/>'
+      +   '<label style="margin-top:8px;">Diamètre</label>'
+      +   '<select id="vc-diam">'
+      +     ['80','100','125','150'].map(function(d){ return "<option "+(d===st.ventilateur.diam?'selected':'')+" value='"+d+"'>"+d+"</option>"; }).join('')
+      +   '</select>'
+      +   '<label style="margin-top:8px;">Type de conduit</label>'
+      +   '<select id="vc-type">'
+      +     ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
+      +       .map(function(t){ return "<option "+(t===st.ventilateur.typeConduit?'selected':'')+" value='"+t+"'>"+t+"</option>"; }).join('')
+      +   '</select>'
+      +   '<label style="margin-top:8px;">Longueur de conduit (m)</label>'
+      +   '<input id="vc-len" type="number" inputmode="decimal" value="'+(st.ventilateur.longueur||0)+'"/>'
+      +   '<div style="margin-top:10px;"><strong class="muted">Percement(s)</strong></div>'
+      +   '<div id="vc-perc">'+percementsBlock('vc', st.ventilateur.percements, 'vcPercMut', 'vcp')+'</div>'
+      +   '<div class="row" style="margin-top:10px;">'
+      +     b('Ajouter « Ventilateur de conduit »','ventAddVentilateur('+JSON.stringify(key)+')','btn primary')
+      +   '</div>'
       + '</div>'
     + '</div>'
   );
-  var t=document.getElementById('vent-ent-type'); if(t) t.onchange=function(){ ventState.entretien.type=this.value; };
-  var n=document.getElementById('vent-ent-nb'); if(n) n.oninput=function(){ ventState.entretien.nbBouchesGaines = parseInt(this.value||'0',10)||0; };
 }
 
-/* ===============================
-   §5 • Ajout des lignes (prix = 0)
-   =============================== */
-function ventSubmitCreation(){
-  // Récupération champs simples
-  // Kit
-  var d80 = pickNum('vent-kit-d80'); var d125 = pickNum('vent-kit-d125');
-  var rk  = document.getElementById('vent-kit-ref'); 
-  var rkc = document.getElementById('vent-kit-ref-custom');
-  var refKit = (rk && rk.value==='__custom__') ? (rkc.value||'') : (rk?rk.value:'');
-
-  // Extracteur
-  var re  = document.getElementById('vent-extr-ref');
-  var rec = document.getElementById('vent-extr-ref-custom');
-  var refExtr = (re && re.value==='__custom__') ? (rec.value||'') : (re?re.value:'');
-  var diamExtr = pickVal('vent-extr-diam');
-
-  // Ventilateur
-  var rv  = document.getElementById('vent-vent-ref');
-  var rvc = document.getElementById('vent-vent-ref-custom');
-  var refVent = (rv && rv.value==='__custom__') ? (rvc.value||'') : (rv?rv.value:'');
-  var diamVent = pickVal('vent-vent-diam');
-  var lgVent = pickNum('vent-vent-lg');
-
-  ensureVentPiece();
-
-  // *** Chaque sous-groupe est indépendant : on ajoute uniquement si rempli ***
-
-  // KIT VMC
-  var hasKit = (refKit && refKit.trim()) || d80>0 || d125>0
-             || (ventState.creation.kit.conduits||[]).length>0
-             || (ventState.creation.kit.percements||[]).some(p=>(+p.qte||0)>0);
-  if(hasKit){
-    // 1) Groupe (référence)
-    if(refKit && refKit.trim()){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Création — Kit VMC — '+refKit.trim(),
-        qty:1, prixU:0
-      });
-    }
-    // 2) Bouches
-    if(d80>0){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Kit VMC — Bouches D80',
-        qty:d80, prixU:0
-      });
-    }
-    if(d125>0){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Kit VMC — Bouches D125',
-        qty:d125, prixU:0
-      });
-    }
-    // 3) Conduits
-    (ventState.creation.kit.conduits||[]).forEach(function(c){
-      if(!c || !c.type) return;
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Kit VMC — Type de conduit : '+c.type,
-        qty:1, prixU:0
-      });
-    });
-    // 4) Percements
-    (ventState.creation.kit.percements||[]).forEach(function(p){
-      var q=+p.qte||0; if(q<=0) return;
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Kit VMC — Percement — '+(p.support||''),
-        qty:q, prixU:0
-      });
-    });
-  }
-
-  // EXTRACTEUR
-  var hasExtr = (refExtr && refExtr.trim()) || (diamExtr)
-             || (ventState.creation.extracteur.conduits||[]).length>0
-             || (ventState.creation.extracteur.percements||[]).some(p=>(+p.qte||0)>0);
-  if(hasExtr){
-    if(refExtr && refExtr.trim()){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Création — Extracteur — '+refExtr.trim(),
-        qty:1, prixU:0
-      });
-    }
-    if(diamExtr){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Extracteur — Diamètre '+diamExtr,
-        qty:1, prixU:0
-      });
-    }
-    (ventState.creation.extracteur.conduits||[]).forEach(function(c){
-      if(!c || !c.type) return;
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Extracteur — Type de conduit : '+c.type,
-        qty:1, prixU:0
-      });
-    });
-    (ventState.creation.extracteur.percements||[]).forEach(function(p){
-      var q=+p.qte||0; if(q<=0) return;
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Extracteur — Percement — '+(p.support||''),
-        qty:q, prixU:0
-      });
-    });
-  }
-
-  // VENTILATEUR DE CONDUIT
-  var hasVent = (refVent && refVent.trim()) || (diamVent) || (lgVent>0)
-             || (ventState.creation.ventilateur.conduits||[]).length>0
-             || (ventState.creation.ventilateur.percements||[]).some(p=>(+p.qte||0)>0);
-  if(hasVent){
-    if(refVent && refVent.trim()){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Création — Ventilateur de conduit — '+refVent.trim(),
-        qty:1, prixU:0
-      });
-    }
-    if(diamVent){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Ventilateur — Diamètre '+diamVent,
-        qty:1, prixU:0
-      });
-    }
-    if(lgVent>0){
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Ventilateur — Longueur de conduit (m)',
-        qty:lgVent, prixU:0, unit:'m'
-      });
-    }
-    (ventState.creation.ventilateur.conduits||[]).forEach(function(c){
-      if(!c || !c.type) return;
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Ventilateur — Type de conduit : '+c.type,
-        qty:1, prixU:0
-      });
-    });
-    (ventState.creation.ventilateur.percements||[]).forEach(function(p){
-      var q=+p.qte||0; if(q<=0) return;
-      devis['Ventilation'].items.push({
-        category:'Ventilation/Création',
-        designation:'Ventilateur — Percement — '+(p.support||''),
-        qty:q, prixU:0
-      });
-    });
-  }
-
-  saveLocal(); pageVentilationHome();
+/* -- Mutateurs UI (ajout/suppression lignes dynamiques) -- */
+function kitConduitMut(cmd, idx){
+  var key = Object.keys(ventState).find(Boolean); // utilisé sur page en cours
+  if(!key) return;
+  var arr = ventState[key].creation.kit.conduits;
+  if(cmd==="add") arr.push({type:"Gaine isolée"});
+  if(cmd==="del") arr.splice(idx,1);
+  pageVentCreation(key);
+}
+function kitPercMut(cmd, idx){
+  var key = Object.keys(ventState).find(Boolean); if(!key) return;
+  var arr = ventState[key].creation.kit.percements;
+  if(cmd==="add") arr.push({support:"Placo", qty:0});
+  if(cmd==="del") arr.splice(idx,1);
+  pageVentCreation(key);
+}
+function exConduitMut(cmd, idx){
+  var key = Object.keys(ventState).find(Boolean); if(!key) return;
+  var arr = ventState[key].creation.extracteur.conduits;
+  if(cmd==="add") arr.push({type:"Gaine isolée"});
+  if(cmd==="del") arr.splice(idx,1);
+  pageVentCreation(key);
+}
+function exPercMut(cmd, idx){
+  var key = Object.keys(ventState).find(Boolean); if(!key) return;
+  var arr = ventState[key].creation.extracteur.percements;
+  if(cmd==="add") arr.push({support:"Placo", qty:0});
+  if(cmd==="del") arr.splice(idx,1);
+  pageVentCreation(key);
+}
+function vcPercMut(cmd, idx){
+  var key = Object.keys(ventState).find(Boolean); if(!key) return;
+  var arr = ventState[key].creation.ventilateur.percements;
+  if(cmd==="add") arr.push({support:"Placo", qty:0});
+  if(cmd==="del") arr.splice(idx,1);
+  pageVentCreation(key);
 }
 
-function ventSubmitRetirage(){
-  var n80 = pickNum('vent-ret-80');
-  var n125 = pickNum('vent-ret-125');
-
-  ensureVentPiece();
-
-  if(n80>0){
-    devis['Ventilation'].items.push({
-      category:'Ventilation/Retirage',
-      designation:'Retirage — Nb conduits Ø80',
-      qty:n80, prixU:0
-    });
-  }
-  if(n125>0){
-    devis['Ventilation'].items.push({
-      category:'Ventilation/Retirage',
-      designation:'Retirage — Nb conduits Ø125',
-      qty:n125, prixU:0
-    });
-  }
-  (ventState.retirage.conduits||[]).forEach(function(c){
-    if(!c || !c.type) return;
-    devis['Ventilation'].items.push({
-      category:'Ventilation/Retirage',
-      designation:'Retirage — Type de conduit : '+c.type,
-      qty:1, prixU:0
-    });
+/* -- Sauvegardes (ajout de lignes au devis) -- */
+function ventAddKit(key){
+  ensureVentKey(key);
+  // Lire UI
+  var ref = pickVal('kit-ref','').trim();
+  var d80 = Math.max(0, pickNum('kit-d80',1));
+  var d125= Math.max(0, pickNum('kit-d125',1));
+  // Conduits
+  var conduits=[];
+  var cNodes = document.querySelectorAll('[id^="kitc-type-"]');
+  cNodes.forEach(function(sel){ conduits.push({type: sel.value}); });
+  // Percements
+  var perc=[];
+  var pSup = document.querySelectorAll('[id^="kitp-sup-"]');
+  pSup.forEach(function(sel,i){
+    var q = pickNum('kitp-qty-'+i,0);
+    perc.push({support: sel.value, qty:q});
   });
 
-  saveLocal(); pageVentilationHome();
+  // Si rien de pertinent, ne rien ajouter
+  if(!ref && d80===0 && d125===0 && conduits.length===0 && perc.length===0){ pageVentCreation(key); return; }
+
+  var details=[];
+  if(ref) details.push('réf. '+ref);
+  details.push('bouches: D80='+d80+', D125='+d125);
+  if(conduits.length) details.push('conduits: '+conduits.map(c=>c.type).join(' + '));
+  if(perc.some(p=>p.qty>0)) details.push('percements: '+perc.filter(p=>p.qty>0).map(p=>p.support+' x'+p.qty).join(', '));
+
+  devis[key].items.push({
+    category:'Ventilation/Création',
+    designation: 'Kit VMC — '+details.join(' — '),
+    qty: 1, prixU: 0, __tabKey:key
+  });
+  saveLocal(); pageVentHome(key);
 }
 
-function ventSubmitEntretien(){
-  var type = pickVal('vent-ent-type');
-  var nb   = pickNum('vent-ent-nb');
+function ventAddExtracteur(key){
+  ensureVentKey(key);
+  var ref = pickVal('ex-ref','').trim();
+  var diam= pickVal('ex-diam','100');
+  var conduits=[];
+  document.querySelectorAll('[id^="exc-type-"]').forEach(function(sel){ conduits.push({type: sel.value}); });
+  var perc=[];
+  document.querySelectorAll('[id^="exp-sup-"]').forEach(function(sel,i){
+    var q = pickNum('exp-qty-'+i,0); perc.push({support: sel.value, qty:q});
+  });
 
-  ensureVentPiece();
+  if(!ref && !diam && conduits.length===0 && perc.length===0){ pageVentCreation(key); return; }
 
-  if(type){
-    devis['Ventilation'].items.push({
-      category:'Ventilation/Entretien',
-      designation:'Entretien ventilation — '+type,
-      qty:1, prixU:0
-    });
-  }
-  if(nb>0){
-    devis['Ventilation'].items.push({
-      category:'Ventilation/Entretien',
-      designation:'Entretien — Nb bouches & gaines',
-      qty:nb, prixU:0
-    });
-  }
+  var details=[];
+  if(ref) details.push('réf. '+ref);
+  details.push('Ø'+diam);
+  if(conduits.length) details.push('conduits: '+conduits.map(c=>c.type).join(' + '));
+  if(perc.some(p=>p.qty>0)) details.push('percements: '+perc.filter(p=>p.qty>0).map(p=>p.support+' x'+p.qty).join(', '));
 
-  saveLocal(); pageVentilationHome();
+  devis[key].items.push({
+    category:'Ventilation/Création',
+    designation:'Extracteur — '+details.join(' — '),
+    qty:1, prixU:0, __tabKey:key
+  });
+  saveLocal(); pageVentHome(key);
 }
+
+function ventAddVentilateur(key){
+  ensureVentKey(key);
+  var ref = pickVal('vc-ref','').trim();
+  var diam= pickVal('vc-diam','100');
+  var type= pickVal('vc-type','Gaine isolée');
+  var len = Math.max(0, pickNum('vc-len',0));
+  var perc=[];
+  document.querySelectorAll('[id^="vcp-sup-"]').forEach(function(sel,i){
+    var q = pickNum('vcp-qty-'+i,0); perc.push({support: sel.value, qty:q});
+  });
+
+  if(!ref && !diam && !type && len===0 && perc.length===0){ pageVentCreation(key); return; }
+
+  var details=[];
+  if(ref) details.push('réf. '+ref);
+  details.push('Ø'+diam);
+  details.push(type);
+  details.push('L='+len+' m');
+  if(perc.some(p=>p.qty>0)) details.push('percements: '+perc.filter(p=>p.qty>0).map(p=>p.support+' x'+p.qty).join(', '));
+
+  devis[key].items.push({
+    category:'Ventilation/Création',
+    designation:'Ventilateur de conduit — '+details.join(' — '),
+    qty:1, prixU:0, __tabKey:key
+  });
+  saveLocal(); pageVentHome(key);
+}
+
+/* ===================================
+   §4 • INTERVENTION : RETIRAGE
+   =================================== */
+function pageVentRetirage(key){
+  ensureVentKey(key);
+  var st = ventState[key].retirage;
+
+  function conduitsBlock(arr){
+    var html = arr.map(function(c, i){
+      var sel = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée']
+        .map(function(t){ return '<option '+(t===c.type?'selected':'')+' value="'+t+'">'+t+'</option>'; }).join('');
+      return '<div class="row" style="gap:8px; align-items:center; margin:6px 0;">'
+        + '<label style="flex:1;">Type de conduit <select id="rt-type-'+i+'">'+sel+'</select></label>'
+        + (i>0 ? b('×','rtConduitMut("del",'+i+')','btn') : '')
+        + '</div>';
+    }).join('');
+    return html + '<div class="row" style="margin-top:6px;">'
+         + b('Ajouter un type de conduit','rtConduitMut("add")','btn') + '</div>';
+  }
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
+      + '<h2>Retirage des conduits</h2>'
+      + '<div class="row" style="gap:8px;">'
+      +   '<label style="flex:1;">Nombre de conduits Ø80</label>'
+      +   '<input id="rt-80" type="number" inputmode="numeric" value="'+(st.n80||0)+'" style="width:160px;" />'
+      +   '<label style="flex:1;">Nombre de conduits Ø125</label>'
+      +   '<input id="rt-125" type="number" inputmode="numeric" value="'+(st.n125||0)+'" style="width:160px;" />'
+      + '</div>'
+      + '<div style="margin-top:10px;"><strong class="muted">Type(s) de conduit</strong></div>'
+      + '<div id="rt-conduits">'+conduitsBlock(st.conduits)+'</div>'
+      + '<div class="row" style="margin-top:10px;">'
+      +   b('Ajouter la ligne','ventAddRetirage('+JSON.stringify(key)+')','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+function rtConduitMut(cmd, idx){
+  var key = Object.keys(ventState).find(Boolean); if(!key) return;
+  var arr = ventState[key].retirage.conduits;
+  if(cmd==="add") arr.push({type:"Gaine isolée"});
+  if(cmd==="del") arr.splice(idx,1);
+  pageVentRetirage(key);
+}
+function ventAddRetirage(key){
+  ensureVentKey(key);
+  var n80  = Math.max(0, pickNum('rt-80',0));
+  var n125 = Math.max(0, pickNum('rt-125',0));
+  var conduits=[];
+  document.querySelectorAll('[id^="rt-type-"]').forEach(function(sel){ conduits.push({type: sel.value}); });
+
+  if(n80===0 && n125===0 && conduits.length===0){ pageVentRetirage(key); return; }
+
+  var details=[];
+  if(n80>0)  details.push('Ø80 x'+n80);
+  if(n125>0) details.push('Ø125 x'+n125);
+  if(conduits.length) details.push('type(s): '+conduits.map(c=>c.type).join(' + '));
+
+  devis[key].items.push({
+    category:'Ventilation/Retirage',
+    designation:'Retirage des conduits — '+details.join(' — '),
+    qty:1, prixU:0, __tabKey:key
+  });
+  saveLocal(); pageVentHome(key);
+}
+
+/* ===================================
+   §5 • INTERVENTION : ENTRETIEN
+   =================================== */
+function pageVentEntretien(key){
+  ensureVentKey(key);
+  var st = ventState[key].entretien;
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
+      + '<h2>Entretien</h2>'
+      + '<label>Type d\'équipement</label>'
+      + '<select id="ent-type">'
+      +   ['Groupe VMC','Extracteur','Ventilateur de conduit'].map(function(t){
+            return '<option '+(t===st.type?'selected':'')+' value="'+t+'">'+t+'</option>';
+          }).join('')
+      + '</select>'
+      + '<label style="margin-top:8px;">Nombre de bouches / gaines</label>'
+      + '<input id="ent-nb" type="number" inputmode="numeric" value="'+(st.nb||0)+'" />'
+      + '<div class="row" style="margin-top:10px;">'
+      +   b('Ajouter la ligne','ventAddEntretien('+JSON.stringify(key)+')','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+function ventAddEntretien(key){
+  ensureVentKey(key);
+  var type = pickVal('ent-type','Groupe VMC');
+  var nb   = Math.max(0, pickNum('ent-nb',0));
+  if(nb===0 && !type){ pageVentEntretien(key); return; }
+
+  devis[key].items.push({
+    category:'Ventilation/Entretien',
+    designation:'Entretien '+type+' — éléments: '+nb,
+    qty:1, prixU:0, __tabKey:key
+  });
+  saveLocal(); pageVentHome(key);
+}
+
+/* (Fin chapitre 6.2) */
 </script>
-
   <!-- ============================================================
      CHAPITRE 7 : ESTIMATIF & EXPORTS — vNEXT
      Index :
