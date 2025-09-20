@@ -161,17 +161,11 @@ function loadLocal(){
 }
 </script>
 
-  <!-- =============================
+ <!-- =============================
      CHAPITRE 3 : CONSTANTES
-     Index :
-       §3.1 • Listes (pièces, catégories, poses, sections câble)
-       §3.2 • Désignations par catégorie
-       §3.3 • Tarifs unitaires par désignation
-       §3.4 • Étages
-       §3.5 • Tarifs Tableau & Distribution (+ helpers)
      ============================= -->
 <script>
-// §3.1 • Listes
+// Pièces prédéfinies
 var PIECES_PREDEFINIES = [
   'Salon','Cuisine','Salle à manger','Salle de bain','Salle d\'eau',
   'Chambre 1','Chambre 2','Chambre 3','Toilettes','Bureau',
@@ -179,14 +173,25 @@ var PIECES_PREDEFINIES = [
   'Débarras','Extérieur','Grenier/Combles','Atelier',
   'Abri de jardin','Entrée','Bibliothèque'
 ];
-var CATEGORIES = ['Prises','Éclairage','Circuit spécialisé','Spécifique'];
+
+// Catégories standards
+var CATEGORIES = [
+  'Prises','Éclairage','Circuit spécialisé','Spécifique'
+];
+
+// Modes de pose
 var POSES = [
   'Encastré maçonnerie','Placo','Semi-encastré',
   'Sur-mesure','Saillie avec moulure','Sous tube IRL'
 ];
-var SECTIONS_CABLE = [ '0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée…' ];
 
-// §3.2 • Désignations
+// Sections de câblage (avec option personnalisée)
+var SECTIONS_CABLE = [
+  '0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée…'
+];
+
+// Désignations possibles par catégorie
+// ⚠️ pas d’"Autre circuit spécialisé" (remplacé par champ libre dans l’UI)
 var DESIGNATIONS_PAR_CATEGORIE = {
   'Prises': ['Prise'],
   'Éclairage/Luminaires': ['Point de centre','Applique'],
@@ -198,7 +203,7 @@ var DESIGNATIONS_PAR_CATEGORIE = {
   ]
 };
 
-// §3.3 • Tarifs unitaires par désignation
+// Tarifs de base (pièces classiques)
 var TARIFS = {
   'Prise': { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
   'Point de centre': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
@@ -217,10 +222,15 @@ var TARIFS = {
   'Prise extérieure étanche': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 }
 };
 
-// §3.4 • Étages
-var ETAGES = ['Rez-de-chaussée','1er étage','2e étage','Sous-sol','Combles','Annexe'];
+// Étages prédéfinis
+var ETAGES = [
+  'Rez-de-chaussée','1er étage','2e étage',
+  'Sous-sol','Combles','Annexe'
+];
 
-// §3.5 • Tarifs Tableau & Distribution (+ helpers)
+/* ======================================================
+   TARIFS — TABLEAU & DISTRIBUTION (pose, modulaires, etc.)
+   ====================================================== */
 var TARIFS_TABLEAU = {
   pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
   coef: {
@@ -228,7 +238,8 @@ var TARIFS_TABLEAU = {
     pose: { 'Saillie':1.00, 'Encastré':1.70 },
     intervention: { 'Création':1.00, 'Avec dépose de l’existant':1.30 }
   },
-  disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32, 40:45 }, // +40A=45€
+  // + ajout 40A = 45€
+  disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32, 40:45 },
   inter_diff: { '40A-AC':60, '40A-A':80, '63A-AC':100, '63A-A':120 },
   commandes: {
     'Télérupteur':50,
@@ -237,6 +248,41 @@ var TARIFS_TABLEAU = {
     'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A':130
   }
 };
+
+/* ======================================================
+   VENTILATION — constantes (prix laissés vides pour l’instant)
+   ====================================================== */
+var VENT_SUPPORTS = ['Placo','Briquette','Ourdi béton'];
+var VENT_CONDUITS = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée'];
+var VENT_DIAMS_EXTRACTEUR = [80,100,125];
+var VENT_DIAMS_VENTILATEUR = [80,100,125,150];
+
+// Références matériel (à configurer plus tard)
+// L’UI propose aussi "Référence personnalisée…" via un champ texte.
+var VENT_REFS = {
+  kit_vmc: [],
+  extracteur: [],
+  ventilateur_conduit: []
+};
+
+// Mapping de groupes pour l’estimatif / exports
+window.PIECE_GROUPS = window.PIECE_GROUPS || {
+  "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
+  "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
+  "Cuisine":"Cuisine",
+  "Salon":"Pièces de vie","Salle à manger":"Pièces de vie","Couloir":"Pièces de vie","Entrée":"Pièces de vie",
+  "Salle de bain":"Pièces d'eau","Salle d'eau":"Pièces d'eau","Toilettes":"Pièces d'eau",
+  "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau",
+  "Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
+  "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
+  "Mise à la terre":"Mise à la terre","VMC":"VMC"
+};
+// Ajout du groupe Ventilation si absent
+PIECE_GROUPS['Ventilation'] = 'Ventilation';
+
+/* ======================================================
+   Helpers prix (réutilisés dans plusieurs chapitres)
+   ====================================================== */
 function getTabPrice(rang, modules, pose, intervention){
   var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
   if(!base) return 0;
@@ -355,18 +401,29 @@ function saveCurrentDevis(){
 }
 </script>
 
-  <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (V5)
+<!-- =============================
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V5 one-page
      Index :
-       §5.1 • Accueil
-       §5.2 • Ajout de pièce
-       §5.3 • Détail d’une pièce
-       §5.4 • Choix catégorie / sous-menus Éclairage
-       §5.5 • Page unique d’ajout (one-shot)
-       §5.6 • Spécifique (formulaire libre)
+       §0  • Accueil (liste + raccourcis)
+       §1  • Ajout d’une pièce (prédefs + perso)
+       §2  • Détail pièce (catégories + lignes)
+       §3  • Catégorie Éclairage : sous-rubriques
+       §4  • Choix intervention → écran unique “one-shot”
+       §5  • Spécifique : formulaire dédié
+       §6  • Note de pièce
      ============================= -->
 <script>
-// §5.1 • Accueil
+/* ======================
+   §0 • ACCUEIL
+   ====================== */
+function goVent(){
+  if (typeof pageVentAccueil === 'function') {
+    pageVentAccueil();
+  } else {
+    alert('La section Ventilation (chapitre 6.2) n’est pas encore chargée.');
+  }
+}
+
 function pageHome(){
   var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
   var listHtml = keys.length ? keys.map(function(key){
@@ -391,6 +448,7 @@ function pageHome(){
       +'<div class="row">'
         +b('Ajouter une pièce','pageAddPiece()','btn primary')
         +b('Créer un tableau','pageTabCreate()','btn')
+        +b('Ventilation','goVent()','btn')  /* raccourci vers chapitre 6.2 */
       +'</div>'
     +'</div>'
     +'<div class="card" style="margin-top:12px;">'
@@ -404,7 +462,9 @@ function pageHome(){
   );
 }
 
-// §5.2 • Ajout de pièce
+/* ======================
+   §1 • AJOUTER UNE PIÈCE
+   ====================== */
 function pageAddPiece(){
   var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
            + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
@@ -426,6 +486,7 @@ function pageAddPiece(){
     +'</div>'
   );
 }
+
 function confirmPieceChoice(){
   var sel    = document.getElementById('piece-choice').value;
   var qualif = (document.getElementById('piece-qualif').value || '').trim();
@@ -441,6 +502,7 @@ function confirmPieceChoice(){
   var key = createOrGetPiece(base, qualif, etageVal);
   goPiece(key);
 }
+
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
     delete devis[key];
@@ -449,7 +511,9 @@ function removePiece(key){
   }
 }
 
-// §5.3 • Détail d’une pièce
+/* =========================================
+   §2 • DÉTAIL D’UNE PIÈCE & CATÉGORIES
+   ========================================= */
 function goPiece(key){
   ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
@@ -494,13 +558,16 @@ function goPiece(key){
     +'</div>'
   );
 }
+
 function delLine(key, idx){
   (devis[key].items||[]).splice(idx,1);
   saveLocal();
   goPiece(key);
 }
 
-// §5.4 • Choix catégorie / Éclairage
+/* =========================================
+   §3 • ÉCLAIRAGE : sous-rubriques
+   ========================================= */
 function goCategory(cat){
   ctx.category = cat;
   if(cat==='Éclairage') return goEclairageSub();
@@ -529,6 +596,7 @@ function goCategory(cat){
     +'</div>'
   );
 }
+
 function goEclairageSub(){
   view(
     '<div class="card">'
@@ -541,6 +609,7 @@ function goEclairageSub(){
     +'</div>'
   );
 }
+
 function setEclairageBranch(branch){
   ctx.category = branch;
   var interventions = (branch==='Éclairage/Luminaires')
@@ -558,21 +627,30 @@ function setEclairageBranch(branch){
   );
 }
 
-// §5.5 • Page unique d’ajout
+/* =====================================================
+   §4 • INTERVENTION → écran unique “one-shot” (sélection)
+   ===================================================== */
 function goIntervention(interv){
   ctx.intervention = interv;
   if(ctx.category==='Spécifique'){ return pageSpecifiqueForm(); }
   pageOneShotSelection();
 }
+
+// Page one-shot : pose visible quand pertinent, section câble pour “Circuit spécialisé”
 function pageOneShotSelection(){
   var isElecStd = ['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category) >= 0;
+
   var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
   var desigOpts = list.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
+
   var customDesigBlock = (ctx.category==='Circuit spécialisé')
-    ? '<label style="margin-top:10px;">Nom personnalisé (remplace la liste ci-dessus)</label><input id="oneshot-custom-desig" placeholder="ex : Pompe à chaleur" />'
+    ? '<label style="margin-top:10px;">Nom personnalisé (remplace la liste ci-dessus)</label>'
+      +'<input id="oneshot-custom-desig" placeholder="ex : Pompe à chaleur" />'
     : '';
+
   var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
   var poseBlock = isElecStd ? ('<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>') : '';
+
   var sectionBlock = '';
   if(ctx.category==='Circuit spécialisé'){
     var sectOpts = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
@@ -580,11 +658,13 @@ function pageOneShotSelection(){
       '<label style="margin-top:10px;">Section de câblage</label>'
      +'<select id="oneshot-section">'+sectOpts+'</select>';
   }
+
   var qtyOpts   = Array.from({length:30}).map((_,i)=>{
     var q=i+1; return '<option value="'+q+'" '+(q===1?'selected':'')+'>'+q+'</option>';
   }).join('');
 
   var backFn = (ctx.category.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goCategory('+JSON.stringify(ctx.category)+')';
+
   var defaultDesig = (DESIGNATIONS_PAR_CATEGORIE[ctx.category] && DESIGNATIONS_PAR_CATEGORIE[ctx.category][0]) || 'Élément';
   var defaultPU = getPrix(defaultDesig, ctx.intervention) || 0;
 
@@ -624,6 +704,7 @@ function pageOneShotSelection(){
   if($qty) $qty.addEventListener('change', refreshPreview);
   refreshPreview();
 }
+
 function saveOneShotItem(stayHere){
   var $des  = document.getElementById('oneshot-desig');
   var $qty  = document.getElementById('oneshot-qty');
@@ -658,7 +739,9 @@ function saveOneShotItem(stayHere){
   if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 
-// §5.6 • Spécifique (form libre)
+/* =========================================
+   §5 • SPÉCIFIQUE : formulaire dédié
+   ========================================= */
 function pageSpecifiqueForm(){
   var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
   var sectOpts  = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
@@ -689,6 +772,7 @@ function pageSpecifiqueForm(){
     + '</div>'
   );
 }
+
 function saveSpecifique(stayHere){
   var label = (document.getElementById('sp-label').value||'').trim();
   if(!label){ alert('Nom requis.'); return; }
@@ -718,6 +802,10 @@ function saveSpecifique(stayHere){
 
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
 }
+
+/* ======================
+   §6 • NOTE DE PIÈCE
+   ====================== */
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
@@ -1107,6 +1195,587 @@ function submitTabMod_Specifique(key){
 </script>
 
   <!-- ============================================================
+     CHAPITRE 6.2 : VENTILATION — v1 (prix vides)
+     Index :
+       §0  • État / helpers / clé "Ventilation"
+       §1  • Accueil Ventilation (choix intervention)
+       §2  • Création (Kit VMC / Extracteur / Ventilateur de conduit)
+       §3  • Retirage des conduits
+       §4  • Entretien
+       §5  • Génération des lignes & sauvegarde
+     ============================================================ -->
+<script>
+/* ===============================
+   §0 • État / helpers
+   =============================== */
+function ensureVentPiece(){
+  if(!devis['Ventilation'])
+    devis['Ventilation'] = { __base:'Ventilation', items:[], note:'' };
+}
+function pickVal(id){ var el=document.getElementById(id); return el?el.value:''; }
+function pickNum(id){
+  var el=document.getElementById(id); 
+  var v = el ? (el.value||'') : '';
+  var n = parseFloat(v.replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function addSep(){ return '<hr style="border:none;border-top:1px dashed #ddd;margin:12px 0;">'; }
+
+let ventState = {
+  creation:{
+    kit:{
+      ref:'', nbD80:1, nbD125:1,
+      conduits:[{type:'Gaine isolée'}],
+      percements:[{support:'Placo', qte:0}]
+    },
+    extracteur:{
+      ref:'', diam:'80',
+      conduits:[{type:'Gaine isolée'}],
+      percements:[{support:'Placo', qte:0}]
+    },
+    ventilateur:{
+      ref:'', diam:'80', lg:0,
+      conduits:[{type:'Gaine isolée'}],
+      percements:[{support:'Placo', qte:0}]
+    }
+  },
+  retirage:{
+    nb80:0, nb125:0,
+    conduits:[{type:'Gaine isolée'}]
+  },
+  entretien:{
+    type:'Groupe VMC',
+    nbBouchesGaines:0
+  }
+};
+
+// UI helpers — select de référence matériel (listes vides pour l’instant)
+function refSelectHtml(id, arr, cur){
+  var opts = ['<option value="">— Sélectionner —</option>']
+    .concat(arr.map(x=>'<option value="'+x+'">'+x+'</option>'))
+    .concat(['<option value="__custom__">Référence personnalisée…</option>'])
+    .join('');
+  return '<select id="'+id+'">'+opts+'</select>'
+       + '<input id="'+id+'-custom" style="display:none;margin-top:6px;" placeholder="Saisir la référence" />';
+}
+function wireRefCustom(id){
+  var sel = document.getElementById(id);
+  var inp = document.getElementById(id+'-custom');
+  if(!sel || !inp) return;
+  sel.addEventListener('change', function(){
+    if(this.value==='__custom__'){ inp.style.display='block'; }
+    else { inp.style.display='none'; inp.value=''; }
+  });
+}
+
+// Ligne “type de conduit” (avec ajout dynamique)
+function conduitRowHtml(groupKey, i, current){
+  var opts = VENT_CONDUITS.map(t=>'<option '+(current===t?'selected':'')+' value="'+t+'">'+t+'</option>').join('');
+  return '<div class="pill" style="width:100%;align-items:stretch;">'
+       +   '<label style="flex:1;">Type de conduit'
+       +     '<select data-idx="'+i+'" data-group="'+groupKey+'" class="vent-conduit">'+opts+'</select>'
+       +   '</label>'
+       +   '<button class="btn" onclick="ventAddConduit(\''+groupKey+'\')">+ autre type</button>'
+       +   (i>0?'<button class="btn" onclick="ventDelConduit(\''+groupKey+'\','+i+')">×</button>':'')
+       + '</div>';
+}
+function percementRowHtml(groupKey, i, current){
+  var supOpts = VENT_SUPPORTS.map(t=>'<option '+(current.support===t?'selected':'')+' value="'+t+'">'+t+'</option>').join('');
+  var q = current.qte||0;
+  return '<div class="pill" style="width:100%;align-items:stretch;">'
+       +   '<label style="flex:1;">Support'
+       +     '<select data-idx="'+i+'" data-group="'+groupKey+'" class="vent-perc-support">'+supOpts+'</select>'
+       +   '</label>'
+       +   '<label style="width:180px;">Nb percements'
+       +     '<input data-idx="'+i+'" data-group="'+groupKey+'" class="vent-perc-qte" type="number" inputmode="numeric" min="0" value="'+q+'"/>'
+       +   '</label>'
+       +   '<button class="btn" onclick="ventAddPercement(\''+groupKey+'\')">+ autre support</button>'
+       +   (i>0?'<button class="btn" onclick="ventDelPercement(\''+groupKey+'\','+i+')">×</button>':'')
+       + '</div>';
+}
+
+// Ajout/suppression conduits & percements
+function ventAddConduit(groupKey){
+  var g = ventState.creation[groupKey] || ventState.retirage || ventState.entretien;
+  if(groupKey==='retirage') g = ventState.retirage;
+  else g = ventState.creation[groupKey];
+  g.conduits.push({type:'Gaine isolée'}); ventRenderCreation(); ventRenderRetirage();
+}
+function ventDelConduit(groupKey, idx){
+  var g = (groupKey==='retirage') ? ventState.retirage : ventState.creation[groupKey];
+  g.conduits.splice(idx,1); ventRenderCreation(); ventRenderRetirage();
+}
+function ventAddPercement(groupKey){
+  var g = ventState.creation[groupKey];
+  g.percements.push({support:'Placo', qte:0}); ventRenderCreation();
+}
+function ventDelPercement(groupKey, idx){
+  var g = ventState.creation[groupKey];
+  g.percements.splice(idx,1); ventRenderCreation();
+}
+
+/* ===============================
+   §1 • Accueil Ventilation
+   =============================== */
+function pageVentilationHome(){
+  view(
+    '<div class="card">'
+      + b('Retour','pageHome()','btn back')
+      + '<h2>Ventilation</h2>'
+      + '<p class="muted">Choisir un type d’intervention :</p>'
+      + '<div class="row">'
+        + b('Création','pageVent_Creation()','btn primary')
+        + b('Retirage des conduits','pageVent_Retirage()','btn')
+        + b('Entretien','pageVent_Entretien()','btn')
+      + '</div>'
+    + '</div>'
+  );
+}
+
+/* ===============================
+   §2 • Création
+   =============================== */
+function pageVent_Creation(){
+  view(
+    '<div class="card">'
+      + b('Retour','pageVentilationHome()','btn back')
+      + '<h2>Ventilation — Création</h2>'
+      // --- Kit VMC ---
+      + '<div id="vent-kit" class="card" style="padding:10px;">'
+        + refSelectHtml('vent-kit-ref', VENT_REFS.kit_vmc, ventState.creation.kit.ref)
+        + '<div class="row" style="margin-top:8px;gap:8px;">'
+          + '<label style="width:220px;">Bouches D80'
+          +   '<input id="vent-kit-d80" type="number" inputmode="numeric" min="0" value="'+(ventState.creation.kit.nbD80||1)+'" />'
+          + '</label>'
+          + '<label style="width:220px;">Bouches D125'
+          +   '<input id="vent-kit-d125" type="number" inputmode="numeric" min="0" value="'+(ventState.creation.kit.nbD125||1)+'" />'
+          + '</label>'
+        + '</div>'
+        + addSep()
+        + '<div id="vent-kit-conduits"></div>'
+        + addSep()
+        + '<div id="vent-kit-percements"></div>'
+      + '</div>'
+
+      // --- Extracteur ---
+      + '<div id="vent-extr" class="card" style="padding:10px;">'
+        + refSelectHtml('vent-extr-ref', VENT_REFS.extracteur, ventState.creation.extracteur.ref)
+        + '<label style="margin-top:8px;">Diamètre'
+        +   '<select id="vent-extr-diam">'
+        +     VENT_DIAMS_EXTRACTEUR.map(d=>'<option value="'+d+'">'+d+'</option>').join('')
+        +   '</select>'
+        + '</label>'
+        + addSep()
+        + '<div id="vent-extr-conduits"></div>'
+        + addSep()
+        + '<div id="vent-extr-percements"></div>'
+      + '</div>'
+
+      // --- Ventilateur de conduit ---
+      + '<div id="vent-vent" class="card" style="padding:10px;">'
+        + refSelectHtml('vent-vent-ref', VENT_REFS.ventilateur_conduit, ventState.creation.ventilateur.ref)
+        + '<div class="row" style="margin-top:8px;gap:8px;">'
+          + '<label style="width:220px;">Diamètre'
+          +   '<select id="vent-vent-diam">'
+          +     VENT_DIAMS_VENTILATEUR.map(d=>'<option value="'+d+'">'+d+'</option>').join('')
+          +   '</select>'
+          + '</label>'
+          + '<label style="width:220px;">Longueur conduit (m)'
+          +   '<input id="vent-vent-lg" type="number" inputmode="decimal" min="0" step="0.1" value="'+(ventState.creation.ventilateur.lg||0)+'" />'
+          + '</label>'
+        + '</div>'
+        + addSep()
+        + '<div id="vent-vent-conduits"></div>'
+        + addSep()
+        + '<div id="vent-vent-percements"></div>'
+      + '</div>'
+
+      + '<div class="row" style="margin-top:12px;">'
+        + b('Ajouter à Ventilation','ventSubmitCreation()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+
+  // brancher “référence personnalisée…”
+  wireRefCustom('vent-kit-ref');
+  wireRefCustom('vent-extr-ref');
+  wireRefCustom('vent-vent-ref');
+
+  ventRenderCreation();
+}
+
+function ventRenderCreation(){
+  // **** Kit VMC
+  var kitC = document.getElementById('vent-kit-conduits');
+  var kitP = document.getElementById('vent-kit-percements');
+  if(kitC){
+    kitC.innerHTML = ventState.creation.kit.conduits
+      .map((c,i)=>conduitRowHtml('kit', i, c.type)).join('');
+  }
+  if(kitP){
+    kitP.innerHTML = ventState.creation.kit.percements
+      .map((p,i)=>percementRowHtml('kit', i, p)).join('');
+  }
+
+  // **** Extracteur
+  var exC = document.getElementById('vent-extr-conduits');
+  var exP = document.getElementById('vent-extr-percements');
+  if(exC){
+    exC.innerHTML = ventState.creation.extracteur.conduits
+      .map((c,i)=>conduitRowHtml('extracteur', i, c.type)).join('');
+  }
+  if(exP){
+    exP.innerHTML = ventState.creation.extracteur.percements
+      .map((p,i)=>percementRowHtml('extracteur', i, p)).join('');
+  }
+
+  // **** Ventilateur
+  var veC = document.getElementById('vent-vent-conduits');
+  var veP = document.getElementById('vent-vent-percements');
+  if(veC){
+    veC.innerHTML = ventState.creation.ventilateur.conduits
+      .map((c,i)=>conduitRowHtml('ventilateur', i, c.type)).join('');
+  }
+  if(veP){
+    veP.innerHTML = ventState.creation.ventilateur.percements
+      .map((p,i)=>percementRowHtml('ventilateur', i, p)).join('');
+  }
+
+  // Sync des sélecteurs dynamiques
+  document.querySelectorAll('.vent-conduit').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var group=this.getAttribute('data-group'); var i=+this.getAttribute('data-idx');
+      ventState.creation[group].conduits[i].type=this.value;
+    });
+  });
+  document.querySelectorAll('.vent-perc-support').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var group=this.getAttribute('data-group'); var i=+this.getAttribute('data-idx');
+      ventState.creation[group].percements[i].support=this.value;
+    });
+  });
+  document.querySelectorAll('.vent-perc-qte').forEach(function(inp){
+    inp.addEventListener('input', function(){
+      var group=this.getAttribute('data-group'); var i=+this.getAttribute('data-idx');
+      ventState.creation[group].percements[i].qte = parseInt(this.value||'0',10)||0;
+    });
+  });
+
+  // Sync champs simples
+  var d80=document.getElementById('vent-kit-d80');
+  var d125=document.getElementById('vent-kit-d125');
+  if(d80) d80.oninput=function(){ ventState.creation.kit.nbD80 = parseInt(this.value||'0',10)||0; };
+  if(d125) d125.oninput=function(){ ventState.creation.kit.nbD125 = parseInt(this.value||'0',10)||0; };
+
+  var ed=document.getElementById('vent-extr-diam'); if(ed) ed.onchange=function(){ ventState.creation.extracteur.diam=this.value; };
+  var vd=document.getElementById('vent-vent-diam'); if(vd) vd.onchange=function(){ ventState.creation.ventilateur.diam=this.value; };
+  var vg=document.getElementById('vent-vent-lg'  ); if(vg) vg.oninput=function(){ ventState.creation.ventilateur.lg = parseFloat((this.value||'0').replace(',','.'))||0; };
+
+  // Références
+  var rk=document.getElementById('vent-kit-ref');
+  var rkc=document.getElementById('vent-kit-ref-custom');
+  if(rk){ rk.onchange=function(){ ventState.creation.kit.ref = (this.value==='__custom__')?(rkc.value||''):this.value; }; }
+  if(rkc){ rkc.oninput=function(){ if((rk&&rk.value==='__custom__')||!rk) ventState.creation.kit.ref=this.value; }; }
+
+  var re=document.getElementById('vent-extr-ref');
+  var rec=document.getElementById('vent-extr-ref-custom');
+  if(re){ re.onchange=function(){ ventState.creation.extracteur.ref = (this.value==='__custom__')?(rec.value||''):this.value; }; }
+  if(rec){ rec.oninput=function(){ if((re&&re.value==='__custom__')||!re) ventState.creation.extracteur.ref=this.value; }; }
+
+  var rv=document.getElementById('vent-vent-ref');
+  var rvc=document.getElementById('vent-vent-ref-custom');
+  if(rv){ rv.onchange=function(){ ventState.creation.ventilateur.ref = (this.value==='__custom__')?(rvc.value||''):this.value; }; }
+  if(rvc){ rvc.oninput=function(){ if((rv&&rv.value==='__custom__')||!rv) ventState.creation.ventilateur.ref=this.value; }; }
+}
+
+/* ===============================
+   §3 • Retirage des conduits
+   =============================== */
+function pageVent_Retirage(){
+  view(
+    '<div class="card">'
+      + b('Retour','pageVentilationHome()','btn back')
+      + '<h2>Ventilation — Retirage des conduits</h2>'
+      + '<div class="row" style="gap:8px;">'
+        + '<label style="width:240px;">Nb conduits Ø80'
+        +   '<input id="vent-ret-80" type="number" inputmode="numeric" min="0" value="'+(ventState.retirage.nb80||0)+'"/>'
+        + '</label>'
+        + '<label style="width:240px;">Nb conduits Ø125'
+        +   '<input id="vent-ret-125" type="number" inputmode="numeric" min="0" value="'+(ventState.retirage.nb125||0)+'"/>'
+        + '</label>'
+      + '</div>'
+      + addSep()
+      + '<div id="vent-ret-conduits"></div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + b('Ajouter à Ventilation','ventSubmitRetirage()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+  ventRenderRetirage();
+}
+function ventRenderRetirage(){
+  var cont=document.getElementById('vent-ret-conduits');
+  if(cont){
+    cont.innerHTML = ventState.retirage.conduits
+      .map((c,i)=>conduitRowHtml('retirage', i, c.type)).join('');
+  }
+  document.getElementById('vent-ret-80')?.addEventListener('input', e=>{
+    ventState.retirage.nb80 = parseInt(e.target.value||'0',10)||0;
+  });
+  document.getElementById('vent-ret-125')?.addEventListener('input', e=>{
+    ventState.retirage.nb125 = parseInt(e.target.value||'0',10)||0;
+  });
+  document.querySelectorAll('.vent-conduit').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var i=+this.getAttribute('data-idx');
+      ventState.retirage.conduits[i].type=this.value;
+    });
+  });
+}
+
+/* ===============================
+   §4 • Entretien
+   =============================== */
+function pageVent_Entretien(){
+  view(
+    '<div class="card">'
+      + b('Retour','pageVentilationHome()','btn back')
+      + '<h2>Ventilation — Entretien</h2>'
+      + '<label>Type'
+      +   '<select id="vent-ent-type">'
+      +     ['Groupe VMC','Extracteur','Ventilateur de conduit'].map(t=>'<option value="'+t+'">'+t+'</option>').join('')
+      +   '</select>'
+      + '</label>'
+      + '<label style="margin-top:8px;">Nb bouches d’extraction & gaines'
+      +   '<input id="vent-ent-nb" type="number" inputmode="numeric" min="0" value="'+(ventState.entretien.nbBouchesGaines||0)+'" />'
+      + '</label>'
+      + '<div class="row" style="margin-top:12px;">'
+        + b('Ajouter à Ventilation','ventSubmitEntretien()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+  var t=document.getElementById('vent-ent-type'); if(t) t.onchange=function(){ ventState.entretien.type=this.value; };
+  var n=document.getElementById('vent-ent-nb'); if(n) n.oninput=function(){ ventState.entretien.nbBouchesGaines = parseInt(this.value||'0',10)||0; };
+}
+
+/* ===============================
+   §5 • Ajout des lignes (prix = 0)
+   =============================== */
+function ventSubmitCreation(){
+  // Récupération champs simples
+  // Kit
+  var d80 = pickNum('vent-kit-d80'); var d125 = pickNum('vent-kit-d125');
+  var rk  = document.getElementById('vent-kit-ref'); 
+  var rkc = document.getElementById('vent-kit-ref-custom');
+  var refKit = (rk && rk.value==='__custom__') ? (rkc.value||'') : (rk?rk.value:'');
+
+  // Extracteur
+  var re  = document.getElementById('vent-extr-ref');
+  var rec = document.getElementById('vent-extr-ref-custom');
+  var refExtr = (re && re.value==='__custom__') ? (rec.value||'') : (re?re.value:'');
+  var diamExtr = pickVal('vent-extr-diam');
+
+  // Ventilateur
+  var rv  = document.getElementById('vent-vent-ref');
+  var rvc = document.getElementById('vent-vent-ref-custom');
+  var refVent = (rv && rv.value==='__custom__') ? (rvc.value||'') : (rv?rv.value:'');
+  var diamVent = pickVal('vent-vent-diam');
+  var lgVent = pickNum('vent-vent-lg');
+
+  ensureVentPiece();
+
+  // *** Chaque sous-groupe est indépendant : on ajoute uniquement si rempli ***
+
+  // KIT VMC
+  var hasKit = (refKit && refKit.trim()) || d80>0 || d125>0
+             || (ventState.creation.kit.conduits||[]).length>0
+             || (ventState.creation.kit.percements||[]).some(p=>(+p.qte||0)>0);
+  if(hasKit){
+    // 1) Groupe (référence)
+    if(refKit && refKit.trim()){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Création — Kit VMC — '+refKit.trim(),
+        qty:1, prixU:0
+      });
+    }
+    // 2) Bouches
+    if(d80>0){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Kit VMC — Bouches D80',
+        qty:d80, prixU:0
+      });
+    }
+    if(d125>0){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Kit VMC — Bouches D125',
+        qty:d125, prixU:0
+      });
+    }
+    // 3) Conduits
+    (ventState.creation.kit.conduits||[]).forEach(function(c){
+      if(!c || !c.type) return;
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Kit VMC — Type de conduit : '+c.type,
+        qty:1, prixU:0
+      });
+    });
+    // 4) Percements
+    (ventState.creation.kit.percements||[]).forEach(function(p){
+      var q=+p.qte||0; if(q<=0) return;
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Kit VMC — Percement — '+(p.support||''),
+        qty:q, prixU:0
+      });
+    });
+  }
+
+  // EXTRACTEUR
+  var hasExtr = (refExtr && refExtr.trim()) || (diamExtr)
+             || (ventState.creation.extracteur.conduits||[]).length>0
+             || (ventState.creation.extracteur.percements||[]).some(p=>(+p.qte||0)>0);
+  if(hasExtr){
+    if(refExtr && refExtr.trim()){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Création — Extracteur — '+refExtr.trim(),
+        qty:1, prixU:0
+      });
+    }
+    if(diamExtr){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Extracteur — Diamètre '+diamExtr,
+        qty:1, prixU:0
+      });
+    }
+    (ventState.creation.extracteur.conduits||[]).forEach(function(c){
+      if(!c || !c.type) return;
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Extracteur — Type de conduit : '+c.type,
+        qty:1, prixU:0
+      });
+    });
+    (ventState.creation.extracteur.percements||[]).forEach(function(p){
+      var q=+p.qte||0; if(q<=0) return;
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Extracteur — Percement — '+(p.support||''),
+        qty:q, prixU:0
+      });
+    });
+  }
+
+  // VENTILATEUR DE CONDUIT
+  var hasVent = (refVent && refVent.trim()) || (diamVent) || (lgVent>0)
+             || (ventState.creation.ventilateur.conduits||[]).length>0
+             || (ventState.creation.ventilateur.percements||[]).some(p=>(+p.qte||0)>0);
+  if(hasVent){
+    if(refVent && refVent.trim()){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Création — Ventilateur de conduit — '+refVent.trim(),
+        qty:1, prixU:0
+      });
+    }
+    if(diamVent){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Ventilateur — Diamètre '+diamVent,
+        qty:1, prixU:0
+      });
+    }
+    if(lgVent>0){
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Ventilateur — Longueur de conduit (m)',
+        qty:lgVent, prixU:0, unit:'m'
+      });
+    }
+    (ventState.creation.ventilateur.conduits||[]).forEach(function(c){
+      if(!c || !c.type) return;
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Ventilateur — Type de conduit : '+c.type,
+        qty:1, prixU:0
+      });
+    });
+    (ventState.creation.ventilateur.percements||[]).forEach(function(p){
+      var q=+p.qte||0; if(q<=0) return;
+      devis['Ventilation'].items.push({
+        category:'Ventilation/Création',
+        designation:'Ventilateur — Percement — '+(p.support||''),
+        qty:q, prixU:0
+      });
+    });
+  }
+
+  saveLocal(); pageVentilationHome();
+}
+
+function ventSubmitRetirage(){
+  var n80 = pickNum('vent-ret-80');
+  var n125 = pickNum('vent-ret-125');
+
+  ensureVentPiece();
+
+  if(n80>0){
+    devis['Ventilation'].items.push({
+      category:'Ventilation/Retirage',
+      designation:'Retirage — Nb conduits Ø80',
+      qty:n80, prixU:0
+    });
+  }
+  if(n125>0){
+    devis['Ventilation'].items.push({
+      category:'Ventilation/Retirage',
+      designation:'Retirage — Nb conduits Ø125',
+      qty:n125, prixU:0
+    });
+  }
+  (ventState.retirage.conduits||[]).forEach(function(c){
+    if(!c || !c.type) return;
+    devis['Ventilation'].items.push({
+      category:'Ventilation/Retirage',
+      designation:'Retirage — Type de conduit : '+c.type,
+      qty:1, prixU:0
+    });
+  });
+
+  saveLocal(); pageVentilationHome();
+}
+
+function ventSubmitEntretien(){
+  var type = pickVal('vent-ent-type');
+  var nb   = pickNum('vent-ent-nb');
+
+  ensureVentPiece();
+
+  if(type){
+    devis['Ventilation'].items.push({
+      category:'Ventilation/Entretien',
+      designation:'Entretien ventilation — '+type,
+      qty:1, prixU:0
+    });
+  }
+  if(nb>0){
+    devis['Ventilation'].items.push({
+      category:'Ventilation/Entretien',
+      designation:'Entretien — Nb bouches & gaines',
+      qty:nb, prixU:0
+    });
+  }
+
+  saveLocal(); pageVentilationHome();
+}
+</script>
+
+  <!-- ============================================================
      CHAPITRE 7 : ESTIMATIF & EXPORTS — vNEXT
      Index :
        §7.0 • Détection / libellé des pièces (Tableaux inclus)
@@ -1413,15 +2082,16 @@ async function exportZipFull(){
 }
 </script>
 
-  <!-- =============================
+<!-- =============================
      CHAPITRE 8 : DÉMARRAGE & EXPOSE
      Index :
-       §8.1 • init()
-       §8.2 • Exposition des fonctions (window)
-       §8.3 • Lancement
+       §0  • init() : chargement local + pageMain()
+       §1  • Expose : fonctions rendues accessibles (UI)
      ============================= -->
 <script>
-// §8.1 • init()
+/* ======================
+   §0 • DÉMARRAGE (init)
+   ====================== */
 function init(){
   try{
     loadLocal();
@@ -1437,7 +2107,9 @@ function init(){
   }
 }
 
-// §8.2 • Expose (fonctions appelées par l’UI)
+/* ======================
+   §1 • EXPOSE (window)
+   ====================== */
 Object.assign(window, {
   // Chap.4 — Menu & sauvegarde
   pageMain,
@@ -1447,7 +2119,7 @@ Object.assign(window, {
   deleteDevis,
   saveCurrentDevis,
 
-  // Chap.5 — Pièces (flux one-page)
+  // Chap.5 — Pièces (flux one-page) + Ventilation (raccourci)
   pageHome,
   pageAddPiece,
   confirmPieceChoice,
@@ -1464,6 +2136,7 @@ Object.assign(window, {
   goIntervention,
   pageOneShotSelection,
   saveOneShotItem,
+  goVent, // bouton "Ventilation" (redirige vers pageVentAccueil si chargée)
 
   // Chap.6 — Tableaux (multi-tableaux)
   pageTabCreate,
@@ -1473,8 +2146,8 @@ Object.assign(window, {
   addTabPose,
   pageTab_ID,
   submitTab_ID,
-  pageTab_Coupure,
-  submitTab_Coupure,
+  pageTab_Coupure,       // (coupure générale)
+  submitTab_Coupure,     // (coupure générale)
   pageTab_Disjoncteurs,
   pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
@@ -1496,8 +2169,6 @@ Object.assign(window, {
   confirmBackHome
 });
 
-// §8.3 • Lancement
+// Lancement auto
 init();
 </script>
-</body>
-</html>
