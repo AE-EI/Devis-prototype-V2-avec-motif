@@ -447,14 +447,14 @@ function saveCurrentDevis(){
 }
 </script>
 
-  <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V5 one-page
+<!-- =============================
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V5 one-page (MAJ : masquage pose/section hors Création)
      Index :
        §5.0 • Helpers & router
        §5.1 • Accueil & liste des pièces
        §5.2 • Ajout d’une pièce
        §5.3 • Détail de pièce & catégories
-       §5.4 • Catégories & saisie one-shot
+       §5.4 • Catégories & saisie one-shot (masquage dynamique)
        §5.5 • Spécifique & notes
      ============================= -->
 
@@ -516,7 +516,7 @@ function goPiece(key){
   var lignes = (s.items||[]).length
     ? '<ul>'+s.items.map(function(it,i){
         var total = (+it.prixU||0) * (+it.qty||0);
-        var poseTxt = it.pose ? ' — '+String(it.pose).toLowerCase() : '';
+        var poseTxt = (it.intervention==="Création" && it.pose) ? ' — '+String(it.pose).toLowerCase() : '';
         var unitTxt = it.unit || 'u';
         var left = it.intervention ? (it.intervention+' — ') : '';
         return '<li>'
@@ -554,7 +554,7 @@ function removePiece(key){
 }
 </script>
 
-<!-- 5.1b — Ajout d’une pièce (etages robustes) -->
+<!-- 5.2 — Ajout d’une pièce -->
 <script>
 function pageAddPiece(){
   var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
@@ -596,7 +596,7 @@ function confirmPieceChoice(){
 }
 </script>
 
-<!-- 5.2 — Catégories & sous-menu Éclairage -->
+<!-- 5.3 — Catégories & sous-menu Éclairage -->
 <script>
 function goCategory(cat){
   if (cat === 'Éclairage') return goEclairageSub();
@@ -621,19 +621,34 @@ function setEclairageBranch(branch){
 }
 </script>
 
-<!-- 5.3 — Saisie “one-shot” -->
+<!-- 5.4 — Saisie “one-shot” (masquage dynamique pose/section hors Création) -->
 <script>
 function pageOneShotSelection(){
   var cat = ctx.category;
 
-  // 1) Intervention
+  // 1) Interventions par catégorie
   var invs = [];
   if(cat==='Prises' || cat==='Circuit spécialisé'){
-    invs = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+    invs = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
   } else if(cat==='Éclairage/Luminaires'){
-    invs = ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire'];
+    invs = [
+      'Création',
+      'Remplacement luminaire',
+      'Recâblage avec remplacement luminaire',
+      'Recâblage sans remplacement luminaire'
+    ];
   } else if(cat==='Éclairage/Commandes'){
-    invs = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+    invs = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
   } else {
     invs = ['Création'];
   }
@@ -659,15 +674,19 @@ function pageOneShotSelection(){
     desigHtml = '<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
   }
 
-  // 3) Pose
+  // 3) Pose (sera masquée si intervention ≠ Création)
   var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
-  var poseBlock = '<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>';
+  var poseBlock = '<div id="oneshot-pose-wrap">'
+                +   '<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>'
+                + '</div>';
 
-  // 4) Section (CS uniquement)
+  // 4) Section (CS uniquement, et masquée si intervention ≠ Création)
   var sectionBlock = '';
   if(cat==='Circuit spécialisé'){
     var sectOpts = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
-    sectionBlock = '<label style="margin-top:10px;">Section</label><select id="oneshot-section">'+sectOpts+'</select>';
+    sectionBlock = '<div id="oneshot-section-wrap" style="margin-top:10px;">'
+                 +   '<label>Section</label><select id="oneshot-section">'+sectOpts+'</select>'
+                 + '</div>';
   }
 
   // 5) Quantité
@@ -693,32 +712,69 @@ function pageOneShotSelection(){
     + '</div>'
   );
 
+  // ----- Comportement : masquage dynamique selon intervention
+  function isCreation(interv){ return String(interv||'')==='Création'; }
+
+  function applyInterventionVisibility(){
+    var interv = document.getElementById('oneshot-interv').value;
+    var poseWrap = document.getElementById('oneshot-pose-wrap');
+    var sectionWrap = document.getElementById('oneshot-section-wrap');
+
+    // Pose : visible uniquement en Création (toutes catégories)
+    if(poseWrap){
+      poseWrap.style.display = isCreation(interv) ? '' : 'none';
+    }
+    // Section : visible uniquement en Création ET catégorie = Circuit spécialisé
+    if(sectionWrap){
+      sectionWrap.style.display = (isCreation(interv) && cat==='Circuit spécialisé') ? '' : 'none';
+    }
+    refreshPreview(); // tenir compte du masquage dans le calcul
+  }
+
+  // ----- Aperçu PU/Total
   function refreshPreview(){
     var interv = document.getElementById('oneshot-interv').value;
-    var pose   = document.getElementById('oneshot-pose').value;
-    var sectEl = document.getElementById('oneshot-section');
-    var section= sectEl ? sectEl.value : '';
+
+    // Désignation choisie
     var desig  = defaultDesignation;
     var selDes = document.getElementById('oneshot-desig');
     var custom = document.getElementById('oneshot-custom-desig');
     if(selDes) desig = selDes.value;
     if(custom && custom.value.trim()) desig = custom.value.trim();
 
+    // Pose / Section : seulement si visibles (Création)
+    var poseEl = document.getElementById('oneshot-pose-wrap');
+    var sectionEl = document.getElementById('oneshot-section-wrap');
+
+    var pose   = (poseEl && poseEl.style.display!=='none') ? (document.getElementById('oneshot-pose').value||'') : '';
+    var section= (sectionEl && sectionEl.style.display!=='none') ? ((document.getElementById('oneshot-section')||{}).value||'') : '';
+
     var pu = (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section) : 0;
     var q  = parseInt(document.getElementById('oneshot-qty').value,10)||1;
     document.getElementById('oneshot-preview').innerHTML = 'PU : '+euro(pu)+' — Total : '+euro(pu*q);
   }
+
+  // Events
   ['oneshot-interv','oneshot-pose','oneshot-section','oneshot-desig','oneshot-custom-desig','oneshot-qty']
-    .forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('input', refreshPreview); });
-  refreshPreview();
+    .forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('input', function(){ 
+      if(id==='oneshot-interv') applyInterventionVisibility(); else refreshPreview();
+    }); });
+
+  // Init
+  applyInterventionVisibility();
 }
 
 function saveOneShotItem(stayHere){
   var cat  = ctx.category;
   var interv = document.getElementById('oneshot-interv').value;
-  var pose   = document.getElementById('oneshot-pose').value;
-  var sectEl = document.getElementById('oneshot-section');
-  var section= sectEl ? sectEl.value : '';
+
+  // Si non Création → ne pas prendre pose/section
+  var poseWrap = document.getElementById('oneshot-pose-wrap');
+  var sectionWrap = document.getElementById('oneshot-section-wrap');
+
+  var pose   = (poseWrap && poseWrap.style.display!=='none') ? (document.getElementById('oneshot-pose').value||'') : '';
+  var section= (sectionWrap && sectionWrap.style.display!=='none') ? ((document.getElementById('oneshot-section')||{}).value||'') : '';
+
   var qty    = parseInt(document.getElementById('oneshot-qty').value,10)||1;
 
   var desig = 'Élément';
@@ -736,7 +792,7 @@ function saveOneShotItem(stayHere){
   devis[ctx.piece].items.push({
     category: cat,
     intervention: interv,
-    pose: pose,
+    pose: pose, // vide si non Création (d’où affichage cohérent en liste)
     designation: (cat==='Circuit spécialisé' && desig==='Circuit spécialisé')
                   ? (desig + (section?(' — '+section):'')) : desig + (section?(' — '+section):''),
     qty: qty,
@@ -748,7 +804,7 @@ function saveOneShotItem(stayHere){
 }
 </script>
 
-<!-- 5.4 — Spécifique -->
+<!-- 5.5 — Spécifique & notes -->
 <script>
 function pageSpecifiqueForm(){
   var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
@@ -792,10 +848,7 @@ function saveSpecifique(stayHere){
   saveLocal();
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
 }
-</script>
 
-<!-- 5.5 — Note de pièce -->
-<script>
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
