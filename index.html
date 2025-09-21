@@ -161,7 +161,7 @@ function loadLocal(){
 }
 </script>
 
- <!-- =============================
+<!-- =============================
      CHAPITRE 3 : CONSTANTES
      ============================= -->
 <script>
@@ -203,13 +203,16 @@ var DESIGNATIONS_PAR_CATEGORIE = {
   ]
 };
 
-// Tarifs de base (pièces classiques)
+// Tarifs de base (fourniture + pose "standard" de référence)
+// Ces prix restent la référence de base AVANT coefficient de pose et/ou section.
 var TARIFS = {
   'Prise': { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
   'Point de centre': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
   'Applique': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
   'Interrupteur simple': { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
   'Interrupteur double': { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 },
+
+  // Circuits spécialisés — base = section 0,75/1,5 mm²
   'Four': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
   'Plaque de cuisson': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
   'Lave-linge': { creation:140, recablage_sans:70, recablage_avec:90, remplacement:40 },
@@ -229,7 +232,32 @@ var ETAGES = [
 ];
 
 /* ======================================================
+   COEFFICIENTS — POSE & SECTION (circuits spécialisés)
+   ====================================================== */
+// Coefficients de POSE appliqués aux catégories Prises + Circuit spécialisé
+// (modifie/affine les valeurs à ta convenance)
+var TARIFS_POSE = {
+  'Encastré maçonnerie': 1.15,
+  'Placo':               1.00,
+  'Semi-encastré':       1.10,
+  'Sur-mesure':          1.25,
+  'Saillie avec moulure':1.08,
+  'Sous tube IRL':       1.05
+};
+
+// Coefficients de SECTION (uniquement Circuit spécialisé)
+// Base = prix section 0,75 et 1,5 mm²
+var COEF_SECTION_CIRCUIT = {
+  '0,75 mm²': 1.00,
+  '1,5 mm²':  1.00,
+  '2,5 mm²':  1.10, // +10%
+  '6 mm²':    1.20, // +20%
+  'Personnalisée…': 1.00 // par défaut (pas d’impact)
+};
+
+/* ======================================================
    TARIFS — TABLEAU & DISTRIBUTION (pose, modulaires, etc.)
+   (inchangé par ta demande)
    ====================================================== */
 var TARIFS_TABLEAU = {
   pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
@@ -250,38 +278,7 @@ var TARIFS_TABLEAU = {
 };
 
 /* ======================================================
-   VENTILATION — constantes (prix laissés vides pour l’instant)
-   ====================================================== */
-var VENT_SUPPORTS = ['Placo','Briquette','Ourdi béton'];
-var VENT_CONDUITS = ['Gaine isolée','Conduit rigide','Conduit rigide extra-plat','Gaine non isolée'];
-var VENT_DIAMS_EXTRACTEUR = [80,100,125];
-var VENT_DIAMS_VENTILATEUR = [80,100,125,150];
-
-// Références matériel (à configurer plus tard)
-// L’UI propose aussi "Référence personnalisée…" via un champ texte.
-var VENT_REFS = {
-  kit_vmc: [],
-  extracteur: [],
-  ventilateur_conduit: []
-};
-
-// Mapping de groupes pour l’estimatif / exports
-window.PIECE_GROUPS = window.PIECE_GROUPS || {
-  "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
-  "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
-  "Cuisine":"Cuisine",
-  "Salon":"Pièces de vie","Salle à manger":"Pièces de vie","Couloir":"Pièces de vie","Entrée":"Pièces de vie",
-  "Salle de bain":"Pièces d'eau","Salle d'eau":"Pièces d'eau","Toilettes":"Pièces d'eau",
-  "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau",
-  "Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
-  "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
-  "Mise à la terre":"Mise à la terre","VMC":"VMC"
-};
-// Ajout du groupe Ventilation si absent
-PIECE_GROUPS['Ventilation'] = 'Ventilation';
-
-/* ======================================================
-   Helpers prix (réutilisés dans plusieurs chapitres)
+   HELPERS PRIX
    ====================================================== */
 function getTabPrice(rang, modules, pose, intervention){
   var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
@@ -291,6 +288,8 @@ function getTabPrice(rang, modules, pose, intervention){
   var cInv = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
   return Math.round(base * cMod * cPose * cInv * 100) / 100;
 }
+
+// Prix de base « brut » à partir de la désignation et de l’intervention
 function getPrix(designation, intervention){
   var base = TARIFS[designation] || {};
   if(intervention === 'Création') return base.creation || 0;
@@ -298,6 +297,26 @@ function getPrix(designation, intervention){
   if(intervention && intervention.indexOf('avec remplacement') >= 0) return base.recablage_avec || 0;
   if(intervention && intervention.indexOf('Remplacement') === 0) return base.remplacement || 0;
   return 0;
+}
+
+// Prix final intégrant pose (+ section si Circuit spécialisé)
+function computePUFinal(opts){
+  // opts = { category, designation, intervention, pose, section }
+  var pu = getPrix(opts.designation, opts.intervention) || 0;
+
+  // 1) coef de pose (Prises + Circuit spécialisé uniquement)
+  if (opts.category === 'Prises' || opts.category === 'Circuit spécialisé') {
+    var coefPose = TARIFS_POSE[opts.pose] || 1;
+    pu = pu * coefPose;
+  }
+
+  // 2) coef de section (Circuit spécialisé uniquement)
+  if (opts.category === 'Circuit spécialisé') {
+    var coefSec = COEF_SECTION_CIRCUIT[opts.section] || 1;
+    pu = pu * coefSec;
+  }
+
+  return Math.round(pu * 100) / 100; // on garde 2 décimales « propres »
 }
 </script>
 
@@ -448,7 +467,7 @@ function pageHome(){
       +'<div class="row">'
         +b('Ajouter une pièce','pageAddPiece()','btn primary')
         +b('Créer un tableau','pageTabCreate()','btn')
-        +b('Ventilation','goVent()','btn')  /* raccourci vers chapitre 6.2 */
+        +b('Ventilation','goVent()','btn')
       +'</div>'
     +'</div>'
     +'<div class="card" style="margin-top:12px;">'
@@ -628,7 +647,7 @@ function setEclairageBranch(branch){
 }
 
 /* =====================================================
-   §4 • INTERVENTION → écran unique “one-shot” (sélection)
+   §4 • INTERVENTION → écran unique “one-shot”
    ===================================================== */
 function goIntervention(interv){
   ctx.intervention = interv;
@@ -666,7 +685,6 @@ function pageOneShotSelection(){
   var backFn = (ctx.category.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goCategory('+JSON.stringify(ctx.category)+')';
 
   var defaultDesig = (DESIGNATIONS_PAR_CATEGORIE[ctx.category] && DESIGNATIONS_PAR_CATEGORIE[ctx.category][0]) || 'Élément';
-  var defaultPU = getPrix(defaultDesig, ctx.intervention) || 0;
 
   view(
     '<div class="card">'
@@ -681,7 +699,7 @@ function pageOneShotSelection(){
       + '<label style="margin-top:10px;">Quantité</label>'
       + '<select id="oneshot-qty">'+qtyOpts+'</select>'
       + '<div id="oneshot-preview" class="muted" style="margin-top:10px;">PU estimé : '
-          + euro(defaultPU)+' — Total : '+euro(defaultPU*1)
+          + '— Total : —'
         +'</div>'
       + '<div class="row" style="margin-top:14px; gap:8px;">'
         + b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
@@ -694,14 +712,41 @@ function pageOneShotSelection(){
   var $qty  = document.getElementById('oneshot-qty');
   var $prev = document.getElementById('oneshot-preview');
 
+  function currentSection(){
+    var el = document.getElementById('oneshot-section');
+    return el ? el.value : '';
+    }
+  function currentPose(){
+    var el = document.getElementById('oneshot-pose');
+    return el ? el.value : '';
+  }
+
   function refreshPreview(){
     var designation = ($des && $des.value) || defaultDesig;
-    var pu = getPrix(designation, ctx.intervention) || 0;
+    var pose = currentPose();
+    var section = currentSection();
     var q  = parseInt(($qty && $qty.value) || '1', 10) || 1;
+
+    var pu = (typeof computePUFinal==='function')
+      ? computePUFinal({
+          category: ctx.category,
+          designation: designation,
+          intervention: ctx.intervention,
+          pose: pose,
+          section: section
+        })
+      : (getPrix(designation, ctx.intervention) || 0);
+
     $prev.innerHTML = 'PU estimé : '+euro(pu)+' — Total : '+euro(pu*q);
   }
+
   if($des) $des.addEventListener('change', refreshPreview);
   if($qty) $qty.addEventListener('change', refreshPreview);
+  var $poseSel = document.getElementById('oneshot-pose');
+  if($poseSel) $poseSel.addEventListener('change', refreshPreview);
+  var $sectSel = document.getElementById('oneshot-section');
+  if($sectSel) $sectSel.addEventListener('change', refreshPreview);
+
   refreshPreview();
 }
 
@@ -712,17 +757,31 @@ function saveOneShotItem(stayHere){
   var $custom = document.getElementById('oneshot-custom-desig');
   var $sect = document.getElementById('oneshot-section');
 
+  // Désignation affichée à l'utilisateur
   var designation = ($custom && $custom.value.trim()) ? $custom.value.trim() : ($des ? ($des.value || 'Élément') : 'Élément');
 
-  var sect = ($sect && $sect.value) ? $sect.value : '';
-  if(sect === 'Personnalisée…'){
+  // Section : ajout texte dans la désignation si renseignée
+  var section = ($sect && $sect.value) ? $sect.value : '';
+  if(section === 'Personnalisée…'){
     var s2 = (prompt('Section personnalisée :','')||'').trim();
-    if(s2) sect = s2;
+    if(s2) section = s2; else section = '';
   }
-  if(sect){ designation += ' — ' + sect; }
+  if(section){ designation += ' — ' + section; }
 
   var qty = parseInt($qty ? $qty.value : '1', 10) || 1;
   var pose = ($pose && $pose.value) ? $pose.value : '';
+
+  // Calcul PU final avec pose + section (si applicable)
+  var pickedDesignationForBase = ($des && $des.value) || designation;
+  var puFinal = (typeof computePUFinal==='function')
+    ? computePUFinal({
+        category: ctx.category,
+        designation: pickedDesignationForBase,
+        intervention: ctx.intervention,
+        pose: pose,
+        section: ($sect && $sect.value) || ''
+      })
+    : (getPrix(pickedDesignationForBase, ctx.intervention) || 0);
 
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
@@ -731,7 +790,7 @@ function saveOneShotItem(stayHere){
     pose: pose,
     designation: designation,
     qty: qty,
-    prixU: getPrix(($des && $des.value) || designation, ctx.intervention) || 0,
+    prixU: puFinal,
     __tabKey: ctx.piece
   });
   saveLocal();
@@ -815,7 +874,6 @@ function editPieceNote(){
   goPiece(ctx.piece);
 }
 </script>
-
   <!-- =======================================================================
      CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux) — vNEXT
      Index :
