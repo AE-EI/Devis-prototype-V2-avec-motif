@@ -340,6 +340,8 @@ function getPrix(designation, intervention){
 }
 </script>
 
+
+  
   <!-- =============================
      CHAPITRE 4 : MENU PRINCIPAL
      Index :
@@ -446,6 +448,9 @@ function saveCurrentDevis(){
   alert('Devis sauvegardé !');
 }
 </script>
+
+
+  
 
 <!-- =============================
      CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V5 one-page (MAJ : masquage pose/section hors Création)
@@ -858,6 +863,9 @@ function editPieceNote(){
   goPiece(ctx.piece);
 }
 </script>
+
+
+
   
  <!-- =======================================================================
      CHAPITRE 6 : TABLEAU ÉLECTRIQUE (multi-tableaux) — découpé
@@ -1261,6 +1269,9 @@ function submitTabMod_Specifique(key){
 }
 </script>
 
+
+
+  
 <!-- =======================================================================
      CHAPITRE 7 : VENTILATION — corrigé (libellés explicites, sans gros titres)
      ======================================================================= -->
@@ -1573,463 +1584,360 @@ function ventAddEntretien(key){
 }
 </script>
 
+
+
+  
 <!-- =============================
      CHAPITRE 8 : PARAMÉTRAGE DES TARIFS
      Index :
-       8.0 • State, IO (load/save/apply) & helpers
-       8.1 • Bases pièces (Prises / Éclairage / Circuit spécialisé)
-       8.2 • Coefficients (Pose / Sections CS)
-       8.3 • Tableau & distribution
-       8.4 • Import / Export / Reset (JSON)
+       8.0 • Styles + Helpers + Overrides (load/save/merge)
+       8.1 • Accueil paramétrage
+       8.2 • Prises (tarifs par intervention)
+       8.3 • Éclairage — Luminaires
+       8.4 • Éclairage — Commandes (intitulés en “appareillage”)
+       8.5 • Circuit spécialisé (base + coefficients de section)
+       8.6 • Coefficients de pose (communs)
      ============================= -->
+
+<!-- 8.0 • Styles + Helpers + Overrides -->
+<style>
+  /* Mise en page plus lisible sur le chapitre Paramétrage */
+  .tarif-wrap .card.tarif-card{ margin-bottom:24px; }               /* espace entre blocs */
+  .tarif-wrap h2, .tarif-wrap h3{ margin:8px 0 10px; }
+  .tarif-wrap label{ display:block; margin-top:14px; font-weight:600; }
+  .tarif-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+  .tarif-grid .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .tarif-grid .field small{ color:var(--muted); display:block; margin-top:6px; }
+  .tarif-actions{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+</style>
+
 <script>
-/* ======================
-   §8.0 • State & helpers
-   ====================== */
-(function(){
-  const TCFG_KEY = 'tarifsConfigV1';
-
-  // Deep clone simple (obj/array only)
-  function clone(x){ return JSON.parse(JSON.stringify(x||{})); }
-
-  // Prend un snapshot des valeurs *actuelles* (définies au Chapitre 3)
-  function getDefaults(){
-    return {
-      TARIFS_BASE: clone(window.TARIFS_BASE),
-      COEFF_POSE: clone(window.COEFF_POSE),
-      COEFF_SECTIONS_CS: clone(window.COEFF_SECTIONS_CS),
-      TARIFS_TABLEAU: clone(window.TARIFS_TABLEAU)
-    };
-  }
-
-  // Applique un config => réassigne les globals utilisés par le calcul
-  function applyTarifs(cfg){
-    if(!cfg) return;
-    if(cfg.TARIFS_BASE)        window.TARIFS_BASE        = clone(cfg.TARIFS_BASE);
-    if(cfg.COEFF_POSE)         window.COEFF_POSE         = clone(cfg.COEFF_POSE);
-    if(cfg.COEFF_SECTIONS_CS)  window.COEFF_SECTIONS_CS  = clone(cfg.COEFF_SECTIONS_CS);
-    if(cfg.TARIFS_TABLEAU)     window.TARIFS_TABLEAU     = clone(cfg.TARIFS_TABLEAU);
-  }
-
-  // Charge depuis localStorage et applique (avec fallback aux defaults)
-  function loadTarifsConfig(){
-    const defaults = getDefaults();
-    try{
-      const raw = localStorage.getItem(TCFG_KEY);
-      if(!raw){ applyTarifs(defaults); return defaults; }
-      const parsed = JSON.parse(raw)||{};
-      // merge soft : si un champ manque, on prend la valeur par défaut
-      const merged = {
-        TARIFS_BASE:        Object.assign({}, defaults.TARIFS_BASE, parsed.TARIFS_BASE),
-        COEFF_POSE:         Object.assign({}, defaults.COEFF_POSE, parsed.COEFF_POSE),
-        COEFF_SECTIONS_CS:  Object.assign({}, defaults.COEFF_SECTIONS_CS, parsed.COEFF_SECTIONS_CS),
-        TARIFS_TABLEAU:     Object.assign({}, defaults.TARIFS_TABLEAU, parsed.TARIFS_TABLEAU)
-      };
-      // Sous-objets imbriqués (pour TARIFS_BASE.eclairage, TARIFS_TABLEAU.*)
-      if(defaults.TARIFS_BASE && defaults.TARIFS_BASE.eclairage){
-        merged.TARIFS_BASE.eclairage = Object.assign(
-          {}, defaults.TARIFS_BASE.eclairage, (parsed.TARIFS_BASE||{}).eclairage||{}
-        );
-        // pour chaque désignation, merge interventions
-        Object.keys(merged.TARIFS_BASE.eclairage).forEach(d=>{
-          const defD = defaults.TARIFS_BASE.eclairage[d]||{};
-          const parD = ((parsed.TARIFS_BASE||{}).eclairage||{})[d]||{};
-          merged.TARIFS_BASE.eclairage[d] = Object.assign({}, defD, parD);
-        });
-      }
-
-      if(defaults.TARIFS_TABLEAU){
-        merged.TARIFS_TABLEAU = {
-          pose_base_13: Object.assign({}, defaults.TARIFS_TABLEAU.pose_base_13, (parsed.TARIFS_TABLEAU||{}).pose_base_13),
-          coef: {
-            modules: Object.assign({}, defaults.TARIFS_TABLEAU.coef.modules, (((parsed.TARIFS_TABLEAU||{}).coef||{}).modules||{})),
-            pose:    Object.assign({}, defaults.TARIFS_TABLEAU.coef.pose,    (((parsed.TARIFS_TABLEAU||{}).coef||{}).pose||{})),
-            intervention: Object.assign({}, defaults.TARIFS_TABLEAU.coef.intervention, (((parsed.TARIFS_TABLEAU||{}).coef||{}).intervention||{}))
-          },
-          disjoncteurs: Object.assign({}, defaults.TARIFS_TABLEAU.disjoncteurs, (parsed.TARIFS_TABLEAU||{}).disjoncteurs),
-          inter_diff:   Object.assign({}, defaults.TARIFS_TABLEAU.inter_diff,   (parsed.TARIFS_TABLEAU||{}).inter_diff),
-          commandes:    Object.assign({}, defaults.TARIFS_TABLEAU.commandes,    (parsed.TARIFS_TABLEAU||{}).commandes)
-        };
-      }
-
-      applyTarifs(merged);
-      return merged;
-    }catch(e){
-      console.warn('Config tarifs invalide — reset aux valeurs par défaut.', e);
-      const d = getDefaults();
-      applyTarifs(d);
-      return d;
+// ========== Merge util ==========
+function deepMergeTarifs(base, override){
+  if(!override || typeof override!=='object') return;
+  Object.keys(override).forEach(function(k){
+    var ov = override[k];
+    if(ov && typeof ov==='object' && !Array.isArray(ov)){
+      if(!base[k] || typeof base[k]!=='object') base[k] = {};
+      deepMergeTarifs(base[k], ov);
+    } else {
+      base[k] = ov;
     }
-  }
-
-  function saveTarifsConfig(cfg){
-    localStorage.setItem(TCFG_KEY, JSON.stringify(cfg));
-    applyTarifs(cfg);
-  }
-
-  // Petits helpers HTML
-  function inputNumber(id, val){ return '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+val||0)+'" />'; }
-  function inputText(id, val){ return '<input id="'+id+'" value="'+(val==null?'':String(val)).replace(/"/g,'&quot;')+'" />'; }
-  function row3(a,b,c){ return '<div class="row" style="align-items:center;">'+a+b+c+'</div>'; }
-  function sectionCard(title, body, extraBtns){
-    return '<div class="card"><h2>'+title+'</h2>'+body+(extraBtns||'')+'</div>';
-  }
-
-  /* ======================
-     §8.1 • Bases pièces
-     ====================== */
-  function pageTarifs_Bases(){
-    const cfg = loadTarifsConfig(); // toujours relire pour UI fraîche
-    // PRISES (par intervention)
-    const p = cfg.TARIFS_BASE.prises || {};
-    const PRISES_INV = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
-
-    let prisesHtml = '<h3>Prises (PU par intervention)</h3>';
-    PRISES_INV.forEach(inv=>{
-      const id = 'tb_p_'+inv;
-      prisesHtml += row3(
-        '<div style="width:260px;">'+inv+'</div>',
-        '<div style="width:180px;">PU (€)</div>',
-        inputNumber(id, p[inv]||0)
-      );
-    });
-
-    // ÉCLAIRAGE (désignation × intervention)
-    let eclHtml = '<h3>Éclairage (PU par désignation & intervention)</h3>';
-    const ecl = cfg.TARIFS_BASE.eclairage || {};
-    const allDesigs = Object.keys(ecl);
-    const ECL_INV = ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire'];
-    allDesigs.forEach(d=>{
-      eclHtml += '<div class="pill" style="width:100%; justify-content:space-between;"><strong>'+d+'</strong></div>';
-      ECL_INV.forEach(inv=>{
-        const id = 'tb_e_'+d+'__'+inv;
-        eclHtml += row3(
-          '<div style="width:260px;">'+inv+'</div>',
-          '<div style="width:180px;">PU (€)</div>',
-          inputNumber(id, (ecl[d]||{})[inv]||0)
-        );
-      });
-    });
-
-    // CIRCUIT SPÉ — base par intervention
-    const cs = cfg.TARIFS_BASE.circuit_specialise_base || {};
-    const CS_INV = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
-    let csHtml = '<h3>Circuit spécialisé (PU base par intervention)</h3>';
-    CS_INV.forEach(inv=>{
-      const id = 'tb_cs_'+inv;
-      csHtml += row3(
-        '<div style="width:260px;">'+inv+'</div>',
-        '<div style="width:180px;">PU (€)</div>',
-        inputNumber(id, cs[inv]||0)
-      );
-    });
-
-    view(
-      sectionCard('Paramétrage — Bases pièces',
-        '<div>'+prisesHtml+'</div>'
-        + '<hr><div>'+eclHtml+'</div>'
-        + '<hr><div>'+csHtml+'</div>',
-        '<div class="row" style="margin-top:10px;">'
-          + b('💾 Enregistrer','saveTarifs_Bases()','btn primary')
-          + b('⬅️ Retour','pageTarifs()','btn back')
-        +'</div>'
-      )
-    );
-  }
-
-  function saveTarifs_Bases(){
-    const cfg = loadTarifsConfig();
-    // PRISES
-    const PRISES_INV = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
-    cfg.TARIFS_BASE.prises = cfg.TARIFS_BASE.prises || {};
-    PRISES_INV.forEach(inv=>{
-      const id='tb_p_'+inv, el=document.getElementById(id);
-      cfg.TARIFS_BASE.prises[inv] = parseFloat(el && el.value) || 0;
-    });
-
-    // ÉCLAIRAGE
-    const ecl = cfg.TARIFS_BASE.eclairage || {};
-    Object.keys(ecl).forEach(d=>{
-      cfg.TARIFS_BASE.eclairage[d] = cfg.TARIFS_BASE.eclairage[d] || {};
-      ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire'].forEach(inv=>{
-        const id='tb_e_'+d+'__'+inv, el=document.getElementById(id);
-        if(el) cfg.TARIFS_BASE.eclairage[d][inv] = parseFloat(el.value) || 0;
-      });
-    });
-
-    // CIRCUIT SPÉ
-    const CS_INV = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
-    cfg.TARIFS_BASE.circuit_specialise_base = cfg.TARIFS_BASE.circuit_specialise_base || {};
-    CS_INV.forEach(inv=>{
-      const id='tb_cs_'+inv, el=document.getElementById(id);
-      cfg.TARIFS_BASE.circuit_specialise_base[inv] = parseFloat(el && el.value) || 0;
-    });
-
-    saveTarifsConfig(cfg);
-    alert('✅ Bases pièces enregistrées.');
-    pageTarifs_Bases();
-  }
-
-  /* ======================
-     §8.2 • Coefficients
-     ====================== */
-  function pageTarifs_Coeff(){
-    const cfg = loadTarifsConfig();
-
-    // Pose
-    let poseHtml = '<h3>Coefficients — Type de pose</h3>';
-    Object.keys(cfg.COEFF_POSE||{}).forEach(k=>{
-      const id='tc_pose_'+k;
-      poseHtml += row3(
-        '<div style="width:260px;">'+k+'</div>',
-        '<div style="width:180px;">Coefficient</div>',
-        inputNumber(id, cfg.COEFF_POSE[k])
-      );
-    });
-
-    // Sections CS
-    let secHtml = '<h3>Coefficients — Sections (Circuit spécialisé)</h3>';
-    Object.keys(cfg.COEFF_SECTIONS_CS||{}).forEach(k=>{
-      const id='tc_sec_'+k;
-      secHtml += row3(
-        '<div style="width:260px;">'+k+'</div>',
-        '<div style="width:180px;">Coefficient</div>',
-        inputNumber(id, cfg.COEFF_SECTIONS_CS[k])
-      );
-    });
-
-    view(
-      sectionCard('Paramétrage — Coefficients',
-        '<div>'+poseHtml+'</div><hr><div>'+secHtml+'</div>',
-        '<div class="row" style="margin-top:10px;">'
-          + b('💾 Enregistrer','saveTarifs_Coeff()','btn primary')
-          + b('⬅️ Retour','pageTarifs()','btn back')
-        +'</div>'
-      )
-    );
-  }
-  function saveTarifs_Coeff(){
-    const cfg = loadTarifsConfig();
-
-    Object.keys(cfg.COEFF_POSE||{}).forEach(k=>{
-      const el=document.getElementById('tc_pose_'+k);
-      if(el) cfg.COEFF_POSE[k] = parseFloat(el.value)||0;
-    });
-    Object.keys(cfg.COEFF_SECTIONS_CS||{}).forEach(k=>{
-      const el=document.getElementById('tc_sec_'+k);
-      if(el) cfg.COEFF_SECTIONS_CS[k] = parseFloat(el.value)||0;
-    });
-
-    saveTarifsConfig(cfg);
-    alert('✅ Coefficients enregistrés.');
-    pageTarifs_Coeff();
-  }
-
-  /* ======================
-     §8.3 • Tableau & distribution
-     ====================== */
-  function pageTarifs_Tableau(){
-    const cfg = loadTarifsConfig();
-    const T = cfg.TARIFS_TABLEAU || {};
-
-    // Pose base 13 modules (par nb de rangées)
-    let baseHtml = '<h3>Pose tableau — Base 13 modules</h3>';
-    Object.keys(T.pose_base_13||{}).forEach(r=>{
-      const id='tt_base_'+r;
-      baseHtml += row3(
-        '<div style="width:260px;">'+r+' rangée(s)</div>',
-        '<div style="width:180px;">PU (€)</div>',
-        inputNumber(id, T.pose_base_13[r])
-      );
-    });
-
-    // Coefs modules / pose / intervention
-    let coefHtml = '<h3>Coefficients</h3>';
-    coefHtml += '<div class="pill" style="width:100%;"><strong>Modules</strong></div>';
-    Object.keys((T.coef||{}).modules||{}).forEach(m=>{
-      const id='tt_cmod_'+m;
-      coefHtml += row3('<div style="width:260px;">'+m+' modules</div>','<div style="width:180px;">Coef</div>',inputNumber(id, T.coef.modules[m]));
-    });
-    coefHtml += '<div class="pill" style="width:100%; margin-top:8px;"><strong>Pose</strong></div>';
-    Object.keys((T.coef||{}).pose||{}).forEach(p=>{
-      const id='tt_cpose_'+p;
-      coefHtml += row3('<div style="width:260px;">'+p+'</div>','<div style="width:180px;">Coef</div>',inputNumber(id, T.coef.pose[p]));
-    });
-    coefHtml += '<div class="pill" style="width:100%; margin-top:8px;"><strong>Intervention</strong></div>';
-    Object.keys((T.coef||{}).intervention||{}).forEach(i=>{
-      const id='tt_cinv_'+i;
-      coefHtml += row3('<div style="width:260px;">'+i+'</div>','<div style="width:180px;">Coef</div>',inputNumber(id, T.coef.intervention[i]));
-    });
-
-    // Disjoncteurs
-    let djHtml = '<h3>Disjoncteurs modulaires — PU</h3>';
-    Object.keys(T.disjoncteurs||{}).forEach(a=>{
-      const id='tt_dj_'+a;
-      djHtml += row3('<div style="width:260px;">'+a+' A</div>','<div style="width:180px;">PU (€)</div>', inputNumber(id, T.disjoncteurs[a]));
-    });
-
-    // Inter diff
-    let idHtml = '<h3>Interrupteurs différentiels — PU</h3>';
-    Object.keys(T.inter_diff||{}).forEach(code=>{
-      const id='tt_id_'+code;
-      idHtml += row3('<div style="width:260px;">'+code+'</div>','<div style="width:180px;">PU (€)</div>', inputNumber(id, T.inter_diff[code]));
-    });
-
-    // Commandes
-    let cmdHtml = '<h3>Commandes & pilotage — PU</h3>';
-    Object.keys(T.commandes||{}).forEach(k=>{
-      const id='tt_cmd_'+k;
-      cmdHtml += row3('<div style="width:260px;">'+k+'</div>','<div style="width:180px;">PU (€)</div>', inputNumber(id, T.commandes[k]));
-    });
-
-    view(
-      sectionCard('Paramétrage — Tableau & distribution',
-        '<div>'+baseHtml+'</div>'
-        + '<hr><div>'+coefHtml+'</div>'
-        + '<hr><div>'+djHtml+'</div>'
-        + '<hr><div>'+idHtml+'</div>'
-        + '<hr><div>'+cmdHtml+'</div>',
-        '<div class="row" style="margin-top:10px;">'
-          + b('💾 Enregistrer','saveTarifs_Tableau()','btn primary')
-          + b('⬅️ Retour','pageTarifs()','btn back')
-        +'</div>'
-      )
-    );
-  }
-  function saveTarifs_Tableau(){
-    const cfg = loadTarifsConfig();
-    const T = cfg.TARIFS_TABLEAU;
-
-    // base 13
-    Object.keys(T.pose_base_13||{}).forEach(r=>{
-      const el=document.getElementById('tt_base_'+r);
-      if(el) T.pose_base_13[r] = parseFloat(el.value)||0;
-    });
-
-    // coef
-    Object.keys((T.coef||{}).modules||{}).forEach(m=>{
-      const el=document.getElementById('tt_cmod_'+m);
-      if(el) T.coef.modules[m] = parseFloat(el.value)||0;
-    });
-    Object.keys((T.coef||{}).pose||{}).forEach(p=>{
-      const el=document.getElementById('tt_cpose_'+p);
-      if(el) T.coef.pose[p] = parseFloat(el.value)||0;
-    });
-    Object.keys((T.coef||{}).intervention||{}).forEach(i=>{
-      const el=document.getElementById('tt_cinv_'+i);
-      if(el) T.coef.intervention[i] = parseFloat(el.value)||0;
-    });
-
-    // disjoncteurs
-    Object.keys(T.disjoncteurs||{}).forEach(a=>{
-      const el=document.getElementById('tt_dj_'+a);
-      if(el) T.disjoncteurs[a] = parseFloat(el.value)||0;
-    });
-
-    // inter diff
-    Object.keys(T.inter_diff||{}).forEach(code=>{
-      const el=document.getElementById('tt_id_'+code);
-      if(el) T.inter_diff[code] = parseFloat(el.value)||0;
-    });
-
-    // commandes
-    Object.keys(T.commandes||{}).forEach(k=>{
-      const el=document.getElementById('tt_cmd_'+k);
-      if(el) T.commandes[k] = parseFloat(el.value)||0;
-    });
-
-    saveTarifsConfig(cfg);
-    alert('✅ Paramètres « Tableau & distribution » enregistrés.');
-    pageTarifs_Tableau();
-  }
-
-  /* ======================
-     §8.4 • Import / Export / Reset
-     ====================== */
-  function pageTarifs_IO(){
-    const cfg = loadTarifsConfig();
-    const pretty = JSON.stringify(cfg, null, 2);
-    view(
-      sectionCard('Paramétrage — Import / Export / Reset',
-        '<p class="muted">Tu peux exporter tes paramètres, les réimporter (coller le JSON), ou réinitialiser aux valeurs par défaut (celles chargées au Chapitre 3).</p>'
-        + '<label>Configuration actuelle (JSON)</label>'
-        + '<textarea id="tcfg-json" rows="18" style="width:100%; font-family:monospace;">'+pretty.replace(/</g,'&lt;')+'</textarea>',
-        '<div class="row" style="margin-top:10px;">'
-          + b('⬇️ Exporter (.json)','tarifsExportJSON()','btn')
-          + b('⬆️ Importer (coller JSON)','tarifsImportJSON()','btn')
-          + b('♻️ Reset (valeurs par défaut)','tarifsResetDefaults()','btn')
-          + b('⬅️ Retour','pageTarifs()','btn back')
-        +'</div>'
-      )
-    );
-  }
-  function tarifsExportJSON(){
-    const cfg = loadTarifsConfig();
-    const blob = new Blob([JSON.stringify(cfg,null,2)], {type:'application/json;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'tarifs_config.json'; a.click();
-    URL.revokeObjectURL(url);
-    alert('✅ Fichier exporté.');
-  }
-  function tarifsImportJSON(){
-    const txt = (document.getElementById('tcfg-json').value||'').trim();
-    if(!txt){ alert('Colle un JSON de configuration.'); return; }
-    try{
-      const parsed = JSON.parse(txt);
-      saveTarifsConfig(parsed);
-      alert('✅ Configuration importée et appliquée.');
-      pageTarifs_IO();
-    }catch(e){
-      alert('JSON invalide : '+e.message);
-    }
-  }
-  function tarifsResetDefaults(){
-    if(!confirm('Réinitialiser tous les tarifs aux valeurs par défaut ?')) return;
-    const d = getDefaults();
-    saveTarifsConfig(d);
-    alert('✅ Réinitialisation effectuée.');
-    pageTarifs_IO();
-  }
-
-  /* ======================
-     Accueil / Navigation
-     ====================== */
-  function pageTarifs(){
-    view(
-      '<div class="card">'
-        + b('⬅️ Accueil','confirmBackHome()','btn back')
-        + '<h2>Paramétrage des tarifs</h2>'
-        + '<div class="row" style="margin-top:8px;">'
-          + b('8.1 · Bases pièces','pageTarifs_Bases()','btn primary')
-          + b('8.2 · Coefficients','pageTarifs_Coeff()','btn')
-          + b('8.3 · Tableau & distribution','pageTarifs_Tableau()','btn')
-          + b('8.4 · Import / Export / Reset','pageTarifs_IO()','btn ghost')
-        + '</div>'
-        + '<p class="muted" style="margin-top:8px;">Les changements sont sauvegardés dans ton navigateur (localStorage) et pris en compte immédiatement dans les calculs.</p>'
-      + '</div>'
-    );
-  }
-
-  // Expose
-  Object.assign(window, {
-    pageTarifs,
-    pageTarifs_Bases,
-    saveTarifs_Bases,
-    pageTarifs_Coeff,
-    saveTarifs_Coeff,
-    pageTarifs_Tableau,
-    saveTarifs_Tableau,
-    pageTarifs_IO,
-    tarifsExportJSON,
-    tarifsImportJSON,
-    tarifsResetDefaults
   });
+}
 
-  // Auto-apply au chargement du script (charge config si existante)
-  loadTarifsConfig();
+// ========== Load / Save overrides ==========
+function loadTarifsOverrides(){
+  try{
+    var raw = localStorage.getItem('tarifsOverrides');
+    if(!raw) return;
+    var ov = JSON.parse(raw||'{}')||{};
+    // Fusion avec les objets globaux du Chapitre 3
+    if(ov.TARIFS_BASE) deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+    if(ov.COEFF_POSE) deepMergeTarifs(COEFF_POSE, ov.COEFF_POSE);
+    if(ov.COEFF_SECTIONS_CS) deepMergeTarifs(COEFF_SECTIONS_CS, ov.COEFF_SECTIONS_CS);
+  }catch(e){}
+}
+function saveTarifsOverrides(partialOv){
+  try{
+    var cur = JSON.parse(localStorage.getItem('tarifsOverrides')||'{}')||{};
+    deepMergeTarifs(cur, partialOv||{});
+    localStorage.setItem('tarifsOverrides', JSON.stringify(cur));
+    alert('✅ Paramètres sauvegardés.');
+  }catch(e){ alert('Impossible de sauvegarder les paramètres.'); }
+}
 
-})();
+// Charger d’éventuels overrides dès le chargement de ce chapitre
+loadTarifsOverrides();
+
+// ========== Helpers UI ==========
+function _tfVal(id){ var el=document.getElementById(id); return parseFloat(el && el.value || '0')||0; }
+function _setVal(id, v){ var el=document.getElementById(id); if(el) el.value = (v!=null?v:''); }
+function _numInput(id, val){ return '<input id="'+id+'" type="number" inputmode="decimal" step="1" min="0" value="'+(val||0)+'" />'; }
+</script>
+
+<!-- 8.1 • Accueil paramétrage -->
+<script>
+function pageTarifsAccueil(){
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageMain()','btn back')
+      + '<h2>Paramétrage des tarifs</h2>'
+      + '<p class="muted">Ajuste ici les tarifs unitaires et coefficients utilisés dans les calculs.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('Prises','pageTarifsPrises()','btn primary')
+        + b('Éclairage — Luminaires','pageTarifsEclLuminaires()','btn')
+        + b('Éclairage — Commandes','pageTarifsEclCommandes()','btn')
+        + b('Circuit spécialisé','pageTarifsCS()','btn')
+        + b('Coefficients de pose','pageTarifsCoeffsPose()','btn')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+</script>
+
+<!-- 8.2 • Prises -->
+<script>
+function pageTarifsPrises(){
+  var base = (TARIFS_BASE && TARIFS_BASE.prises) ? TARIFS_BASE.prises : {};
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Prises — tarifs par intervention</h2>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('pris_cre', base['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('pris_rem_app', base['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('pris_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('pris_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsPrises()','btn primary')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+function saveTarifsPrises(){
+  var ov = {
+    TARIFS_BASE: {
+      prises: {
+        'Création': _tfVal('pris_cre'),
+        'Remplacement appareillage': _tfVal('pris_rem_app'),
+        'Recâblage avec remplacement appareillage': _tfVal('pris_rec_avec'),
+        'Recâblage sans remplacement appareillage': _tfVal('pris_rec_sans')
+      }
+    }
+  };
+  // Appliquer en mémoire + sauver
+  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+  saveTarifsOverrides(ov);
+}
+</script>
+
+<!-- 8.3 • Éclairage — Luminaires -->
+<script>
+function pageTarifsEclLuminaires(){
+  var e = (TARIFS_BASE && TARIFS_BASE.eclairage) ? TARIFS_BASE.eclairage : {};
+  var PDC = e['Point de centre'] || {};
+  var APP = e['Applique'] || {};
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Éclairage — Luminaires</h2>'
+      + '<h3>Point de centre</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('lum_pdc_cre', PDC['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_pdc_rem_lum', PDC['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_pdc_rec_avec', PDC['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_pdc_rec_sans', PDC['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Applique</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('lum_app_cre', APP['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_app_rem_lum', APP['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_app_rec_avec', APP['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_app_rec_sans', APP['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsEclLuminaires()','btn primary')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+function saveTarifsEclLuminaires(){
+  var ov = {
+    TARIFS_BASE: {
+      eclairage: {
+        'Point de centre': {
+          'Création': _tfVal('lum_pdc_cre'),
+          'Remplacement luminaire': _tfVal('lum_pdc_rem_lum'),
+          'Recâblage avec remplacement luminaire': _tfVal('lum_pdc_rec_avec'),
+          'Recâblage sans remplacement luminaire': _tfVal('lum_pdc_rec_sans')
+        },
+        'Applique': {
+          'Création': _tfVal('lum_app_cre'),
+          'Remplacement luminaire': _tfVal('lum_app_rem_lum'),
+          'Recâblage avec remplacement luminaire': _tfVal('lum_app_rec_avec'),
+          'Recâblage sans remplacement luminaire': _tfVal('lum_app_rec_sans')
+        }
+      }
+    }
+  };
+  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+  saveTarifsOverrides(ov);
+}
+</script>
+
+<!-- 8.4 • Éclairage — Commandes (intitulés en “appareillage”) -->
+<script>
+function pageTarifsEclCommandes(){
+  var e = (TARIFS_BASE && TARIFS_BASE.eclairage) ? TARIFS_BASE.eclairage : {};
+  var IS = e['Interrupteur simple'] || {};
+  var ID = e['Interrupteur double'] || {};
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Éclairage — Commandes</h2>'
+      + '<h3>Interrupteur simple</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('cmd_is_cre', IS['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cmd_is_rem_app', IS['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cmd_is_rec_avec', IS['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cmd_is_rec_sans', IS['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Interrupteur double</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('cmd_id_cre', ID['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cmd_id_rem_app', ID['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cmd_id_rec_avec', ID['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cmd_id_rec_sans', ID['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsEclCommandes()','btn primary')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+function saveTarifsEclCommandes(){
+  var ov = {
+    TARIFS_BASE: {
+      eclairage: {
+        'Interrupteur simple': {
+          'Création': _tfVal('cmd_is_cre'),
+          'Remplacement appareillage': _tfVal('cmd_is_rem_app'),
+          'Recâblage avec remplacement appareillage': _tfVal('cmd_is_rec_avec'),
+          'Recâblage sans remplacement appareillage': _tfVal('cmd_is_rec_sans')
+        },
+        'Interrupteur double': {
+          'Création': _tfVal('cmd_id_cre'),
+          'Remplacement appareillage': _tfVal('cmd_id_rem_app'),
+          'Recâblage avec remplacement appareillage': _tfVal('cmd_id_rec_avec'),
+          'Recâblage sans remplacement appareillage': _tfVal('cmd_id_rec_sans')
+        }
+      }
+    }
+  };
+  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+  saveTarifsOverrides(ov);
+}
+</script>
+
+<!-- 8.5 • Circuit spécialisé (base + coefficients de section) -->
+<script>
+function pageTarifsCS(){
+  var base = (TARIFS_BASE && TARIFS_BASE.circuit_specialise_base) ? TARIFS_BASE.circuit_specialise_base : {};
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Circuit spécialisé — base & coefficients</h2>'
+
+      + '<h3>Tarifs base (par intervention)</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('cs_cre', base['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cs_rem_app', base['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cs_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cs_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Coefficients de section</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>0,75 mm²</label>'+_numInput('cs_coef_075', COEFF_SECTIONS_CS['0,75 mm²'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>1,5 mm²</label>'+_numInput('cs_coef_15', COEFF_SECTIONS_CS['1,5 mm²'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>2,5 mm²</label>'+_numInput('cs_coef_25', COEFF_SECTIONS_CS['2,5 mm²'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>6 mm²</label>'+_numInput('cs_coef_6', COEFF_SECTIONS_CS['6 mm²'])+'<small>Coefficient</small></div>'
+      + '</div>'
+
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsCS()','btn primary')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+function saveTarifsCS(){
+  var ov = {
+    TARIFS_BASE: {
+      circuit_specialise_base: {
+        'Création': _tfVal('cs_cre'),
+        'Remplacement appareillage': _tfVal('cs_rem_app'),
+        'Recâblage avec remplacement appareillage': _tfVal('cs_rec_avec'),
+        'Recâblage sans remplacement appareillage': _tfVal('cs_rec_sans')
+      }
+    },
+    COEFF_SECTIONS_CS: {
+      '0,75 mm²': _tfVal('cs_coef_075'),
+      '1,5 mm²':  _tfVal('cs_coef_15'),
+      '2,5 mm²':  _tfVal('cs_coef_25'),
+      '6 mm²':    _tfVal('cs_coef_6')
+    }
+  };
+  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+  deepMergeTarifs(COEFF_SECTIONS_CS, ov.COEFF_SECTIONS_CS);
+  saveTarifsOverrides(ov);
+}
+</script>
+
+<!-- 8.6 • Coefficients de pose (communs) -->
+<script>
+function pageTarifsCoeffsPose(){
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Coefficients de pose</h2>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Placo</label>'+_numInput('cp_placo', COEFF_POSE['Placo'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>Encastré maçonnerie</label>'+_numInput('cp_maco', COEFF_POSE['Encastré maçonnerie'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>Semi-encastré</label>'+_numInput('cp_semi', COEFF_POSE['Semi-encastré'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>Sur-mesure</label>'+_numInput('cp_surmes', COEFF_POSE['Sur-mesure'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>Saillie avec moulure</label>'+_numInput('cp_moul', COEFF_POSE['Saillie avec moulure'])+'<small>Coefficient</small></div>'
+        + '<div class="field"><label>Sous tube IRL</label>'+_numInput('cp_irl', COEFF_POSE['Sous tube IRL'])+'<small>Coefficient</small></div>'
+      + '</div>'
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsCoeffsPose()','btn primary')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+function saveTarifsCoeffsPose(){
+  var ov = {
+    COEFF_POSE: {
+      'Placo': _tfVal('cp_placo'),
+      'Encastré maçonnerie': _tfVal('cp_maco'),
+      'Semi-encastré': _tfVal('cp_semi'),
+      'Sur-mesure': _tfVal('cp_surmes'),
+      'Saillie avec moulure': _tfVal('cp_moul'),
+      'Sous tube IRL': _tfVal('cp_irl')
+    }
+  };
+  deepMergeTarifs(COEFF_POSE, ov.COEFF_POSE);
+  saveTarifsOverrides(ov);
+}
+</script>
+
+<!-- Expose minimal (si tu veux appeler depuis le menu principal) -->
+<script>
+Object.assign(window, {
+  pageTarifsAccueil,
+  pageTarifsPrises,
+  pageTarifsEclLuminaires,
+  pageTarifsEclCommandes,
+  pageTarifsCS,
+  pageTarifsCoeffsPose
+});
 </script>
   
   <!-- ============================================================
