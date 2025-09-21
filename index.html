@@ -162,7 +162,7 @@ function loadLocal(){
 </script>
 
 <!-- =============================
-     CHAPITRE 3 : CONSTANTES
+     CHAPITRE 3 : CONSTANTES + PRIX
      ============================= -->
 <script>
 // Pièces prédéfinies
@@ -175,9 +175,7 @@ var PIECES_PREDEFINIES = [
 ];
 
 // Catégories standards
-var CATEGORIES = [
-  'Prises','Éclairage','Circuit spécialisé','Spécifique'
-];
+var CATEGORIES = ['Prises','Éclairage','Circuit spécialisé','Spécifique'];
 
 // Modes de pose
 var POSES = [
@@ -186,14 +184,11 @@ var POSES = [
 ];
 
 // Sections de câblage (avec option personnalisée)
-var SECTIONS_CABLE = [
-  '0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée…'
-];
+var SECTIONS_CABLE = ['0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée…'];
 
 // Désignations possibles par catégorie
-// (pour Prises, on n’affichera plus la liste au Chap.5 : c’est toujours “Prise”)
 var DESIGNATIONS_PAR_CATEGORIE = {
-  'Prises': ['Prise'],
+  // <— pour Prises on ne s’en sert plus (désignation supprimée dans l’UI)
   'Éclairage/Luminaires': ['Point de centre','Applique'],
   'Éclairage/Commandes': ['Interrupteur simple','Interrupteur double'],
   'Circuit spécialisé': [
@@ -203,58 +198,76 @@ var DESIGNATIONS_PAR_CATEGORIE = {
   ]
 };
 
-/* ======================
-   TARIFS DE BASE
-   ====================== */
-// Tarifs “fourniture + pose” de base
-var TARIFS = {
-  'Prise': { creation:120, recablage_sans:50, recablage_avec:70, remplacement:20 },
-  'Point de centre': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
-  'Applique': { creation:100, recablage_sans:50, recablage_avec:75, remplacement:30 },
-  'Interrupteur simple': { creation:40, recablage_sans:50, recablage_avec:75, remplacement:25 },
-  'Interrupteur double': { creation:60, recablage_sans:50, recablage_avec:85, remplacement:35 }
+/* ============ TARIFS BASE (FT posé, hors coefficients) ============
+
+  • PRISES : le prix de base est unique (par intervention)
+  • ÉCLAIRAGE : prix de base par désignation (point de centre, applique, etc.)
+  • CIRCUIT SPÉCIALISÉ : prix de base UNIQUE (par intervention, *quel que soit* le circuit).
+    Les sections appliquent un coefficient (voir COEFF_SECTIONS_CS).
+
+  Tu pourras tout modifier plus tard dans le chapitre “Paramétrage tarifs”.
+*/
+var TARIFS_BASE = {
+  prises: { // par intervention
+    'Création': 120,
+    'Remplacement appareillage': 20,
+    'Recâblage avec remplacement appareillage': 70,
+    'Recâblage sans remplacement appareillage': 50
+  },
+  eclairage: { // par désignation
+    'Point de centre': {
+      'Création': 100,
+      'Remplacement luminaire': 30,
+      'Recâblage avec remplacement luminaire': 75,
+      'Recâblage sans remplacement luminaire': 50
+    },
+    'Applique': {
+      'Création': 100,
+      'Remplacement luminaire': 30,
+      'Recâblage avec remplacement luminaire': 75,
+      'Recâblage sans remplacement luminaire': 50
+    },
+    'Interrupteur simple': {
+      'Création': 40,
+      'Remplacement appareillage': 25,
+      'Recâblage avec remplacement appareillage': 75,
+      'Recâblage sans remplacement appareillage': 50
+    },
+    'Interrupteur double': {
+      'Création': 60,
+      'Remplacement appareillage': 35,
+      'Recâblage avec remplacement appareillage': 85,
+      'Recâblage sans remplacement appareillage': 50
+    }
+  },
+  circuit_specialise_base: { // un seul prix de base, par intervention
+    'Création': 140,
+    'Remplacement appareillage': 40,
+    'Recâblage avec remplacement appareillage': 90,
+    'Recâblage sans remplacement appareillage': 70
+  }
 };
 
-// Base unique pour tous les Circuits spécialisés (quel que soit l’appareil)
-// (ce PU est ensuite modulé par le type de pose + la section)
-var TARIF_BASE_CS = {
-  creation:140, recablage_sans:70, recablage_avec:90, remplacement:40
+// Coefficients de POSE (appliqués à Prises, Éclairage et CS)
+var COEFF_POSE = {
+  'Placo': 1.00,
+  'Encastré maçonnerie': 1.30,
+  'Semi-encastré': 1.15,
+  'Sur-mesure': 1.25,
+  'Saillie avec moulure': 1.10,
+  'Sous tube IRL': 1.05
 };
 
-/* ======================
-   COEFFICIENTS
-   ====================== */
-// Coefficients par type de pose (tu peux ajuster ces valeurs)
-var POSE_COEF = {
-  'Encastré maçonnerie': 1.15,
-  'Placo':               1.05,
-  'Semi-encastré':       1.10,
-  'Sur-mesure':          1.25,
-  'Saillie avec moulure':1.00,
-  'Sous tube IRL':       1.05
-};
-
-// Coefficients “section” pour Circuit spécialisé
-// 0,75 et 1,5 : base (1.00) ; 2,5 : +10% ; 6 : +20%
-var SECTION_COEF_CS = {
+// Coefficients de SECTION pour CS :
+// 0,75 et 1,5 → 1.00 ; 2,5 → +10% ; 6 → +20%
+var COEFF_SECTIONS_CS = {
   '0,75 mm²': 1.00,
-  '1,5 mm²':  1.00,
-  '2,5 mm²':  1.10,
-  '6 mm²':    1.20,
-  'Personnalisée…': 1.00 // on laissera 1.00 et on pourra ajuster au moment de la saisie manuelle
+  '1,5 mm²': 1.00,
+  '2,5 mm²': 1.10,
+  '6 mm²': 1.20
 };
 
-/* ======================
-   ÉTAGES prédéfinis
-   ====================== */
-var ETAGES = [
-  'Rez-de-chaussée','1er étage','2e étage',
-  'Sous-sol','Combles','Annexe'
-];
-
-/* ======================================================
-   TARIFS — TABLEAU & DISTRIBUTION (inchangé)
-   ====================================================== */
+/* ============ Tableau & distribution (inchangé) ============ */
 var TARIFS_TABLEAU = {
   pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
   coef: {
@@ -272,69 +285,46 @@ var TARIFS_TABLEAU = {
   }
 };
 
-/* ======================
-   ARRONDI commun
-   ====================== */
-function round5Up(n){
-  // Arrondit au multiple de 5 supérieur (toujours vers le haut)
-  n = +n || 0;
-  var m = Math.ceil(n / 5) * 5;
-  // Assure qu’on ne descend jamais (si n déjà multiple de 5 => m = n)
-  return m;
+/* ============ Helpers PRIX communs ============ */
+
+// Arrondi au 5 supérieur (toujours vers le haut)
+function roundUp5(x){
+  x = +x || 0;
+  return Math.ceil(x / 5) * 5;
 }
 
-/* ======================
-   CALCUL PU unifié
-   ====================== */
-function getPrixTarifBase(designation, intervention){
-  // Pour Prises & Éclairage, on garde la table TARIFS
-  var base = TARIFS[designation] || {};
-  if(intervention === 'Création') return base.creation || 0;
-  if(intervention && intervention.indexOf('sans remplacement') >= 0) return base.recablage_sans || 0;
-  if(intervention && intervention.indexOf('avec remplacement') >= 0) return base.recablage_avec || 0;
-  if(intervention && intervention.indexOf('Remplacement') === 0) return base.remplacement || 0;
-  return 0;
-}
+// Renvoie le PU avec pose/section + arrondi au 5 supérieur
+// category : 'Prises' | 'Éclairage/Luminaires' | 'Éclairage/Commandes' | 'Circuit spécialisé'
+function computePU(category, designation, intervention, pose, section){
+  var base = 0;
 
-// Calcule le PU final avec coefficients et arrondi au 5 supérieur
-function computePU(opts){
-  // opts = { category, designation, intervention, pose, section, baseInput }
-  var cat   = opts.category || '';
-  var interv= opts.intervention || 'Création';
-  var pose  = opts.pose || '';
-  var section = opts.section || '';
-  var basePU = 0;
+  if(category === 'Prises'){
+    base = (TARIFS_BASE.prises[intervention] || 0);
 
-  if(cat === 'Circuit spécialisé'){
-    // Base commune CS
-    basePU = (TARIF_BASE_CS[interv] || 0);
-    // section
-    var secCoef = SECTION_COEF_CS[section] || 1.00;
-    basePU = basePU * secCoef;
-  }else if(cat === 'Spécifique'){
-    // base saisie par l’utilisateur
-    basePU = +opts.baseInput || 0;
-  }else{
-    // Prises / Éclairage
-    basePU = getPrixTarifBase(opts.designation || '', interv);
+  } else if(category === 'Éclairage/Luminaires' || category === 'Éclairage/Commandes'){
+    base = (TARIFS_BASE.eclairage[designation] && TARIFS_BASE.eclairage[designation][intervention]) || 0;
+
+  } else if(category === 'Circuit spécialisé'){
+    base = (TARIFS_BASE.circuit_specialise_base[intervention] || 0);
+    // Coeff section
+    var cSec = COEFF_SECTIONS_CS[section] || 1.00;
+    base = base * cSec;
   }
 
-  // Pose
-  var pCoef = POSE_COEF[pose] || 1.00;
-  basePU = basePU * pCoef;
+  // Coeff pose
+  var cPose = COEFF_POSE[pose] || 1.00;
+  var total = base * cPose;
 
-  // Arrondi au multiple de 5 supérieur
-  return round5Up(basePU);
+  // Arrondi 5 supérieur
+  return roundUp5(total);
 }
 
-// Helper pour tableau (conservé)
-function getTabPrice(rang, modules, pose, intervention){
-  var base = TARIFS_TABLEAU.pose_base_13[+rang] || 0;
-  if(!base) return 0;
-  var cMod = TARIFS_TABLEAU.coef.modules[+modules] || 1.00;
-  var cPose= TARIFS_TABLEAU.coef.pose[pose] || 1.00;
-  var cInv = TARIFS_TABLEAU.coef.intervention[intervention] || 1.00;
-  return Math.round(base * cMod * cPose * cInv * 100) / 100;
+// Back-compat : utilisé ailleurs (estimatif…)
+function getPrix(designation, intervention){
+  // garde une compatibilité minimale si appelé sans contexte
+  // (ex : prévisualisation ancienne). On renvoie juste la base eclairage.
+  var e = TARIFS_BASE.eclairage[designation];
+  return e ? (e[intervention] || 0) : 0;
 }
 </script>
 
@@ -440,29 +430,15 @@ function saveCurrentDevis(){
 
 <!-- =============================
      CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V5 one-page
-     Index :
-       §0  • Accueil (liste + raccourcis)
-       §1  • Ajout d’une pièce (prédefs + perso)
-       §2  • Détail pièce (catégories + lignes)
-       §3  • Catégorie Éclairage : sous-rubriques
-       §4  • Choix intervention → écran unique “one-shot”
-       §5  • Spécifique : formulaire dédié
-       §6  • Note de pièce
      ============================= -->
 <script>
-/* ======================
-   §0 • ACCUEIL
-   ====================== */
+/* ========== Accueil ========== */
 function goVent(){
-  if (typeof pageVentAccueil === 'function') {
-    pageVentAccueil();
-  } else {
-    alert('La section Ventilation (chapitre 6.2) n’est pas encore chargée.');
-  }
+  if (typeof pageVentAccueil === 'function') pageVentAccueil();
+  else alert('La section Ventilation (chapitre 6.2) n’est pas encore chargée.');
 }
-
 function pageHome(){
-  var keys = Object.keys(devis).filter(function(k){ return k.indexOf('__')!==0; });
+  var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
   var listHtml = keys.length ? keys.map(function(key){
     var s = devis[key] || {};
     var badges = [
@@ -485,7 +461,7 @@ function pageHome(){
       +'<div class="row">'
         +b('Ajouter une pièce','pageAddPiece()','btn primary')
         +b('Créer un tableau','pageTabCreate()','btn')
-        +b('Ventilation','goVent()','btn')  /* raccourci vers chapitre 6.2 */
+        +b('Ventilation','goVent()','btn')
       +'</div>'
     +'</div>'
     +'<div class="card" style="margin-top:12px;">'
@@ -499,13 +475,11 @@ function pageHome(){
   );
 }
 
-/* ======================
-   §1 • AJOUTER UNE PIÈCE
-   ====================== */
+/* ========== Ajout d’une pièce ========== */
 function pageAddPiece(){
-  var opts = PIECES_PREDEFINIES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('')
+  var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
            + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
-  var etageOpts = ['(aucun)'].concat(ETAGES).map(function(e){ return '<option value="'+e+'">'+e+'</option>'; }).join('');
+  var etageOpts = ['(aucun)'].concat(ETAGES).map(e=>'<option value="'+e+'">'+e+'</option>').join('');
 
   view(
     '<div class="card">'
@@ -523,13 +497,11 @@ function pageAddPiece(){
     +'</div>'
   );
 }
-
 function confirmPieceChoice(){
   var sel    = document.getElementById('piece-choice').value;
   var qualif = (document.getElementById('piece-qualif').value || '').trim();
   var etage  = document.getElementById('piece-etage').value;
   if(!sel) return;
-
   var base = sel;
   if(sel==='__NEW__'){
     base = (prompt('Nom de la pièce :','') || '').trim();
@@ -539,25 +511,19 @@ function confirmPieceChoice(){
   var key = createOrGetPiece(base, qualif, etageVal);
   goPiece(key);
 }
-
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
-    delete devis[key];
-    saveLocal();
-    pageHome();
+    delete devis[key]; saveLocal(); pageHome();
   }
 }
 
-/* =========================================
-   §2 • DÉTAIL D’UNE PIÈCE & CATÉGORIES
-   ========================================= */
+/* ========== Détail de pièce & catégories ========== */
 function goPiece(key){
   ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
 
-  var cats = CATEGORIES
-    .filter(function(c){ return c!=='Spécifique'; })
-    .map(function(c){ return b(c,'goCategory('+JSON.stringify(c)+')','btn'); })
+  var cats = CATEGORIES.filter(c=>c!=='Spécifique')
+    .map(c=> b(c,'goCategory('+JSON.stringify(c)+')','btn'))
     .join('');
 
   var s = devis[key];
@@ -584,58 +550,24 @@ function goPiece(key){
       +b('Retour','pageHome()','btn back')
       +'<h2>'+label+'</h2>'
       +'<div class="row">'+cats+b('Spécifique','pageSpecifiqueForm()','btn ghost')+'</div>'
-      +'<div class="row" style="margin-top:10px;">'
-        +b('Ajouter / modifier la note','editPieceNote()','btn')
-      +'</div>'
+      +'<div class="row" style="margin-top:10px;">'+b('Ajouter / modifier la note','editPieceNote()','btn')+'</div>'
     +'</div>'
     +'<div class="card" style="margin-top:12px;">'
-      +'<h2>Lignes de la pièce</h2>'
-      +lignes
+      +'<h2>Lignes de la pièce</h2>'+lignes
       +'<p style="margin-top:8px;">'+noteTxt+'</p>'
     +'</div>'
   );
 }
-
 function delLine(key, idx){
-  (devis[key].items||[]).splice(idx,1);
-  saveLocal();
-  goPiece(key);
+  (devis[key].items||[]).splice(idx,1); saveLocal(); goPiece(key);
 }
 
-/* =========================================
-   §3 • ÉCLAIRAGE : sous-rubriques
-   ========================================= */
+/* ========== Catégorie → page unique (intervention intégrée) ========== */
 function goCategory(cat){
+  if (cat === 'Éclairage') return goEclairageSub();
   ctx.category = cat;
-  if(cat==='Éclairage') return goEclairageSub();
-
-  var interventions = [];
-  if(cat==='Prises' || cat==='Circuit spécialisé'){
-    interventions = [
-      'Création',
-      'Remplacement appareillage',
-      'Recâblage avec remplacement appareillage',
-      'Recâblage sans remplacement appareillage'
-    ];
-  }else if(cat==='Spécifique'){
-    interventions = ['Saisie libre avec prix'];
-  }else{
-    interventions = ['Création'];
-  }
-
-  var btns = interventions.map(function(i){
-    return b(i,'goIntervention('+JSON.stringify(i)+')','btn');
-  }).join('');
-
-  view(
-    '<div class="card">'
-      +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
-      +'<h2>'+ctx.category+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-      +'<div class="row">'+btns+'</div>'
-    +'</div>'
-  );
+  pageOneShotSelection();
 }
-
 function goEclairageSub(){
   view(
     '<div class="card">'
@@ -648,82 +580,92 @@ function goEclairageSub(){
     +'</div>'
   );
 }
-
 function setEclairageBranch(branch){
   ctx.category = branch;
-  var interventions = (branch==='Éclairage/Luminaires')
-    ? ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire']
-    : ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
-
-  var btns = interventions.map(function(i){
-    return b(i,'goIntervention('+JSON.stringify(i)+')','btn');
-  }).join('');
-
-  view(
-    '<div class="card">'
-      +b('Retour','goEclairageSub()','btn back')
-      +'<h2>'+branch+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-      +'<div class="row">'+btns+'</div>'
-    +'</div>'
-  );
-}
-
-/* =====================================================
-   §4 • INTERVENTION → écran unique “one-shot” (sélection)
-   ===================================================== */
-function goIntervention(interv){
-  ctx.intervention = interv;
-  if(ctx.category==='Spécifique'){ return pageSpecifiqueForm(); }
   pageOneShotSelection();
 }
 
-// Page one-shot : pose visible quand pertinent, section câble pour “Circuit spécialisé”
+/* ========== Page One-Shot (intervention intégrée) ========== */
 function pageOneShotSelection(){
-  var isElecStd = ['Prises','Circuit spécialisé','Éclairage/Luminaires','Éclairage/Commandes'].indexOf(ctx.category) >= 0;
+  var cat = ctx.category;
 
-  var list = DESIGNATIONS_PAR_CATEGORIE[ctx.category] || ['Élément'];
-  var desigOpts = list.map(function(d){ return '<option value="'+d+'">'+d+'</option>'; }).join('');
+  // 1) Intervention disponible selon catégorie
+  var invs = [];
+  if(cat==='Prises' || cat==='Circuit spécialisé'){
+    invs = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
+  } else if(cat==='Éclairage/Luminaires'){
+    invs = [
+      'Création',
+      'Remplacement luminaire',
+      'Recâblage avec remplacement luminaire',
+      'Recâblage sans remplacement luminaire'
+    ];
+  } else if(cat==='Éclairage/Commandes'){
+    invs = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
+  } else {
+    invs = ['Création'];
+  }
+  var invOpts = invs.map(i=>'<option value="'+i+'">'+i+'</option>').join('');
 
-  var customDesigBlock = (ctx.category==='Circuit spécialisé')
-    ? '<label style="margin-top:10px;">Nom personnalisé (remplace la liste ci-dessus)</label>'
-      +'<input id="oneshot-custom-desig" placeholder="ex : Pompe à chaleur" />'
-    : '';
-
-  var poseOpts  = POSES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
-  var poseBlock = isElecStd ? ('<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>') : '';
-
-  var sectionBlock = '';
-  if(ctx.category==='Circuit spécialisé'){
-    var sectOpts = SECTIONS_CABLE.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join('');
-    sectionBlock =
-      '<label style="margin-top:10px;">Section de câblage</label>'
-     +'<select id="oneshot-section">'+sectOpts+'</select>';
+  // 2) Désignation
+  var desigHtml = '';
+  var defaultDesignation = '';
+  if(cat==='Prises'){
+    defaultDesignation = 'Prise';
+    desigHtml = '<div class="pill"><strong>Désignation : Prise</strong></div>';
+  } else if(cat==='Éclairage/Luminaires' || cat==='Éclairage/Commandes'){
+    var list = DESIGNATIONS_PAR_CATEGORIE[cat] || ['Élément'];
+    defaultDesignation = list[0];
+    desigHtml = '<label style="margin-top:10px;">Désignation</label>'
+              + '<select id="oneshot-desig">'
+              + list.map(d=>'<option value="'+d+'">'+d+'</option>').join('')+'</select>';
+  } else if(cat==='Circuit spécialisé'){
+    // On laisse un champ “personnalisé” (facultatif) pour préciser le type
+    defaultDesignation = 'Circuit spécialisé';
+    desigHtml = '<label style="margin-top:10px;">Libellé (optionnel)</label>'
+              + '<input id="oneshot-custom-desig" placeholder="ex : Four, PAC… (facultatif)" />';
+  } else {
+    defaultDesignation = 'Élément';
+    desigHtml = '<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
   }
 
-  var qtyOpts   = Array.from({length:30}).map(function(_,i){
-    var q=i+1; return '<option value="'+q+'" '+(q===1?'selected':'')+'>'+q+'</option>';
-  }).join('');
+  // 3) Pose
+  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  var poseBlock = '<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>';
 
-  var backFn = (ctx.category.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goCategory('+JSON.stringify(ctx.category)+')';
+  // 4) Section (CS uniquement)
+  var sectionBlock = '';
+  if(cat==='Circuit spécialisé'){
+    var sectOpts = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
+    sectionBlock = '<label style="margin-top:10px;">Section</label><select id="oneshot-section">'+sectOpts+'</select>';
+  }
 
-  var defaultDesig = (DESIGNATIONS_PAR_CATEGORIE[ctx.category] && DESIGNATIONS_PAR_CATEGORIE[ctx.category][0]) || 'Élément';
-  var defaultPU = (typeof getPrix==='function' ? getPrix(defaultDesig, ctx.intervention) : 0) || 0;
+  // 5) Quantité
+  var qtyOpts = Array.from({length:30},(_,i)=>'<option '+(i===0?'selected':'')+'>'+(i+1)+'</option>').join('');
 
+  // UI
+  var backFn = (cat && cat.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goPiece('+JSON.stringify(ctx.piece)+')';
   view(
     '<div class="card">'
       + b('Retour', backFn, 'btn back')
-      + '<h2>'+ctx.category+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-      + '<div class="pill" style="margin-bottom:10px;"><strong>Intervention :</strong>&nbsp;'+ctx.intervention+'</div>'
+      + '<h2>'+cat+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
+      + '<label>Intervention</label><select id="oneshot-interv">'+invOpts+'</select>'
+      + desigHtml
       + poseBlock
-      + '<label style="margin-top:10px;">Désignation</label>'
-      + '<select id="oneshot-desig">'+desigOpts+'</select>'
-      + customDesigBlock
       + sectionBlock
       + '<label style="margin-top:10px;">Quantité</label>'
       + '<select id="oneshot-qty">'+qtyOpts+'</select>'
-      + '<div id="oneshot-preview" class="muted" style="margin-top:10px;">PU estimé : '
-          + euro(defaultPU)+' — Total : '+euro(defaultPU*1)
-        +'</div>'
+      + '<div id="oneshot-preview" class="muted" style="margin-top:10px;"></div>'
       + '<div class="row" style="margin-top:14px; gap:8px;">'
         + b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
         + b('Ajouter et rester','saveOneShotItem(true)','btn')
@@ -731,83 +673,75 @@ function pageOneShotSelection(){
     + '</div>'
   );
 
-  var $des  = document.getElementById('oneshot-desig');
-  var $qty  = document.getElementById('oneshot-qty');
-  var $prev = document.getElementById('oneshot-preview');
-
+  // Prévisualisation
   function refreshPreview(){
-    var designation = ($des && $des.value) || defaultDesig;
-    var pu = (typeof getPrix==='function' ? getPrix(designation, ctx.intervention) : 0) || 0;
-    var q  = parseInt(($qty && $qty.value) || '1', 10) || 1;
-    $prev.innerHTML = 'PU estimé : '+euro(pu)+' — Total : '+euro(pu*q);
+    var interv = document.getElementById('oneshot-interv').value;
+    var pose   = document.getElementById('oneshot-pose').value;
+    var sectEl = document.getElementById('oneshot-section');
+    var section= sectEl ? sectEl.value : '';
+    var desig  = defaultDesignation;
+    var selDes = document.getElementById('oneshot-desig');
+    var custom = document.getElementById('oneshot-custom-desig');
+    if(selDes) desig = selDes.value;
+    if(custom && custom.value.trim()) desig = custom.value.trim();
+
+    var pu = (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section) : 0;
+    var q  = parseInt(document.getElementById('oneshot-qty').value,10)||1;
+    document.getElementById('oneshot-preview').innerHTML = 'PU : '+euro(pu)+' — Total : '+euro(pu*q);
   }
-  if($des) $des.addEventListener('change', refreshPreview);
-  if($qty) $qty.addEventListener('change', refreshPreview);
+  ['oneshot-interv','oneshot-pose','oneshot-section','oneshot-desig','oneshot-custom-desig','oneshot-qty']
+    .forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('input', refreshPreview); });
   refreshPreview();
 }
 
 function saveOneShotItem(stayHere){
-  var $des  = document.getElementById('oneshot-desig');
-  var $qty  = document.getElementById('oneshot-qty');
-  var $pose = document.getElementById('oneshot-pose');
-  var $custom = document.getElementById('oneshot-custom-desig');
-  var $sect = document.getElementById('oneshot-section');
+  var cat  = ctx.category;
+  var interv = document.getElementById('oneshot-interv').value;
+  var pose   = document.getElementById('oneshot-pose').value;
+  var sectEl = document.getElementById('oneshot-section');
+  var section= sectEl ? sectEl.value : '';
+  var qty    = parseInt(document.getElementById('oneshot-qty').value,10)||1;
 
-  var designation = ($custom && $custom.value && $custom.value.trim())
-    ? $custom.value.trim()
-    : ($des ? ($des.value || 'Élément') : 'Élément');
-
-  var sect = ($sect && $sect.value) ? $sect.value : '';
-  if(sect === 'Personnalisée…'){
-    var s2 = (prompt('Section personnalisée :','')||'').trim();
-    if(s2) sect = s2;
+  var desig = 'Élément';
+  if(cat==='Prises'){ desig='Prise'; }
+  else {
+    var selDes = document.getElementById('oneshot-desig');
+    var custom = document.getElementById('oneshot-custom-desig');
+    if(selDes) desig = selDes.value;
+    if(custom && custom.value.trim()) desig = custom.value.trim();
   }
-  if(sect){ designation += ' — ' + sect; }
 
-  var qty = parseInt($qty ? $qty.value : '1', 10) || 1;
-  var pose = ($pose && $pose.value) ? $pose.value : '';
+  var pu = (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section) : 0;
 
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
-    category: ctx.category,
-    intervention: ctx.intervention,
+    category: cat,
+    intervention: interv,
     pose: pose,
-    designation: designation,
+    designation: (cat==='Circuit spécialisé' && desig==='Circuit spécialisé') ? (desig + (section?(' — '+section):'')) : desig + (section?(' — '+section):''),
     qty: qty,
-    prixU: (typeof getPrix==='function' ? (getPrix(($des && $des.value) || designation, ctx.intervention) || 0) : 0),
+    prixU: pu,
     __tabKey: ctx.piece
   });
   saveLocal();
-
   if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 
-/* =========================================
-   §5 • SPÉCIFIQUE : formulaire dédié
-   ========================================= */
+/* ========== Spécifique (avec intervention choisie) ========== */
 function pageSpecifiqueForm(){
-  var poseOpts  = POSES.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
-  var sectOpts  = SECTIONS_CABLE.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join('');
-
+  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  var invOpts   = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']
+                    .map(i=>'<option value="'+i+'">'+i+'</option>').join('');
   view(
     '<div class="card">'
       + b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
       + '<h2>Spécifique — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-      + '<label>Nom du circuit spécifique</label>'
+      + '<label>Intervention</label><select id="sp-interv">'+invOpts+'</select>'
+      + '<label style="margin-top:10px;">Nom</label>'
       + '<input id="sp-label" placeholder="ex : Bandeau LED, Pompe piscine…" />'
-
-      + '<label style="margin-top:10px;">Type de pose</label>'
-      + '<select id="sp-pose">'+poseOpts+'</select>'
-
-      + '<label style="margin-top:10px;">Section de câblage</label>'
-      + '<select id="sp-section">'+sectOpts+'</select>'
-
-      + '<label style="margin-top:10px;">Prix unitaire (€)</label>'
-      + '<input id="sp-price" type="number" inputmode="decimal" placeholder="0" />'
-
-      + '<label style="margin-top:10px;">Quantité</label>'
-      + '<input id="sp-qty" type="number" inputmode="numeric" min="1" value="1" />'
-
+      + '<label style="margin-top:10px;">Type de pose</label><select id="sp-pose">'+poseOpts+'</select>'
+      + '<label style="margin-top:10px;">Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal" placeholder="0" />'
+      + '<label style="margin-top:10px;">Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1" />'
       + '<div class="row" style="margin-top:14px; gap:8px;">'
         + b('Ajouter la ligne','saveSpecifique(false)','btn primary')
         + b('Ajouter et rester','saveSpecifique(true)','btn')
@@ -815,40 +749,29 @@ function pageSpecifiqueForm(){
     + '</div>'
   );
 }
-
 function saveSpecifique(stayHere){
   var label = (document.getElementById('sp-label').value||'').trim();
   if(!label){ alert('Nom requis.'); return; }
-
   var pose  = document.getElementById('sp-pose').value || '';
-  var sect  = document.getElementById('sp-section').value || '';
-  if(sect==='Personnalisée…'){
-    var s2 = (prompt('Section personnalisée :','')||'').trim();
-    if(s2) sect = s2; else sect = '';
-  }
-  if(sect){ label += ' — ' + sect; }
-
+  var interv= document.getElementById('sp-interv').value || 'Création';
   var prix  = parseFloat(document.getElementById('sp-price').value)||0;
   var qty   = Math.max(1, parseInt(document.getElementById('sp-qty').value,10) || 1);
 
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
     category:'Spécifique',
-    intervention:'',
+    intervention:interv,
     pose:pose,
     designation:label,
     qty:qty,
-    prixU:prix,
+    prixU:roundUp5(prix), // on applique l’arrondi 5+ aussi
     __tabKey: ctx.piece
   });
   saveLocal();
-
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
 }
 
-/* ======================
-   §6 • NOTE DE PIÈCE
-   ====================== */
+/* ========== Note pièce ========== */
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
