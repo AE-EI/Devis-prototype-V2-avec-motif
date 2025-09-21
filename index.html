@@ -353,13 +353,14 @@ function getPrix(designation, intervention){
 
   
 <!-- =============================
-     CHAPITRE 4 : MENU PRINCIPAL (robuste)
+     CHAPITRE 4 : MENU PRINCIPAL & SAUVEGARDES (robuste)
      Index :
-       §4.1 • Accueil principal
+       §4.0 • Clés & helpers de stockage
+       §4.1 • Accueil principal (avec bouton Paramétrage)
        §4.2 • Nouveau devis / Ouverture / Suppression
-       §4.3 • Sauvegarde complète (+ backup)
-       §4.4 • Export / Import des devis sauvegardés
-       §4.5 • Routines internes (backup, merge, recovery)
+       §4.3 • Sauvegarde (nommage, dédoublonnage, MAJ)
+       §4.4 • Export / Import (.json) avec fusion non destructive
+       §4.5 • Routines internes : backup miroir, merge, recovery
      ============================= -->
 <script>
 // === §4.0 • Clés & helpers de stockage =========================
@@ -376,66 +377,81 @@ function writeJSON(key, value){
   try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){}
 }
 
-<script>
+// Petit helper HTML safe (listes)
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// Bouton Paramétrage (sécurisé si le Chap.8 n'est pas chargé)
+function openTarifs(){
+  if (typeof pageTarifsAccueil === 'function') pageTarifsAccueil();
+  else alert('Le chapitre Paramétrage (8) n’est pas encore chargé.');
+}
+
 // === §4.1 • Accueil principal =================================
 function pageMain(){
+  // view() & b() sont définis dans les chapitres communs (2.x)
   view(
     '<div class="card">'
-      +'<h2>Menu principal</h2>'
-      +'<div class="row">'
+      + '<h2>Menu principal</h2>'
+      + '<div class="row">'
         + b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
         + b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
-        + b('⚙️ Paramétrage des tarifs',
-            'if(typeof pageTarifsAccueil===\"function\"){pageTarifsAccueil()}else{alert(\"Le chapitre Paramétrage (8) n\\\'est pas chargé.\")}',
-            'btn')
-      +'</div>'
-    +'</div>'
+        + b('⚙️ Paramétrage des tarifs','openTarifs()','btn')
+      + '</div>'
+    + '</div>'
   , true);
 }
-</script>
+
 // === §4.2 • Nouveau devis / Ouverture / Suppression ===========
 function actionNouveauDevis(){
+  // genId(), saveLocal(), pageHome() → chapitres 2 & 5
   devis = { __id: genId(), __name: '' };
   saveLocal();
   pageHome();
 }
+
 function pageSavedDevis(){
   var saved = getSavedList();
+
   if(!saved.length){
     return view(
       '<div class="card">'
-        + b('Retour','pageMain()','btn back')
+        + b('⬅️ Retour','pageMain()','btn back')
         + '<h2>Mes devis sauvegardés</h2>'
         + '<p class="muted">Aucun devis sauvegardé.</p>'
         + '<div class="row" style="margin-top:10px;">'
           + b('⬆️ Importer…','importSavedDevisUI()','btn')
         + '</div>'
-      + '</div>', true
-    );
+      + '</div>'
+    , true);
   }
+
   var list = saved.map(function(d,i){
+    var title = escapeHtml(d.name || ('Devis '+(i+1)));
+    var date  = escapeHtml(d.date || '');
     return '<div class="pill" style="width:100%; justify-content:space-between;">'
-      + '<span><strong>'+escapeHtml(d.name||('Devis '+(i+1)))+'</strong> '
-      + '<small class="muted">'+escapeHtml(d.date||'')+'</small></span>'
-      + '<span>'
-        + b('Ouvrir','loadDevis('+i+')','btn')
-        + b('Supprimer','deleteDevis('+i+')','btn')
-      + '</span>'
-      +'</div>';
+         +   '<span><strong>'+title+'</strong> <small class="muted">'+date+'</small></span>'
+         +   '<span>'
+         +     b('Ouvrir','loadDevis('+i+')','btn')
+         +     b('Supprimer','deleteDevis('+i+')','btn')
+         +   '</span>'
+         + '</div>';
   }).join('');
 
   view(
     '<div class="card">'
-      + b('Retour','pageMain()','btn back')
+      + b('⬅️ Retour','pageMain()','btn back')
       + '<h2>Mes devis sauvegardés</h2>'
       + '<div class="list">'+list+'</div>'
       + '<div class="row" style="margin-top:12px;">'
         + b('💾 Exporter tout (.json)','exportSavedDevis()','btn')
         + b('⬆️ Importer…','importSavedDevisUI()','btn')
       + '</div>'
-    + '</div>', true
-  );
+    + '</div>'
+  , true);
 }
+
 function loadDevis(idx){
   var saved = getSavedList();
   if(!saved[idx]) return pageSavedDevis();
@@ -444,6 +460,7 @@ function loadDevis(idx){
   saveLocal();
   pageHome();
 }
+
 function deleteDevis(idx){
   if(!confirm('Supprimer ce devis sauvegardé ?')) return;
   var saved = getSavedList();
@@ -457,6 +474,8 @@ function deleteDevis(idx){
 function saveCurrentDevis(){
   ensureId();
   var saved = getSavedList();
+
+  // Cherche par __id (mise à jour si trouvé)
   var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
 
   // Détermine/valide le nom
@@ -472,7 +491,7 @@ function saveCurrentDevis(){
   if(i >= 0){
     saved[i] = record;
   } else {
-    // dédoublonnage par nom (évite 2 entrées strictement homonymes)
+    // Dédoublonnage par nom (évite 2 entrées strictement homonymes)
     var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === devis.__name.toLowerCase(); });
     if(j >= 0){
       if(!confirm('Un devis « '+devis.__name+' » existe déjà. L\'écraser ?')) return;
@@ -505,6 +524,7 @@ function exportSavedDevis(){
   a.click();
   URL.revokeObjectURL(url);
 }
+
 function importSavedDevisUI(){
   var input = document.createElement('input');
   input.type = 'file';
@@ -535,48 +555,49 @@ function importSavedDevisUI(){
 // === §4.5 • Routines internes (backup, merge, recovery) =======
 function getSavedList(){ return readJSON(STORE_KEYS.saved, []); }
 function setSavedList(list){ writeJSON(STORE_KEYS.saved, Array.isArray(list)?list:[]); }
+
+// Sauvegarde miroir (pour récupération si effacement accidentel)
 function makeSavedBackup(list){
-  // On garde un miroir de secours en cas d’effacement accidentel
   writeJSON(STORE_KEYS.backup, {
     saved: Array.isArray(list)?list:[],
     host: location.host,
     t: Date.now()
   });
 }
+
+// Appeler recoverSavedIfEmpty() au boot (cf. init() du Chap. 10)
 function recoverSavedIfEmpty(){
   var saved = getSavedList();
   if(saved && saved.length) return; // rien à faire
   var backup = readJSON(STORE_KEYS.backup, null);
   if(backup && Array.isArray(backup.saved) && backup.saved.length){
-    // Propose restauration
     if(confirm('Aucune sauvegarde active trouvée, mais une copie de secours est disponible. Restaurer ?')){
       setSavedList(backup.saved);
     }
   }
 }
+
+// Fusion non destructive par __id (priorité au plus récent via date)
 function mergeSavedLists(existing, incoming){
-  // Merge par __id (priorité à la source la plus récente via date)
   var map = new Map();
   function put(rec){
     var id = rec?.data?.__id || rec?.__id || genId();
     var cur = map.get(id);
     var recDate = new Date(rec?.date||0).getTime() || 0;
     var curDate = new Date(cur?.date||0).getTime() || 0;
-    if(!cur || recDate >= curDate) map.set(id, { name: rec?.name||rec?.data?.__name||'Devis', date: rec?.date||new Date().toLocaleString(), data: rec?.data||rec });
+    if(!cur || recDate >= curDate){
+      map.set(id, {
+        name: rec?.name || rec?.data?.__name || 'Devis',
+        date: rec?.date || new Date().toLocaleString(),
+        data: rec?.data || rec
+      });
+    }
   }
-  existing.forEach(put);
-  incoming.forEach(put);
+  (existing||[]).forEach(put);
+  (incoming||[]).forEach(put);
   return Array.from(map.values());
 }
-// petit helper HTML safe
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-
-// Au chargement initial : tenter une restauration si “saved” est vide
-// (⚠️ appelle recoverSavedIfEmpty() quelque part au boot — ex. dans init()).
 </script>
-
 
   
 
