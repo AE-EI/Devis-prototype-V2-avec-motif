@@ -1661,8 +1661,9 @@ async function exportZipFull(){
 <!-- =============================
      CHAPITRE 8 : DÉMARRAGE & EXPOSE
      Index :
-       §0  • init() : chargement local + pageMain()
+       §0  • init() : chargement + pageMain()
        §1  • Expose : fonctions rendues accessibles (UI)
+       §2  • Shim compat : neutralise les anciens appels goIntervention(...)
      ============================= -->
 <script>
 /* ======================
@@ -1695,7 +1696,7 @@ Object.assign(window, {
   deleteDevis,
   saveCurrentDevis,
 
-  // Chap.5 — Pièces (flux one-page) + raccourci Ventilation
+  // Chap.5 — Pièces (flux one-page) + Ventilation (raccourci)
   pageHome,
   pageAddPiece,
   confirmPieceChoice,
@@ -1705,14 +1706,14 @@ Object.assign(window, {
   editPieceNote,
   pageSpecifiqueForm,
   saveSpecifique,
-  pagePieceSpecifique: pageSpecifiqueForm,
+  pagePieceSpecifique: pageSpecifiqueForm, // alias
   goCategory,
   goEclairageSub,
   setEclairageBranch,
-  goIntervention,
+  // ❌ plus de goIntervention ici
   pageOneShotSelection,
   saveOneShotItem,
-  goVent, // bouton "Ventilation" depuis l'accueil
+  goVent, // bouton "Ventilation" → pageVentAccueil si chargée
 
   // Chap.6 — Tableaux (multi-tableaux)
   pageTabCreate,
@@ -1733,25 +1734,17 @@ Object.assign(window, {
   pageTabMod_Specifique,
   submitTabMod_Specifique,
 
-  // Chap.6.2 — Ventilation (corrigé, sans rtConduitMut)
+  // Chap.6.2 — Ventilation
   pageVentAccueil,
   pageVentNew,
   saveVentName,
   ventDelete,
   pageVentHome,
   pageVentCreation,
-  kitConduitMut,
-  kitPercMut,
-  exConduitMut,
-  exPercMut,
-  vcPercMut,
-  ventAddKit,
-  ventAddExtracteur,
-  ventAddVentilateur,
-  pageVentRetirage,
-  ventAddRetirage,
-  pageVentEntretien,
-  ventAddEntretien,
+  kitConduitMut, kitPercMut, exConduitMut, exPercMut, vcPercMut,
+  ventAddKit, ventAddExtracteur, ventAddVentilateur,
+  pageVentRetirage, rtConduitMut, ventAddRetirage,
+  pageVentEntretien, ventAddEntretien,
 
   // Chap.7 — Estimatif & exports
   pageEstimatif,
@@ -1761,10 +1754,22 @@ Object.assign(window, {
   exportTextFull,
   exportZipFull,
 
-  // Commun
+  // Navigation commune
   confirmBackHome
 });
 
-// Lancement
+/* =========================================
+   §2 • SHIM COMPAT (sécurité anti-crash)
+   - Si l’ancienne fonction goIntervention est appelée
+     via un vieux bouton, on neutralise proprement.
+   ========================================= */
+if (typeof window.goIntervention !== 'function') {
+  window.goIntervention = function(){
+    alert('⚠️ Ce raccourci "Intervention" n’est plus utilisé.\n' +
+          'Choisissez directement l’intervention dans la page de saisie.');
+  };
+}
+
+// Lancement auto
 init();
 </script>
