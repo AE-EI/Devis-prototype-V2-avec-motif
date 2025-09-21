@@ -376,19 +376,23 @@ function writeJSON(key, value){
   try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){}
 }
 
+<script>
 // === §4.1 • Accueil principal =================================
 function pageMain(){
   view(
     '<div class="card">'
       +'<h2>Menu principal</h2>'
       +'<div class="row">'
-        +b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
-        +b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
+        + b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
+        + b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
+        + b('⚙️ Paramétrage des tarifs',
+            'if(typeof pageTarifsAccueil===\"function\"){pageTarifsAccueil()}else{alert(\"Le chapitre Paramétrage (8) n\\\'est pas chargé.\")}',
+            'btn')
       +'</div>'
     +'</div>'
   , true);
 }
-
+</script>
 // === §4.2 • Nouveau devis / Ouverture / Suppression ===========
 function actionNouveauDevis(){
   devis = { __id: genId(), __name: '' };
