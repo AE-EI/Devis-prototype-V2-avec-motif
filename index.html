@@ -1684,7 +1684,6 @@ function init(){
   }
 }
 
-<script>
 /* ======================
    §1 • EXPOSE (window)
    ====================== */
@@ -1707,15 +1706,15 @@ Object.assign(window, {
   editPieceNote,
   pageSpecifiqueForm,
   saveSpecifique,
-  pagePieceSpecifique: pageSpecifiqueForm,
+  pagePieceSpecifique: pageSpecifiqueForm, // alias
   goCategory,
   goEclairageSub,
   setEclairageBranch,
   pageOneShotSelection,
   saveOneShotItem,
-  goVent,
+  goVent, // bouton "Ventilation" (redirige vers pageVentAccueil si chargée)
 
-  // Chap.6 — Tableaux
+  // Chap.6 — Tableaux (multi-tableaux)
   pageTabCreate,
   saveTabCustomName,
   pageTabHome,
@@ -1723,8 +1722,8 @@ Object.assign(window, {
   addTabPose,
   pageTab_ID,
   submitTab_ID,
-  pageTab_Coupure,
-  submitTab_Coupure,
+  pageTab_Coupure,       // (coupure générale)
+  submitTab_Coupure,     // (coupure générale)
   pageTab_Disjoncteurs,
   pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
@@ -1734,7 +1733,7 @@ Object.assign(window, {
   pageTabMod_Specifique,
   submitTabMod_Specifique,
 
-  // Chap.6.2 — Ventilation
+  // Chap.6.2 — Ventilation (sans rtConduitMut)
   pageVentAccueil,
   pageVentNew,
   saveVentName,
@@ -1743,7 +1742,7 @@ Object.assign(window, {
   pageVentCreation,
   kitConduitMut, kitPercMut, exConduitMut, exPercMut, vcPercMut,
   ventAddKit, ventAddExtracteur, ventAddVentilateur,
-  pageVentRetirage,           /* ← rtConduitMut SUPPRIMÉ ici */
+  pageVentRetirage,      // rtConduitMut SUPPRIMÉ de l'expose
   ventAddRetirage,
   pageVentEntretien, ventAddEntretien,
 
@@ -1759,8 +1758,18 @@ Object.assign(window, {
   confirmBackHome
 });
 
-/* Shim compat facultatif (au cas où un ancien onclick traîne) */
-if (typeof window.rtConduitMut !== 'function') {
-  window.rtConduitMut = function(){ /* plus utilisé */ };
+/* =========================================
+   §2 • SHIM COMPAT (sécurité anti-crash)
+   - Si l’ancienne fonction goIntervention est appelée
+     via un vieux bouton, on neutralise proprement.
+   ========================================= */
+if (typeof window.goIntervention !== 'function') {
+  window.goIntervention = function(){
+    alert('⚠️ Ce raccourci "Intervention" n’est plus utilisé.\n' +
+          'Choisissez directement l’intervention dans la page de saisie.');
+  };
 }
+
+// Lancement auto
+init();
 </script>
