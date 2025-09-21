@@ -2099,6 +2099,206 @@ Object.assign(window, {
 });
 </script>
 
+  <!-- =============================
+     8.7 • Personnalisation avancée (JSON, ajout-only)
+     ============================= -->
+<script>
+// ---------- Stockage ----------
+const CUSTOM_SCHEMA_KEY = 'tarifsCustomSchema';
+
+// ---------- Helpers merge (ajouts SANS écrasement du tronc) ----------
+function addUniqueToArray(baseArr, addArr){
+  if(!Array.isArray(baseArr) || !Array.isArray(addArr)) return;
+  addArr.forEach(v => { if(baseArr.indexOf(v) === -1) baseArr.push(v); });
+}
+function mergeObjectAddOnly(base, add){
+  if(!add || typeof add!=='object') return;
+  Object.keys(add).forEach(k=>{
+    const v = add[k];
+    if(base[k] == null){
+      // clé nouvelle → on ajoute telle quelle
+      base[k] = Array.isArray(v) ? v.slice() : (typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v);
+    }else{
+      // clé existante → on N'ÉCRASE PAS, on complète seulement
+      if(Array.isArray(base[k]) && Array.isArray(v)) addUniqueToArray(base[k], v);
+      else if(typeof base[k]==='object' && typeof v==='object') mergeObjectAddOnly(base[k], v);
+      // sinon (nombre/string déjà défini) → on ne touche pas
+    }
+  });
+}
+
+// ---------- Application du schéma perso au runtime ----------
+function applyCustomSchema(){
+  let custom;
+  try{ custom = JSON.parse(localStorage.getItem(CUSTOM_SCHEMA_KEY)||'{}')||{}; }catch(e){ custom = {}; }
+
+  // 1) Listes “simples” (catégories, poses, sections) — ajouts only
+  if(Array.isArray(custom.CATEGORIES))        addUniqueToArray(CATEGORIES, custom.CATEGORIES);
+  if(Array.isArray(custom.POSES))             addUniqueToArray(POSES, custom.POSES);
+  if(Array.isArray(custom.SECTIONS_CABLE))    addUniqueToArray(SECTIONS_CABLE, custom.SECTIONS_CABLE);
+
+  // 2) Désignations par branche (ex: "Éclairage/Luminaires": ["Rail LED", ...])
+  if(custom.DESIGNATIONS_PAR_CATEGORIE && typeof custom.DESIGNATIONS_PAR_CATEGORIE==='object'){
+    Object.keys(custom.DESIGNATIONS_PAR_CATEGORIE).forEach(cat=>{
+      const adds = custom.DESIGNATIONS_PAR_CATEGORIE[cat];
+      if(!Array.isArray(adds)) return;
+      if(!DESIGNATIONS_PAR_CATEGORIE[cat]) DESIGNATIONS_PAR_CATEGORIE[cat] = [];
+      addUniqueToArray(DESIGNATIONS_PAR_CATEGORIE[cat], adds);
+    });
+  }
+
+  // 3) Tarifs pour les NOUVELLES désignations d’éclairage (on n’écrase pas les existantes)
+  //    Format attendu :
+  //    { "TARIFS_BASE": { "eclairage": { "Ma nouvelle désignation": { "Création": 120, ... } } } }
+  if(custom.TARIFS_BASE && custom.TARIFS_BASE.eclairage){
+    const src = custom.TARIFS_BASE.eclairage;
+    Object.keys(src).forEach(desig=>{
+      if(!TARIFS_BASE.eclairage[desig]) TARIFS_BASE.eclairage[desig] = {}; // nouvelle désignation permise
+      mergeObjectAddOnly(TARIFS_BASE.eclairage[desig], src[desig]);        // ajoute interventions sans écraser celles déjà présentes
+    });
+  }
+
+  // 4) (facultatif) coefficients de pose/sections — ajoute les nouvelles clés uniquement
+  if(custom.COEFF_POSE)           mergeObjectAddOnly(COEFF_POSE, custom.COEFF_POSE);
+  if(custom.COEFF_SECTIONS_CS)    mergeObjectAddOnly(COEFF_SECTIONS_CS, custom.COEFF_SECTIONS_CS);
+}
+// Applique au chargement du chapitre
+applyCustomSchema();
+
+// ---------- UI ----------
+function pageTarifsPersoJSON(){
+  // modèle minimal affiché si aucun JSON encore enregistré
+  const example = JSON.stringify({
+    "CATEGORIES": ["Domotique"],                // ajouté au menu Catégorie
+    "POSES": ["Goulotte design"],               // ajouté aux types de pose
+    "SECTIONS_CABLE": ["10 mm²"],               // ajouté aux choix de section
+    "DESIGNATIONS_PAR_CATEGORIE": {
+      "Éclairage/Luminaires": ["Rail LED", "Suspension déco"],
+      "Éclairage/Commandes": ["Variateur rotatif"],
+      "Circuit spécialisé": ["Pompe de relevage"]  // libellé suggéré lors de la saisie CS
+    },
+    "TARIFS_BASE": {
+      "eclairage": {
+        "Rail LED": {
+          "Création": 120,
+          "Remplacement luminaire": 40
+        },
+        "Variateur rotatif": {
+          "Création": 55,
+          "Remplacement appareillage": 30
+        }
+      }
+    }
+  }, null, 2);
+
+  let current = '';
+  try{ current = localStorage.getItem(CUSTOM_SCHEMA_KEY) || ''; }catch(e){}
+
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Personnalisation avancée (JSON)</h2>'
+      + '<p class="muted">Ajoute catégories, poses, sections, désignations et <em>tarifs pour les nouvelles désignations</em>. Le tronc existant n’est jamais écrasé.</p>'
+      + '<label>JSON (ajouts only)</label>'
+      + '<textarea id="custom-json" style="width:100%;height:320px;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;"></textarea>'
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsPersoJSON()','btn primary')
+        + b('🧹 Réinitialiser','resetTarifsPersoJSON()','btn')
+        + b('⬇️ Exporter','exportTarifsPersoJSON()','btn')
+        + b('⬆️ Importer','importTarifsPersoJSON()','btn')
+      + '</div>'
+      + '<details style="margin-top:12px;"><summary>Exemple de structure</summary>'
+      + '<pre style="margin-top:8px">'+escapeHtml(example)+'</pre>'
+      + '</details>'
+    + '</div>'
+    + '</div>'
+  );
+
+  // remplir la zone
+  const ta = document.getElementById('custom-json');
+  ta.value = current || example;
+}
+
+function saveTarifsPersoJSON(){
+  const ta = document.getElementById('custom-json');
+  let obj;
+  try{
+    obj = JSON.parse(ta.value);
+  }catch(e){
+    alert('❌ JSON invalide : '+e.message);
+    return;
+  }
+  // garde-fous simples : seules ces racines sont acceptées
+  const allowed = ['CATEGORIES','POSES','SECTIONS_CABLE','DESIGNATIONS_PAR_CATEGORIE','TARIFS_BASE','COEFF_POSE','COEFF_SECTIONS_CS'];
+  const ok = Object.keys(obj).every(k=>allowed.indexOf(k)>=0);
+  if(!ok){ alert('❌ Clés non autorisées au niveau racine. Racines valides : '+allowed.join(', ')); return; }
+
+  localStorage.setItem(CUSTOM_SCHEMA_KEY, JSON.stringify(obj));
+  applyCustomSchema();
+  alert('✅ Ajouts enregistrés. Ils sont utilisables immédiatement.');
+}
+
+function resetTarifsPersoJSON(){
+  if(!confirm('Réinitialiser toutes les personnalisations JSON ?')) return;
+  localStorage.removeItem(CUSTOM_SCHEMA_KEY);
+  // recharger les listes runtime (on repart sur le tronc)
+  location.reload();
+}
+
+function exportTarifsPersoJSON(){
+  const raw = localStorage.getItem(CUSTOM_SCHEMA_KEY) || '{}';
+  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'minidevis_personnalisation.json';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function importTarifsPersoJSON(){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'application/json';
+  input.onchange = function(){
+    const f = input.files && input.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = function(){
+      try{
+        const obj = JSON.parse(rd.result||'{}');
+        localStorage.setItem(CUSTOM_SCHEMA_KEY, JSON.stringify(obj));
+        applyCustomSchema();
+        alert('✅ Fichier importé et appliqué.');
+        pageTarifsPersoJSON();
+      }catch(e){ alert('❌ Import impossible : '+e.message); }
+    };
+    rd.readAsText(f, 'utf-8');
+  };
+  input.click();
+}
+
+// ---------- Hook : ajoute le bouton dans l'accueil Chap. 8 ----------
+(function patchTarifsAccueilButton(){
+  // on monkey-patche la fonction existante pour insérer le bouton si pas déjà présent
+  const _orig = window.pageTarifsAccueil;
+  if(typeof _orig === 'function'){
+    window.pageTarifsAccueil = function(){
+      // construire la vue standard puis la modifier en y ajoutant le bouton
+      _orig();
+      const app = document.getElementById('app');
+      if(!app) return;
+      const btnLabel = 'Personnalisation avancée (JSON)';
+      if(app.innerHTML.indexOf(btnLabel) === -1){
+        app.innerHTML = app.innerHTML.replace(
+          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
+          '$1<div class="card tarif-card"><div class="row" style="gap:8px;">'
+          + '<button class="btn ghost" onclick="pageTarifsPersoJSON()">'+btnLabel+'</button>'
+          + '</div></div>'
+        );
+      }
+    };
+  }
+})();
+</script>
+
 
 
 
