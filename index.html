@@ -343,19 +343,26 @@ function getPrix(designation, intervention){
   <!-- =============================
      CHAPITRE 4 : MENU PRINCIPAL
      Index :
-       §4.1 • Accueil principal
+       §4.1 • Accueil principal (+ bouton Paramétrage tarifs)
        §4.2 • Nouveau devis / Ouverture / Suppression
        §4.3 • Sauvegarde complète
      ============================= -->
 <script>
+// Petit helper pour ouvrir le paramétrage en toute sécurité
+function openTarifs(){
+  if (typeof pageTarifs === 'function') pageTarifs();
+  else alert('Le chapitre « Paramétrage des tarifs » (8) n’est pas encore chargé.');
+}
+
 // §4.1 • Accueil principal
 function pageMain(){
   view(
     '<div class="card">'
       +'<h2>Menu principal</h2>'
       +'<div class="row">'
-        +b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
-        +b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
+        + b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
+        + b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
+        + b('⚙️ Paramétrage tarifs','openTarifs()','btn')   /* ⬅️ Nouveau bouton */
       +'</div>'
     +'</div>'
   , true);
