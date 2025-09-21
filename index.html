@@ -200,7 +200,7 @@ var CATEGORIES = ['Prises','Éclairage','Circuit spécialisé','Spécifique'];
 // Modes de pose
 var POSES = [
   'Encastré maçonnerie','Placo','Semi-encastré',
-  'Sur-mesure','Saillie avec moulure','Sous tube IRL'
+  'Saillie avec moulure','Sous tube IRL','Sur-mesure'
 ];
 
 // Sections de câblage (avec option personnalisée)
@@ -229,53 +229,53 @@ var DESIGNATIONS_PAR_CATEGORIE = {
 */
 var TARIFS_BASE = {
   prises: { // par intervention
-    'Création': 120,
-    'Remplacement appareillage': 20,
-    'Recâblage avec remplacement appareillage': 70,
-    'Recâblage sans remplacement appareillage': 50
+    'Création': 110,
+    'Remplacement appareillage': 30,
+    'Recâblage avec remplacement appareillage': 85,
+    'Recâblage sans remplacement appareillage': 65
   },
   eclairage: { // par désignation
     'Point de centre': {
       'Création': 100,
       'Remplacement luminaire': 30,
-      'Recâblage avec remplacement luminaire': 75,
-      'Recâblage sans remplacement luminaire': 50
+      'Recâblage avec remplacement luminaire': 95,
+      'Recâblage sans remplacement luminaire': 65
     },
     'Applique': {
       'Création': 100,
       'Remplacement luminaire': 30,
-      'Recâblage avec remplacement luminaire': 75,
-      'Recâblage sans remplacement luminaire': 50
+      'Recâblage avec remplacement luminaire': 95,
+      'Recâblage sans remplacement luminaire': 65
     },
     'Interrupteur simple': {
-      'Création': 40,
+      'Création': 50,
       'Remplacement appareillage': 25,
       'Recâblage avec remplacement appareillage': 75,
-      'Recâblage sans remplacement appareillage': 50
+      'Recâblage sans remplacement appareillage': 55
     },
     'Interrupteur double': {
-      'Création': 60,
-      'Remplacement appareillage': 35,
+      'Création': 50,
+      'Remplacement appareillage': 30,
       'Recâblage avec remplacement appareillage': 85,
-      'Recâblage sans remplacement appareillage': 50
+      'Recâblage sans remplacement appareillage': 55
     }
   },
   circuit_specialise_base: { // un seul prix de base, par intervention
-    'Création': 140,
-    'Remplacement appareillage': 40,
-    'Recâblage avec remplacement appareillage': 90,
-    'Recâblage sans remplacement appareillage': 70
+    'Création': 110,
+    'Remplacement appareillage': 30,
+    'Recâblage avec remplacement appareillage': 85,
+    'Recâblage sans remplacement appareillage': 65
   }
 };
 
 // Coefficients de POSE (appliqués à Prises, Éclairage et CS)
 var COEFF_POSE = {
   'Placo': 1.00,
-  'Encastré maçonnerie': 1.30,
-  'Semi-encastré': 1.15,
-  'Sur-mesure': 1.25,
-  'Saillie avec moulure': 1.10,
-  'Sous tube IRL': 1.05
+  'Encastré maçonnerie': 1.50,
+  'Semi-encastré': 1.40,
+  'Sur-mesure': 1.60,
+  'Saillie avec moulure': 1.35,
+  'Sous tube IRL': 1.35
 };
 
 // Coefficients de SECTION pour CS :
@@ -283,25 +283,25 @@ var COEFF_POSE = {
 var COEFF_SECTIONS_CS = {
   '0,75 mm²': 1.00,
   '1,5 mm²': 1.00,
-  '2,5 mm²': 1.10,
-  '6 mm²': 1.20
+  '2,5 mm²': 1.20,
+  '6 mm²': 1.40
 };
 
 /* ============ Tableau & distribution (inchangé) ============ */
 var TARIFS_TABLEAU = {
-  pose_base_13: { 1:60, 2:80, 3:100, 4:120 },
+  pose_base_13: { 1:70, 2:90, 3:110, 4:130 },
   coef: {
     modules: { 13:1.00, 18:1.30, 24:1.50 },
     pose: { 'Saillie':1.00, 'Encastré':1.70 },
     intervention: { 'Création':1.00, 'Avec dépose de l’existant':1.30 }
   },
   disjoncteurs: { 2:32, 10:25, 16:25, 20:25, 32:32, 40:45 },
-  inter_diff: { '40A-AC':60, '40A-A':80, '63A-AC':100, '63A-A':120 },
+  inter_diff: { '40A-AC':70, '40A-A':90, '63A-AC':110, '63A-A':130 },
   commandes: {
-    'Télérupteur':50,
-    'Télérupteur silencieux':70,
-    'Horloge mécanique + Disjoncteur 2A':80,
-    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A':130
+    'Télérupteur':60,
+    'Télérupteur silencieux':80,
+    'Horloge mécanique + Disjoncteur 2A':90,
+    'Horloge mécanique + contacteur heures creuses + Disjoncteur 2A':140
   }
 };
 
