@@ -1684,6 +1684,7 @@ function init(){
   }
 }
 
+<script>
 /* ======================
    §1 • EXPOSE (window)
    ====================== */
@@ -1706,16 +1707,15 @@ Object.assign(window, {
   editPieceNote,
   pageSpecifiqueForm,
   saveSpecifique,
-  pagePieceSpecifique: pageSpecifiqueForm, // alias
+  pagePieceSpecifique: pageSpecifiqueForm,
   goCategory,
   goEclairageSub,
   setEclairageBranch,
-  // ❌ plus de goIntervention ici
   pageOneShotSelection,
   saveOneShotItem,
-  goVent, // bouton "Ventilation" → pageVentAccueil si chargée
+  goVent,
 
-  // Chap.6 — Tableaux (multi-tableaux)
+  // Chap.6 — Tableaux
   pageTabCreate,
   saveTabCustomName,
   pageTabHome,
@@ -1743,7 +1743,8 @@ Object.assign(window, {
   pageVentCreation,
   kitConduitMut, kitPercMut, exConduitMut, exPercMut, vcPercMut,
   ventAddKit, ventAddExtracteur, ventAddVentilateur,
-  pageVentRetirage, rtConduitMut, ventAddRetirage,
+  pageVentRetirage,           /* ← rtConduitMut SUPPRIMÉ ici */
+  ventAddRetirage,
   pageVentEntretien, ventAddEntretien,
 
   // Chap.7 — Estimatif & exports
@@ -1758,18 +1759,8 @@ Object.assign(window, {
   confirmBackHome
 });
 
-/* =========================================
-   §2 • SHIM COMPAT (sécurité anti-crash)
-   - Si l’ancienne fonction goIntervention est appelée
-     via un vieux bouton, on neutralise proprement.
-   ========================================= */
-if (typeof window.goIntervention !== 'function') {
-  window.goIntervention = function(){
-    alert('⚠️ Ce raccourci "Intervention" n’est plus utilisé.\n' +
-          'Choisissez directement l’intervention dans la page de saisie.');
-  };
+/* Shim compat facultatif (au cas où un ancien onclick traîne) */
+if (typeof window.rtConduitMut !== 'function') {
+  window.rtConduitMut = function(){ /* plus utilisé */ };
 }
-
-// Lancement auto
-init();
 </script>
