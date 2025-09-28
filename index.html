@@ -2303,10 +2303,294 @@ function importTarifsPersoJSON(){
 
 
 
+<!-- =============================
+     CHAPITRE 9 : MODIFICATION TABLEAU
+     - Accueil "Modification Tableau" (depuis Accueil principal)
+     - Recâblage tableau (par circuit)
+     - Déplacement tableau (rallonge circuits, boîte, goulotte)
+     - Paramétrage tarifs (bouton dans Chap. 8)
+     ============================= -->
+<script>
+/* ========= Tarifs par défaut (personnalisables) =========
+   - Recâblage : prix par circuit
+   - Déplacement :
+       • rallonge circuit : prix par circuit
+       • boîte : prix de base + prix par circuit
+       • goulotte : prix de base + prix par mètre
+*/
+var TARIFS_MODIF = window.TARIFS_MODIF || {
+  tableau: {
+    recablage: { parCircuit: 30 },        // € / circuit (tu peux changer dans Paramétrage)
+    deplacement: {
+      rallongeCircuit: 20,                // € / circuit
+      boiteBase: 50,                      // €
+      boiteParCircuit: 10,                // € / circuit
+      goulotteBase: 50,                   // €
+      goulotteParM: 20                    // € / mètre
+    }
+  }
+};
+
+// — Merge possible depuis les overrides existants (Chap. 8)
+(function applyTarifsModifOverrides(){
+  try{
+    var ov = JSON.parse(localStorage.getItem('tarifsOverrides')||'{}')||{};
+    if(ov.TARIFS_MODIF){
+      deepMergeTarifs(TARIFS_MODIF, ov.TARIFS_MODIF); // réutilise le helper du Chap. 8
+    }
+  }catch(e){}
+})();
+
+/* ========= Helpers locaux ========= */
+function ensureModifKey(){
+  var key = 'Modification Tableau';
+  if(!devis[key]) devis[key] = { __base:'Modification Tableau', items:[], note:'' };
+  return key;
+}
+function addModifItem(designation, qty, pu, extra){
+  var key = ensureModifKey();
+  devis[key].items.push(Object.assign({
+    category: 'Modification Tableau',
+    designation: designation,
+    qty: Math.max(1, +qty||1),
+    prixU: +pu || 0,
+    __tabKey: key
+  }, extra||{}));
+  saveLocal();
+}
+function numberOptions(n){ return Array.from({length:n+1},(_,i)=>'<option value="'+i+'" '+(i===0?'selected':'')+'>'+i+'</option>').join(''); }
+
+/* ========= Accueil Modification ========= */
+function pageModifAccueil(){
+  var key = ensureModifKey();
+  var s = devis[key] || {};
+  var list = (s.items||[]).length
+    ? '<ul>'+s.items.map(function(it,i){
+        var t = (+it.qty||0) * (+it.prixU||0);
+        return '<li>'+it.designation+' ('+it.qty+' × '+euro(it.prixU)+' = '+euro(t)+') '
+              + b('×','delModifLine('+i+')','btn') + '</li>';
+      }).join('')+'</ul>'
+    : '<p class="muted">Aucune ligne pour l’instant.</p>';
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageHome()','btn back')
+      + '<h2>Modification Tableau</h2>'
+      + '<div class="row" style="gap:8px;">'
+        + b('Recâblage tableau','pageModifRecablage()','btn primary')
+        + b('Déplacement tableau','pageModifDeplacement()','btn')
+      + '</div>'
+    + '</div>'
+    + '<div class="card" style="margin-top:12px;">'
+      + '<h2>Lignes enregistrées</h2>'
+      + list
+    + '</div>'
+  );
+}
+function delModifLine(idx){
+  var key = ensureModifKey();
+  (devis[key].items||[]).splice(idx,1);
+  saveLocal(); pageModifAccueil();
+}
+
+/* ========= Recâblage tableau =========
+   Simple : nombre de circuits × tarif par circuit (configurable) */
+function pageModifRecablage(){
+  var pu = +((TARIFS_MODIF.tableau||{}).recablage||{}).parCircuit || 0;
+  view(
+    '<div class="card">'
+      + b('Retour','pageModifAccueil()','btn back')
+      + '<h2>Recâblage du tableau</h2>'
+      + '<label>Nombre de circuits à recâbler</label>'
+      + '<select id="mr-nb">'+numberOptions(30)+'</select>'
+      + '<p class="muted" style="margin-top:6px;">Tarif unitaire actuel : '+euro(pu)+' / circuit (modifiable dans Paramétrage ▶︎ Modification — Tableau)</p>'
+      + '<div class="row" style="margin-top:10px;">'
+        + b('Ajouter','submitModifRecablage()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+function submitModifRecablage(){
+  var nb = parseInt(document.getElementById('mr-nb').value,10)||0;
+  if(nb<=0){ alert('Choisis au moins 1 circuit.'); return; }
+  var pu = +((TARIFS_MODIF.tableau||{}).recablage||{}).parCircuit || 0;
+  addModifItem('Recâblage tableau — '+nb+' circuit(s)', nb, pu, {unit:'circuit'});
+  pageModifAccueil();
+}
+
+/* ========= Déplacement tableau =========
+   Sélecteurs :
+   1) nb circuits à rallonger → PU = rallongeCircuit (× nb circuits)
+   2) boîte dérivation (liste simple, 1 réf pour l’instant)
+      → PU = boiteBase + (boiteParCircuit × nb circuits)
+   3) goulotte : longueur (m) → PU = goulotteBase + (goulotteParM × longueur) */
+function pageModifDeplacement(){
+  var T = (TARIFS_MODIF.tableau||{}).deplacement||{};
+  view(
+    '<div class="card">'
+      + b('Retour','pageModifAccueil()','btn back')
+      + '<h2>Déplacement du tableau</h2>'
+
+      + '<label>1) Nombre de circuits à rallonger</label>'
+      + '<select id="md-nb">'+numberOptions(30)+'</select>'
+      + '<small class="muted">Tarif : '+euro(+T.rallongeCircuit||0)+' par circuit</small>'
+
+      + '<label style="margin-top:12px;">2) Boîte de dérivation</label>'
+      + '<select id="md-boite"><option value="Boîte Michaud 250×300">Boîte Michaud 250×300</option></select>'
+      + '<small class="muted">Tarif : base '+euro(+T.boiteBase||0)+' + '
+      + euro(+T.boiteParCircuit||0) + ' par circuit</small>'
+
+      + '<label style="margin-top:12px;">3) Longueur de goulotte (m)</label>'
+      + '<input id="md-goulotte" type="number" min="0" step="0.1" value="0" inputmode="decimal" />'
+      + '<small class="muted">Tarif : base '+euro(+T.goulotteBase||0)+' + '
+      + euro(+T.goulotteParM||0)+' par mètre</small>'
+
+      + '<div class="row" style="margin-top:14px;">'
+        + b('Ajouter le déplacement','submitModifDeplacement()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+function submitModifDeplacement(){
+  var T = (TARIFS_MODIF.tableau||{}).deplacement||{};
+  var nb = parseInt(document.getElementById('md-nb').value,10)||0;
+  var boite = document.getElementById('md-boite').value || 'Boîte de dérivation';
+  var L = Math.max(0, parseFloat(document.getElementById('md-goulotte').value)||0);
+
+  // 1) Rallonge circuits
+  if(nb>0){
+    addModifItem('Déplacement tableau — rallonge circuits', nb, +T.rallongeCircuit||0, {unit:'circuit'});
+  }
+
+  // 2) Boîte dérivation (1 unité, PU = base + 10€/circuit)
+  var puBoite = (+T.boiteBase||0) + ((+T.boiteParCircuit||0) * nb);
+  addModifItem('Déplacement tableau — '+boite+' (pour '+nb+' circuit(s))', 1, puBoite);
+
+  // 3) Goulotte (1 unité, PU = base + 20€/m × L)
+  var puGoulotte = (+T.goulotteBase||0) + ((+T.goulotteParM||0) * L);
+  addModifItem('Déplacement tableau — goulotte ('+L+' m)', 1, puGoulotte);
+
+  pageModifAccueil();
+}
+
+/* ========= Injection bouton dans l’Accueil principal ========= */
+(function patchHomeForModif(){
+  var _orig = window.pageHome;
+  if(typeof _orig!=='function') return;
+  window.pageHome = function(){
+    _orig();
+    var app = document.getElementById('app');
+    if(!app) return;
+    var label = 'Modification Tableau';
+    if(app.innerHTML.indexOf(label)===-1){
+      // injecte le bouton à côté des 3 boutons (Ajouter pièce / Créer un tableau / Ventilation)
+      app.innerHTML = app.innerHTML.replace(
+        /(<div class="row">[\s\S]*?Créer un tableau[\s\S]*?<\/button>)/,
+        '$1'+ ' ' + '<button class="btn" onclick="pageModifAccueil()">'+label+'</button>'
+      );
+    }
+  };
+})();
+
+/* ========= Mapping groupe pour l’estimatif ========= */
+(function ensureGroupMapping(){
+  window.PIECE_GROUPS = window.PIECE_GROUPS || {};
+  if(!window.PIECE_GROUPS['Modification Tableau']){
+    window.PIECE_GROUPS['Modification Tableau'] = 'Tableau & distribution';
+  }
+})();
+
+/* ========= Paramétrage tarifs : ajoute un bouton dans Chap. 8 ========= */
+(function patchTarifsAccueilForModif(){
+  var _orig = window.pageTarifsAccueil;
+  if(typeof _orig!=='function') return;
+  window.pageTarifsAccueil = function(){
+    _orig();
+    var app = document.getElementById('app');
+    if(!app) return;
+    var btnLabel = 'Modification — Tableau';
+    if(app.innerHTML.indexOf(btnLabel)===-1){
+      app.innerHTML = app.innerHTML.replace(
+        /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*)<\/div>\s*<\/div>/,
+        '$1'
+        + '<div class="card tarif-card">'
+        +   '<div class="row" style="gap:8px;">'
+        +     '<button class="btn" onclick="pageTarifsModifTableau()">'+btnLabel+'</button>'
+        +   '</div>'
+        + '</div></div>'
+      );
+    }
+  };
+})();
+
+/* ========= Page Paramétrage tarifs — Modification Tableau ========= */
+function pageTarifsModifTableau(){
+  var R  = (TARIFS_MODIF.tableau||{}).recablage||{};
+  var D  = (TARIFS_MODIF.tableau||{}).deplacement||{};
+  view(
+    '<div class="tarif-wrap">'
+    + '<div class="card tarif-card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Paramétrage — Modification du tableau</h2>'
+
+      + '<h3>Recâblage</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Prix par circuit</label><input id="tmod-rec-pc" type="number" step="1" inputmode="decimal" value="'+(+R.parCircuit||0)+'" /><small>€/circuit</small></div>'
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Déplacement</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Rallonge : prix par circuit</label><input id="tmod-dep-rc" type="number" step="1" inputmode="decimal" value="'+(+D.rallongeCircuit||0)+'" /></div>'
+        + '<div class="field"><label>Boîte : prix de base</label><input id="tmod-dep-bb" type="number" step="1" inputmode="decimal" value="'+(+D.boiteBase||0)+'" /></div>'
+        + '<div class="field"><label>Boîte : + par circuit</label><input id="tmod-dep-bpc" type="number" step="1" inputmode="decimal" value="'+(+D.boiteParCircuit||0)+'" /></div>'
+        + '<div class="field"><label>Goulotte : prix de base</label><input id="tmod-dep-gb" type="number" step="1" inputmode="decimal" value="'+(+D.goulotteBase||0)+'" /></div>'
+        + '<div class="field"><label>Goulotte : + par mètre</label><input id="tmod-dep-gpm" type="number" step="1" inputmode="decimal" value="'+(+D.goulotteParM||0)+'" /></div>'
+      + '</div>'
+
+      + '<div class="tarif-actions">'
+        + b('💾 Enregistrer','saveTarifsModifTableau()','btn primary')
+      + '</div>'
+    + '</div>'
+    + '</div>'
+  );
+}
+function saveTarifsModifTableau(){
+  var ov = {
+    TARIFS_MODIF: {
+      tableau: {
+        recablage: { parCircuit: +(document.getElementById('tmod-rec-pc').value||0) },
+        deplacement: {
+          rallongeCircuit: +(document.getElementById('tmod-dep-rc').value||0),
+          boiteBase:       +(document.getElementById('tmod-dep-bb').value||0),
+          boiteParCircuit: +(document.getElementById('tmod-dep-bpc').value||0),
+          goulotteBase:    +(document.getElementById('tmod-dep-gb').value||0),
+          goulotteParM:    +(document.getElementById('tmod-dep-gpm').value||0)
+        }
+      }
+    }
+  };
+  // merge en mémoire
+  deepMergeTarifs(TARIFS_MODIF, ov.TARIFS_MODIF);
+  // stocker dans le même mécanisme que Chap. 8
+  saveTarifsOverrides(ov);
+}
+
+/* ========= Expose ========= */
+Object.assign(window, {
+  pageModifAccueil,
+  pageModifRecablage, submitModifRecablage,
+  pageModifDeplacement, submitModifDeplacement,
+  pageTarifsModifTableau
+});
+</script>
+
+
+  
+
 
   
   <!-- ============================================================
-     CHAPITRE 9 : ESTIMATIF & EXPORTS — vNEXT
+     CHAPITRE 10 : ESTIMATIF & EXPORTS — vNEXT
      Index :
        §7.0 • Détection / libellé des pièces (Tableaux inclus)
        §7.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
@@ -2618,7 +2902,7 @@ async function exportZipFull(){
 
   
 <!-- =============================
-     CHAPITRE 10 : DÉMARRAGE & EXPOSE
+     CHAPITRE 12 : DÉMARRAGE & EXPOSE
      Index :
        §0  • init() : chargement + reprise sauvegardes + pageMain()
        §1  • Expose : fonctions rendues accessibles (UI)
