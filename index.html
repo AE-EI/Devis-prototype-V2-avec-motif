@@ -1771,12 +1771,16 @@ function ventAddEntretien(key){
 
 
 
+  
+
 
 
 
 
   
-  
+
+
+
 <!-- =============================
      CHAPITRE 8 : PARAMÉTRAGE DES TARIFS
      Index :
@@ -2205,3 +2209,547 @@ function importTarifsPersoJSON(){
   }; input.click();
 }
 </script>
+
+
+
+  
+
+  
+
+
+
+
+
+
+  
+
+  
+
+<!-- =============================
+     CHAPITRE 9 : MODIFICATIONS DE TABLEAU
+     Index :
+       9.0 • Styles & Tarifs
+       9.1 • Accueil des modifications
+       9.2 • Déplacement du tableau (circuits + boîte + goulotte)
+       9.3 • Recâblage du tableau (+ option Remplacement coffret)
+     ============================= -->
+<script>
+// ===== 9.0 • Styles & Tarifs =====
+(function(){
+  var css = `
+    .mtx { margin-top:14px; }
+    .vblock { display:block; margin-top:10px; }
+    .fieldset { border:1px solid var(--line); background:#fff; border-radius:10px; padding:12px; margin-top:10px; }
+    .fieldset h3 { margin:0 0 8px; font-size:16px; }
+  `;
+  var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
+})();
+
+window.TARIFS_TABMODS = window.TARIFS_TABMODS || {
+  deplacement: {
+    par_circuit: 20,          // € / circuit à rallonger
+    boite_base: 50,           // € base pour la boîte
+    boite_par_circuit: 10,    // € additionnels par circuit
+    goulotte_base: 50,        // € base pour la goulotte
+    goulotte_par_m: 20        // € / mètre
+  },
+  recablage: {
+    par_circuit: 18,          // € / circuit recâblé
+    // si Remplacement coffret = Oui, on valorise le coffret via getTabPrice(rangs,modules,pose,interventionParDéfaut)
+    intervention_rempl_defaut: 'Avec dépose de l’existant'
+  }
+};
+
+// Outil local
+function _selectOpts(n){ return Array.from({length:n+1},(_,i)=>'<option value="'+i+'" '+(i===0?'selected':'')+'>'+i+'</option>').join(''); }
+function _ensureModsSection(){
+  var key='Modifications de Tableau';
+  if(!devis[key]) devis[key] = { __base:'Modifications de Tableau', items:[], note:'' };
+  return key;
+}
+
+// ===== 9.1 • Accueil =====
+function pageTabModsAccueil(){
+  view(
+    '<div class="card">'
+      + b('Retour','pageHome()','btn back')
+      + '<h2>Modifications de Tableau</h2>'
+      + '<div class="row mtx">'
+        + b('Déplacement du tableau','pageTabModsDeplacement()','btn primary')
+        + b('Recâblage du tableau','pageTabModsRecablage()','btn')
+      + '</div>'
+    + '</div>'
+  );
+}
+
+// ===== 9.2 • Déplacement du tableau =====
+function pageTabModsDeplacement(){
+  var t = TARIFS_TABMODS.deplacement || {};
+  var circuits = _selectOpts(30);
+  var boites = [{id:'MICHAUD_250x300', label:'Boîte Michaud 250×300'}]
+    .map(b=>'<option value="'+b.id+'">'+b.label+'</option>').join('');
+  view(
+    '<div class="card">'
+      + b('Retour','pageTabModsAccueil()','btn back')
+      + '<h2>Déplacement du tableau</h2>'
+      + '<div class="fieldset">'
+        + '<h3>1) Nombre de circuits à rallonger</h3>'
+        + '<label class="vblock">Choix</label>'
+        + '<select id="mt-circuits">'+circuits+'</select>'
+        + '<small class="muted vblock">Tarif : '+euro(+t.par_circuit||20)+' / circuit</small>'
+      + '</div>'
+      + '<div class="fieldset">'
+        + '<h3>2) Création d’une boîte de dérivation</h3>'
+        + '<label class="vblock">Modèle</label>'
+        + '<select id="mt-boite">'+boites+'</select>'
+        + '<small class="muted vblock">Base : '+euro(+t.boite_base||50)+' + '+euro(+t.boite_par_circuit||10)+' par circuit</small>'
+      + '</div>'
+      + '<div class="fieldset">'
+        + '<h3>3) Longueur de goulotte</h3>'
+        + '<label class="vblock">Longueur (m)</label>'
+        + '<input id="mt-goulotte" type="number" step="0.1" min="0" value="0" inputmode="decimal" />'
+        + '<small class="muted vblock">Base : '+euro(+t.goulotte_base||50)+' + '+euro(+t.goulotte_par_m||20)+' / mètre</small>'
+      + '</div>'
+      + '<div id="mt-preview" class="muted mtx"></div>'
+      + '<div class="row mtx" style="gap:8px;">'
+        + b('Ajouter','addTabMod_Deplacement()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+  ['mt-circuits','mt-boite','mt-goulotte'].forEach(id=>{
+    var el=document.getElementById(id); if(el) el.addEventListener('input', refreshMtPreview);
+  });
+  refreshMtPreview();
+}
+function calcDeplacementTotal(nbCircuits, boiteId, lgM){
+  var t = TARIFS_TABMODS.deplacement || {};
+  var pCircuits = (+nbCircuits) * (+t.par_circuit||20);
+  var pBoite    = (+t.boite_base||50) + (+nbCircuits)*(+t.boite_par_circuit||10);
+  var pGoulotte = (+t.goulotte_base||50) + Math.max(0,+lgM)*(+t.goulotte_par_m||20);
+  return roundUp5(pCircuits + pBoite + pGoulotte);
+}
+function refreshMtPreview(){
+  var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
+  var b  = document.getElementById('mt-boite').value;
+  var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
+  var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
+  var total = calcDeplacementTotal(n, b, lm);
+  document.getElementById('mt-preview').innerHTML =
+    'Récap : '+n+' circuit(s) — '+labelBoite+' — goulotte '+lm.toFixed(1)+' m → Total estimé : <strong>'+euro(total)+'</strong>';
+}
+function addTabMod_Deplacement(){
+  var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
+  var b  = document.getElementById('mt-boite').value;
+  var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
+  var total = calcDeplacementTotal(n, b, lm);
+  var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
+  var key = _ensureModsSection();
+  devis[key].items.push({
+    category: 'Modification emplacement Tableau',
+    designation: 'Circuits: '+n+' — Boîte: '+labelBoite+' — Goulotte: '+lm.toFixed(1)+' m',
+    qty: 1, prixU: total, __tabKey:key
+  });
+  saveLocal(); pageTabModsAccueil();
+}
+
+// ===== 9.3 • Recâblage du tableau =====
+function pageTabModsRecablage(){
+  // Sélecteurs dynamiques
+  var nbCircuits = _selectOpts(40);
+  var ouiNon = ['Non','Oui'].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+  // Menus “Pose du tableau” (sans Intervention)
+  var rangs = [1,2,3,4].map(r=>'<option value="'+r+'">'+r+' rangée(s)</option>').join('');
+  var modules = [13,18,24].map(m=>'<option value="'+m+'">'+m+' modules</option>').join('');
+  var poses = ['Saillie','Encastré'].map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageTabModsAccueil()','btn back')
+      + '<h2>Recâblage du tableau</h2>'
+      + '<div class="fieldset">'
+        + '<h3>1) Circuits à recâbler</h3>'
+        + '<label class="vblock">Nombre de circuits</label>'
+        + '<select id="rc-circuits">'+nbCircuits+'</select>'
+        + '<small class="muted vblock">Tarif unitaire circuit recâblé : '+euro(TARIFS_TABMODS.recablage.par_circuit||18)+'</small>'
+      + '</div>'
+      + '<div class="fieldset">'
+        + '<h3>2) Remplacement coffret</h3>'
+        + '<label class="vblock">Remplacement coffret ?</label>'
+        + '<select id="rc-rempl">'+ouiNon+'</select>'
+        + '<div id="rc-coffret-wrap" style="display:none; margin-top:10px;">'
+          + '<label class="vblock">Nombre de rangées</label><select id="rc-rang">'+rangs+'</select>'
+          + '<label class="vblock">Modules</label><select id="rc-mod">'+modules+'</select>'
+          + '<label class="vblock">Pose</label><select id="rc-pose">'+poses+'</select>'
+          + '<small class="muted vblock">Le prix du coffret est valorisé comme une pose, avec l’intervention « '+escapeHtml(TARIFS_TABMODS.recablage.intervention_rempl_defaut)+' ».</small>'
+        + '</div>'
+      + '</div>'
+      + '<div id="rc-preview" class="muted mtx"></div>'
+      + '<div class="row mtx" style="gap:8px;">'
+        + b('Ajouter','addTabMod_Recablage()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+
+  document.getElementById('rc-rempl').addEventListener('change', function(){
+    var show = this.value === 'Oui';
+    document.getElementById('rc-coffret-wrap').style.display = show ? '' : 'none';
+    refreshRcPreview();
+  });
+  ['rc-circuits','rc-rang','rc-mod','rc-pose'].forEach(id=>{
+    var el=document.getElementById(id); if(el) el.addEventListener('input', refreshRcPreview);
+  });
+  refreshRcPreview();
+}
+
+function calcRecablageTotal(nCircuits, remplacement, rangs, modules, pose){
+  var t = TARIFS_TABMODS.recablage || {};
+  var total = roundUp5((+nCircuits) * (+t.par_circuit||18));
+  if(remplacement){
+    // réutilise la logique tarifaire du chapitre 6 (getTabPrice)
+    var interv = t.intervention_rempl_defaut || 'Avec dépose de l’existant';
+    var prixCoffret = (typeof getTabPrice==='function') ? getTabPrice(+rangs, +modules, String(pose||'Saillie'), String(interv)) : 0;
+    total = roundUp5(total + prixCoffret);
+  }
+  return total;
+}
+function refreshRcPreview(){
+  var n  = parseInt(document.getElementById('rc-circuits').value,10)||0;
+  var repl = (document.getElementById('rc-rempl').value==='Oui');
+  var r = parseInt(document.getElementById('rc-rang')?.value||'1',10)||1;
+  var m = parseInt(document.getElementById('rc-mod')?.value||'13',10)||13;
+  var p = document.getElementById('rc-pose')?.value || 'Saillie';
+  var total = calcRecablageTotal(n, repl, r, m, p);
+  var txt = 'Récap : '+n+' circuit(s) recâblé(s)';
+  if(repl){ txt += ' + Remplacement coffret ('+r+' rangée(s), '+m+' modules, '+p+')'; }
+  txt += ' → Total estimé : <strong>'+euro(total)+'</strong>';
+  document.getElementById('rc-preview').innerHTML = txt;
+}
+function addTabMod_Recablage(){
+  var n  = parseInt(document.getElementById('rc-circuits').value,10)||0;
+  var repl = (document.getElementById('rc-rempl').value==='Oui');
+  var r = parseInt(document.getElementById('rc-rang')?.value||'1',10)||1;
+  var m = parseInt(document.getElementById('rc-mod')?.value||'13',10)||13;
+  var p = document.getElementById('rc-pose')?.value || 'Saillie';
+  var total = calcRecablageTotal(n, repl, r, m, p);
+  var key = _ensureModsSection();
+  var designation = 'Recâblage '+n+' circuit(s)';
+  if(repl){ designation += ' — Remplacement coffret : '+r+' rangée(s), '+m+' modules, '+p; }
+  devis[key].items.push({
+    category:'Recâblage tableau',
+    designation: designation,
+    qty:1, prixU:total, __tabKey:key
+  });
+  saveLocal(); pageTabModsAccueil();
+}
+</script>
+
+
+
+
+
+  
+
+
+  
+
+
+
+
+<!-- =============================
+     CHAPITRE 10 : PERSONNALISATION SIMPLE (UI)
+     Index :
+       10.0 • Stockage + helpers
+       10.1 • Accueil Personnalisation (UI)
+       10.2 • Éditeur simple (Catégories / Poses / Sections)
+       10.3 • Éclairage (désignations + tarifs)
+       10.4 • Circuit spécialisé (libellés suggérés)
+       10.5 • Lien “Personnaliser les éléments” sous les selects de saisie
+     ============================= -->
+<script>
+// 10.0 • Stockage + helpers
+function _getCustom(){ try{ return JSON.parse(localStorage.getItem('tarifsCustomSchema')||'{}')||{}; }catch(e){ return {}; } }
+function _saveCustom(custom){ localStorage.setItem('tarifsCustomSchema', JSON.stringify(custom)); if (typeof applyCustomSchema==='function') applyCustomSchema(); alert('✅ Enregistré.'); }
+function _chip(txt, canDel, delFn){ return '<span class="badge" style="display:inline-flex;align-items:center;gap:6px;margin:4px 6px 0 0;">'+escapeHtml(txt)+(canDel? ' <a href="#" onclick="'+delFn+';return false;">×</a>':'')+'</span>'; }
+function _txt(id, ph, val){ return '<input id="'+id+'" placeholder="'+(ph||'')+'" value="'+(val||'')+'" />'; }
+function _num(id, val){ return '<input id="'+id+'" type="number" step="1" inputmode="decimal" value="'+(val||0)+'" />'; }
+
+// 10.1 • Accueil
+function pageCustomizeAccueil(){
+  view(
+    '<div class="card">'
+      + b('Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Personnalisation (UI simple)</h2>'
+      + '<p class="muted">Ajouts uniquement : le tronc fixe n’est pas modifié.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('Catégories','pageCustomizeSimpleArray('+JSON.stringify('CATEGORIES')+','+JSON.stringify('Catégories')+')','btn')
+        + b('Types de pose','pageCustomizeSimpleArray('+JSON.stringify('POSES')+','+JSON.stringify('Types de pose')+')','btn')
+        + b('Sections de câble','pageCustomizeSimpleArray('+JSON.stringify('SECTIONS_CABLE')+','+JSON.stringify('Sections de câble')+')','btn')
+      + '</div>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('Éclairage — Luminaires','pageCustomizeEclairage('+JSON.stringify('Éclairage/Luminaires')+')','btn primary')
+        + b('Éclairage — Commandes','pageCustomizeEclairage('+JSON.stringify('Éclairage/Commandes')+')','btn')
+        + b('Circuit spécialisé — libellés suggérés','pageCustomizeCS()','btn')
+      + '</div>'
+    + '</div>'
+  , true);
+}
+
+// 10.2 • Éditeur simple (tableaux simples)
+function pageCustomizeSimpleArray(rootKey, title){
+  var custom=_getCustom(); var arrCustom=custom[rootKey]||[];
+  var live = (window[rootKey] && Array.isArray(window[rootKey])) ? window[rootKey] : [];
+  var chips = live.map(function(v){
+    var canDel = arrCustom.indexOf(v)>=0;
+    return _chip(v, canDel, 'customSimpleRemove('+JSON.stringify(rootKey)+','+JSON.stringify(v)+')');
+  }).join('');
+  view(
+    '<div class="card">'
+      + b('Retour','pageCustomizeAccueil()','btn back')
+      + '<h2>'+escapeHtml(title)+'</h2>'
+      + '<p>Éléments actuels :</p><div>'+chips+'</div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + '<div style="flex:1 1 320px;">'+_txt('cs-add','Nouvel élément')+'</div>'
+        + b('Ajouter','customSimpleAdd('+JSON.stringify(rootKey)+')','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+function customSimpleAdd(rootKey){
+  var v=(document.getElementById('cs-add').value||'').trim(); if(!v) return;
+  var custom=_getCustom(); if(!Array.isArray(custom[rootKey])) custom[rootKey]=[];
+  if (custom[rootKey].indexOf(v)===-1) custom[rootKey].push(v);
+  _saveCustom(custom); pageCustomizeSimpleArray(rootKey, rootKey);
+}
+function customSimpleRemove(rootKey, val){
+  var custom=_getCustom(); if(!Array.isArray(custom[rootKey])) return;
+  custom[rootKey]=custom[rootKey].filter(function(x){ return x!==val; });
+  _saveCustom(custom); pageCustomizeSimpleArray(rootKey, rootKey);
+}
+
+// 10.3 • Éclairage (désignations + tarifs)
+function pageCustomizeEclairage(branch){
+  var INV = (branch==='Éclairage/Luminaires')
+    ? ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire']
+    : ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+  var custom=_getCustom();
+  var list = (DESIGNATIONS_PAR_CATEGORIE[branch]||[]);
+  var customList = (custom.DESIGNATIONS_PAR_CATEGORIE && custom.DESIGNATIONS_PAR_CATEGORIE[branch]) || [];
+  var rows = customList.map(function(name,i){
+    var tarif = (custom.TARIFS_BASE && custom.TARIFS_BASE.eclairage && custom.TARIFS_BASE.eclairage[name]) || {};
+    var fields = INV.map(function(inv){
+      return '<label style="display:block;margin:6px 0 0;"><small>'+inv+'</small> '+_num('ec-tarif-'+i+'-'+inv.replace(/\W+/g,'_'), tarif[inv]||'')+' €</label>';
+    }).join('');
+    return '<div class="fieldset">'
+      + '<div class="row" style="align-items:center;gap:8px;"><strong>'+escapeHtml(name)+'</strong>'
+      + b('Supprimer','customEclRemove('+JSON.stringify(branch)+','+JSON.stringify(name)+')','btn')+'</div>'
+      + '<div style="margin-top:6px;">'+fields+'</div>'
+    + '</div>';
+  }).join('') || '<p class="muted">Aucune désignation personnalisée pour l’instant.</p>';
+
+  var chips = list.map(function(v){
+    var canDel = customList.indexOf(v)>=0;
+    return _chip(v, canDel, 'customEclRemove('+JSON.stringify(branch)+','+JSON.stringify(v)+')');
+  }).join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageCustomizeAccueil()','btn back')
+      + '<h2>'+escapeHtml(branch)+'</h2>'
+      + '<p>Éléments disponibles :</p><div>'+chips+'</div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + '<div style="flex:2">'+_txt('ecl-new','Nouvelle désignation (ex : Rail LED)')+'</div>'
+        + '<div style="flex:1">'+b('Ajouter','customEclAdd('+JSON.stringify(branch)+')','btn primary')+'</div>'
+      + '</div>'
+      + '<hr style="margin:16px 0;border:none;border-top:1px solid var(--line);" />'
+      + '<h3>Tarifs des désignations personnalisées</h3>'
+      + rows
+      + '<div class="row" style="margin-top:10px;">'+ b('💾 Enregistrer les tarifs','customEclSaveTarifs('+JSON.stringify(branch)+')','btn primary') +'</div>'
+    + '</div>'
+  );
+}
+function customEclAdd(branch){
+  var name=(document.getElementById('ecl-new').value||'').trim(); if(!name) return;
+  var custom=_getCustom(); custom.DESIGNATIONS_PAR_CATEGORIE = custom.DESIGNATIONS_PAR_CATEGORIE || {};
+  custom.DESIGNATIONS_PAR_CATEGORIE[branch] = custom.DESIGNATIONS_PAR_CATEGORIE[branch] || [];
+  if(custom.DESIGNATIONS_PAR_CATEGORIE[branch].indexOf(name)===-1) custom.DESIGNATIONS_PAR_CATEGORIE[branch].push(name);
+  custom.TARIFS_BASE = custom.TARIFS_BASE || {}; custom.TARIFS_BASE.eclairage = custom.TARIFS_BASE.eclairage || {};
+  custom.TARIFS_BASE.eclairage[name] = custom.TARIFS_BASE.eclairage[name] || {};
+  _saveCustom(custom); pageCustomizeEclairage(branch);
+}
+function customEclRemove(branch, name){
+  var custom=_getCustom();
+  if(custom.DESIGNATIONS_PAR_CATEGORIE && custom.DESIGNATIONS_PAR_CATEGORIE[branch]){
+    custom.DESIGNATIONS_PAR_CATEGORIE[branch] = custom.DESIGNATIONS_PAR_CATEGORIE[branch].filter(function(x){ return x!==name; });
+  }
+  if(custom.TARIFS_BASE && custom.TARIFS_BASE.eclairage){ delete custom.TARIFS_BASE.eclairage[name]; }
+  _saveCustom(custom); pageCustomizeEclairage(branch);
+}
+function customEclSaveTarifs(branch){
+  var custom=_getCustom(); custom.TARIFS_BASE = custom.TARIFS_BASE || {}; custom.TARIFS_BASE.eclairage = custom.TARIFS_BASE.eclairage || {};
+  var customList = (custom.DESIGNATIONS_PAR_CATEGORIE && custom.DESIGNATIONS_PAR_CATEGORIE[branch]) || [];
+  var INV = (branch==='Éclairage/Luminaires')
+    ? ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire']
+    : ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+  customList.forEach(function(name, idx){
+    custom.TARIFS_BASE.eclairage[name] = custom.TARIFS_BASE.eclairage[name] || {};
+    INV.forEach(function(inv){
+      var id='ec-tarif-'+idx+'-'+inv.replace(/\W+/g,'_');
+      var v=parseFloat(document.getElementById(id)?.value||'');
+      if(!isNaN(v)) custom.TARIFS_BASE.eclairage[name][inv]=v;
+    });
+  });
+  _saveCustom(custom); pageCustomizeEclairage(branch);
+}
+
+// 10.4 • Circuit spécialisé (libellés suggérés)
+function pageCustomizeCS(){
+  var custom=_getCustom();
+  var list = (DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé']||[]);
+  var customList = (custom.DESIGNATIONS_PAR_CATEGORIE && custom.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé']) || [];
+  var chips = list.map(function(v){
+    var canDel = customList.indexOf(v)>=0;
+    return _chip(v, canDel, 'customCSRemove('+JSON.stringify(v)+')');
+  }).join('');
+  view(
+    '<div class="card">'
+      + b('Retour','pageCustomizeAccueil()','btn back')
+      + '<h2>Circuit spécialisé — libellés suggérés</h2>'
+      + '<p>Ces libellés apparaissent en suggestion dans la saisie du circuit spécialisé.</p>'
+      + '<div>'+chips+'</div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + '<div style="flex:2">'+_txt('cs-new','Ex : Pompe de relevage')+'</div>'
+        + '<div style="flex:1">'+b('Ajouter','customCSAdd()','btn primary')+'</div>'
+      + '</div>'
+    + '</div>'
+  );
+}
+function customCSAdd(){
+  var name=(document.getElementById('cs-new').value||'').trim(); if(!name) return;
+  var custom=_getCustom(); custom.DESIGNATIONS_PAR_CATEGORIE = custom.DESIGNATIONS_PAR_CATEGORIE || {};
+  var BR='Circuit spécialisé'; custom.DESIGNATIONS_PAR_CATEGORIE[BR] = custom.DESIGNATIONS_PAR_CATEGORIE[BR] || [];
+  if(custom.DESIGNATIONS_PAR_CATEGORIE[BR].indexOf(name)===-1) custom.DESIGNATIONS_PAR_CATEGORIE[BR].push(name);
+  _saveCustom(custom); pageCustomizeCS();
+}
+function customCSRemove(name){
+  var custom=_getCustom(); var BR='Circuit spécialisé';
+  if(custom.DESIGNATIONS_PAR_CATEGORIE && custom.DESIGNATIONS_PAR_CATEGORIE[BR]){
+    custom.DESIGNATIONS_PAR_CATEGORIE[BR] = custom.DESIGNATIONS_PAR_CATEGORIE[BR].filter(function(x){ return x!==name; });
+  }
+  _saveCustom(custom); pageCustomizeCS();
+}
+
+// 10.5 • Lien “Personnaliser les éléments” sous les selects concernés
+(function patchOneShotCustomizeLink(){
+  var _orig = window.pageOneShotSelection;
+  if(typeof _orig !== 'function') return;
+  window.pageOneShotSelection = function(){
+    _orig();
+    try{
+      var cat = (window.ctx && window.ctx.category) || '';
+      var sel = document.getElementById('oneshot-desig');
+      if(!sel) return; // pas de désignation (ex: Prises)
+      var wrap = document.createElement('div');
+      wrap.style.marginTop = '6px';
+      wrap.innerHTML = '<small><a href="#" id="lnk-customize">Personnaliser les éléments</a></small>';
+      sel.insertAdjacentElement('afterend', wrap);
+      document.getElementById('lnk-customize').onclick = function(e){
+        e.preventDefault();
+        if(cat==='Éclairage/Luminaires' || cat==='Éclairage/Commandes'){ pageCustomizeEclairage(cat); }
+        else if(cat==='Circuit spécialisé'){ pageCustomizeCS(); }
+        else { pageCustomizeAccueil(); }
+      };
+    }catch(e){}
+  };
+})();
+</script>
+
+
+
+  
+
+  
+
+
+  
+
+  
+
+  
+
+<!-- ============================================================
+     CHAPITRE 11 : ESTIMATIF & EXPORTS — vNEXT
+     Index :
+       11.0 • Détection / libellé des pièces (Tableaux inclus)
+       11.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
+       11.2 • Pages : Estimatif détaillé & Totaux par groupe
+       11.3 • Exports : .txt par groupe / .zip par groupe
+       11.4 • Exports : complet .txt / complet .zip
+     ============================================================ -->
+<script>
+// (contenu identique à ton Chapitre 10 actuel — inchangé, seulement renuméroté dans l’en-tête)
+// ⤵️ Je laisse le code tel quel pour ne pas alourdir : garde ton bloc existant “CHAPITRE 10 : ESTIMATIF & EXPORTS”
+// et remplace simplement le bandeau de commentaire par “CHAPITRE 11 … (11.0 … 11.4)”.
+</script>
+
+
+
+
+
+
+  
+
+
+  
+
+
+  <!-- =============================
+     CHAPITRE 12 : DÉMARRAGE & EXPOSE
+     (ajout des exports des nouveaux écrans)
+     ============================= -->
+<script>
+/* init() identique */
+
+// EXPOSE — ajoute les nouvelles fonctions (chap.9 & chap.10)
+Object.assign(window, {
+  // …(tes exports existants)…
+
+  // Chap.9 — Modifs de tableau
+  pageTabModsAccueil,
+  pageTabModsDeplacement,
+  addTabMod_Deplacement,
+  pageTabModsRecablage,
+  addTabMod_Recablage,
+
+  // Chap.10 — Personnalisation (UI)
+  pageCustomizeAccueil,
+  pageCustomizeSimpleArray,
+  pageCustomizeEclairage,
+  pageCustomizeCS,
+  customSimpleAdd,
+  customSimpleRemove,
+  customEclAdd,
+  customEclRemove,
+  customEclSaveTarifs,
+  customCSAdd,
+  customCSRemove
+});
+</script>
+
+
+  
+
+
+
+
+
+  
+
+
+  
+
+
+
+
+
+  
+
