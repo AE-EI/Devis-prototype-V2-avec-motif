@@ -2342,21 +2342,28 @@ function importTarifsPersoJSON(){
   
 
 
-<!-- ===== PATCH : MODIFICATION TABLEAU (Déplacement) ===== -->
-<script>
-// 1) Petits styles pour l’aération
-(function(){
-  var css = `
-    .mtx { margin-top:14px; }
-    .mbx { margin-bottom:14px; }
-    .vblock { display:block; margin-top:10px; }
-    .fieldset { border:1px solid var(--line); background:#fff; border-radius:10px; padding:12px; margin-top:10px; }
-    .fieldset h3 { margin:0 0 8px; font-size:16px; }
-  `;
-  var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
-})();
+<!-- =============================
+     CHAPITRE 9 : MODIFICATIONS DE TABLEAU
+     Index :
+       9.0 • Styles & Tarifs
+       9.1 • Accueil des modifications
+       9.2 • Déplacement du tableau (circuits + boîte + goulotte)
+       9.3 • Recâblage du tableau (+ option Remplacement coffret)
+     ============================= -->
 
-// 2) Tarifs par défaut (utilisés si non configurés ailleurs)
+<style>
+  /* 9.0 • Styles (compacts, non intrusifs) */
+  .mtx { margin-top:14px; }
+  .vblock { display:block; margin-top:10px; }
+  .fieldset {
+    border:1px solid var(--line); background:#fff;
+    border-radius:10px; padding:12px; margin-top:10px;
+  }
+  .fieldset h3 { margin:0 0 8px; font-size:16px; }
+</style>
+
+<script>
+// ===== 9.0 • Tarifs par défaut =====
 window.TARIFS_TABMODS = window.TARIFS_TABMODS || {
   deplacement: {
     par_circuit: 20,          // € / circuit à rallonger
@@ -2364,165 +2371,225 @@ window.TARIFS_TABMODS = window.TARIFS_TABMODS || {
     boite_par_circuit: 10,    // € additionnels par circuit
     goulotte_base: 50,        // € base pour la goulotte
     goulotte_par_m: 20        // € / mètre
+  },
+  recablage: {
+    par_circuit: 18,          // € / circuit recâblé
+    // Lors d’un remplacement de coffret, on valorise via getTabPrice(rangs,modules,pose,intervention)
+    intervention_rempl_defaut: 'Avec dépose de l’existant'
   }
 };
 
-// 3) Bouton pérenne "Modifications Tableau" sur l'accueil
-//    -> on monkey-patche pageHome pour injecter le bouton si absent
-(function(){
-  var _oldPageHome = window.pageHome;
-  window.pageHome = function(){
-    if (typeof _oldPageHome === 'function') _oldPageHome();
-    // insère le bouton si non présent
-    var app = document.getElementById('app');
-    if(!app) return;
-    // cherche le premier card Accueil
-    var btnHtml = '<button class="btn" onclick="pageTabModsAccueil()">Modifications Tableau</button>';
-    // si déjà présent, ne pas dupliquer
-    if (app.innerHTML.indexOf('pageTabModsAccueil()') === -1) {
-      app.innerHTML = app.innerHTML.replace(
-        /(<div class="card">[\s\S]*?<h2>Accueil<\/h2>[\s\S]*?<div class="row">[\s\S]*?)(<\/div>)/,
-        function(m, a, b){ return a + btnHtml + b; }
-      );
-    }
-  };
-})();
+// ===== Helpers locaux =====
+function _selectOpts(max, start){ 
+  var s = typeof start==='number'?start:0;
+  return Array.from({length:max - s + 1},(_,i)=>s+i)
+    .map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+}
+function _ensureModsSection(){
+  var key='Modifications de Tableau';
+  if(!devis[key]) devis[key] = { __base:'Modifications de Tableau', items:[], note:'' };
+  return key;
+}
 
-// 4) Accueil des modifications de tableau (peut être enrichi plus tard)
+/* ============================
+   9.1 • Accueil
+   ============================ */
 function pageTabModsAccueil(){
   view(
     '<div class="card">'
       + b('Retour','pageHome()','btn back')
       + '<h2>Modifications de Tableau</h2>'
       + '<div class="row mtx">'
-        + b('Modification emplacement Tableau','pageTabModsDeplacement()','btn primary')
-        // + b('Recâblage tableau','pageTabModsRecablage()','btn') // si tu veux réactiver plus tard
+        + b('Déplacement du tableau','pageTabModsDeplacement()','btn primary')
+        + b('Recâblage du tableau','pageTabModsRecablage()','btn')
       + '</div>'
     + '</div>'
   );
 }
 
-// 5) Formulaire "Modification emplacement Tableau"
+/* ============================
+   9.2 • Déplacement du tableau
+   ============================ */
 function pageTabModsDeplacement(){
-  // options circuits 0..30
-  var circuits = Array.from({length:31},(_,i)=>'<option value="'+i+'">'+i+'</option>').join('');
-
-  // (pour l’instant une seule boîte au catalogue comme demandé)
-  var boites = [
-    {id:'MICHAUD_250x300', label:'Boîte Michaud 250×300'}
-  ].map(function(b){ return '<option value="'+b.id+'">'+b.label+'</option>'; }).join('');
-
   var t = TARIFS_TABMODS.deplacement || {};
-  // UI
+  var circuits = _selectOpts(30,0);
+  var boites = [{id:'MICHAUD_250x300', label:'Boîte Michaud 250×300'}]
+    .map(b=>'<option value="'+b.id+'">'+b.label+'</option>').join('');
+
   view(
     '<div class="card">'
       + b('Retour','pageTabModsAccueil()','btn back')
-      + '<h2>Modification emplacement Tableau</h2>'
+      + '<h2>Déplacement du tableau</h2>'
 
       + '<div class="fieldset">'
-        + '<h3>1) Nombre de circuits à rallonger</h3>'
-        + '<label class="vblock">Choix</label>'
+        + '<h3>1) Circuits à rallonger</h3>'
+        + '<label class="vblock">Nombre</label>'
         + '<select id="mt-circuits">'+circuits+'</select>'
         + '<small class="muted vblock">Tarif : '+euro(+t.par_circuit||20)+' / circuit</small>'
       + '</div>'
 
       + '<div class="fieldset">'
-        + '<h3>2) Création d’une boîte de dérivation</h3>'
+        + '<h3>2) Boîte de dérivation</h3>'
         + '<label class="vblock">Modèle</label>'
         + '<select id="mt-boite">'+boites+'</select>'
-        + '<small class="muted vblock">Base : '+euro(+t.boite_base||50)+' + '+euro(+t.boite_par_circuit||10)+' par circuit</small>'
+        + '<small class="muted vblock">Base : '+euro(+t.boite_base||50)+' + '+euro(+t.boite_par_circuit||10)+' / circuit</small>'
       + '</div>'
 
       + '<div class="fieldset">'
-        + '<h3>3) Longueur de goulotte</h3>'
+        + '<h3>3) Goulotte</h3>'
         + '<label class="vblock">Longueur (m)</label>'
         + '<input id="mt-goulotte" type="number" step="0.1" min="0" value="0" inputmode="decimal" />'
-        + '<small class="muted vblock">Base : '+euro(+t.goulotte_base||50)+' + '+euro(+t.goulotte_par_m||20)+' / mètre</small>'
+        + '<small class="muted vblock">Base : '+euro(+t.goulotte_base||50)+' + '+euro(+t.goulotte_par_m||20)+' / m</small>'
       + '</div>'
 
       + '<div id="mt-preview" class="muted mtx"></div>'
-
       + '<div class="row mtx" style="gap:8px;">'
-        + b('Ajouter la modification Tableau','addTabMod_Deplacement()','btn primary')
+        + b('Ajouter','addTabMod_Deplacement()','btn primary')
       + '</div>'
     + '</div>'
   );
 
-  // live preview
-  ['mt-circuits','mt-boite','mt-goulotte'].forEach(function(id){
-    var el=document.getElementById(id);
-    if(el) el.addEventListener('input', refreshMtPreview);
+  ['mt-circuits','mt-boite','mt-goulotte'].forEach(id=>{
+    var el=document.getElementById(id); if(el) el.addEventListener('input', refreshMtPreview);
   });
   refreshMtPreview();
 }
-
-// 6) Calcul + aperçu + ajout
-function calcDeplacementTotal(nbCircuits, boiteId, lgM){
+function calcDeplacementTotal(nbCircuits, _boiteId, lgM){
   var t = TARIFS_TABMODS.deplacement || {};
-  var parCircuit = +t.par_circuit || 20;
-  var bBase      = +t.boite_base || 50;
-  var bPerC      = +t.boite_par_circuit || 10;
-  var gBase      = +t.goulotte_base || 50;
-  var gPerM      = +t.goulotte_par_m || 20;
-
-  var pCircuits = nbCircuits * parCircuit;
-  var pBoite    = bBase + nbCircuits * bPerC;
-  var pGoulotte = gBase + (Math.max(0, +lgM) * gPerM);
-
+  var pCircuits = (+nbCircuits) * (+t.par_circuit||20);
+  var pBoite    = (+t.boite_base||50) + (+nbCircuits)*(+t.boite_par_circuit||10);
+  var pGoulotte = (+t.goulotte_base||50) + Math.max(0,+lgM)*(+t.goulotte_par_m||20);
   return roundUp5(pCircuits + pBoite + pGoulotte);
 }
-
 function refreshMtPreview(){
   var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
   var b  = document.getElementById('mt-boite').value;
   var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
-
   var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
   var total = calcDeplacementTotal(n, b, lm);
-
   document.getElementById('mt-preview').innerHTML =
-    'Récap : '+n+' circuit(s) — '+labelBoite+' — goulotte '+lm.toFixed(1)+' m'
-    +' → Total estimé : <strong>'+euro(total)+'</strong>';
+    'Récap : '+n+' circuit(s) — '+labelBoite+' — goulotte '+lm.toFixed(1)+' m → Total estimé : <strong>'+euro(total)+'</strong>';
 }
-
 function addTabMod_Deplacement(){
   var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
   var b  = document.getElementById('mt-boite').value;
   var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
   var total = calcDeplacementTotal(n, b, lm);
-
   var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
 
-  // 👇 Une seule ligne synthétique pour l’estimatif (prix global)
-  var designation = 'Circuits: '+n+' — Boîte: '+labelBoite+' — Goulotte: '+lm.toFixed(1)+' m';
-
-  // On range ça dans une section dédiée "Modifications de Tableau"
-  var key = 'Modifications de Tableau';
-  if(!devis[key]) devis[key] = { __base:'Modifications de Tableau', items:[], note:'' };
-
+  var key = _ensureModsSection();
   devis[key].items.push({
-    category: 'Modification emplacement Tableau', // s’affiche comme titre dans l’estimatif
-    intervention: '', // pas nécessaire ici
-    pose: '',
-    designation: designation,   // résumé voulu
-    qty: 1,
-    prixU: total,
-    __tabKey: key
+    category: 'Modification emplacement Tableau',
+    designation: 'Circuits: '+n+' — Boîte: '+labelBoite+' — Goulotte: '+lm.toFixed(1)+' m',
+    qty: 1, prixU: total, __tabKey:key
   });
-  saveLocal();
-
-  // Retour à l’accueil des modifs pour pouvoir enchaîner
-  pageTabModsAccueil();
+  saveLocal(); pageTabModsAccueil();
 }
 
-// 7) Expose
-Object.assign(window, {
-  pageTabModsAccueil,
-  pageTabModsDeplacement,
-  addTabMod_Deplacement
-});
+/* ============================
+   9.3 • Recâblage du tableau
+   ============================ */
+function pageTabModsRecablage(){
+  var nbCircuits = _selectOpts(40,0);
+  var ouiNon = ['Non','Oui'].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+  // Menus comme “Pose du tableau” (chap.6), sans “Intervention”
+  var rangs = [1,2,3,4].map(r=>'<option value="'+r+'">'+r+' rangée(s)</option>').join('');
+  var modules = [13,18,24].map(m=>'<option value="'+m+'">'+m+' modules</option>').join('');
+  var poses = ['Saillie','Encastré'].map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageTabModsAccueil()','btn back')
+      + '<h2>Recâblage du tableau</h2>'
+
+      + '<div class="fieldset">'
+        + '<h3>1) Circuits à recâbler</h3>'
+        + '<label class="vblock">Nombre</label>'
+        + '<select id="rc-circuits">'+nbCircuits+'</select>'
+        + '<small class="muted vblock">Tarif circuit : '+euro(TARIFS_TABMODS.recablage.par_circuit||18)+'</small>'
+      + '</div>'
+
+      + '<div class="fieldset">'
+        + '<h3>2) Remplacement coffret</h3>'
+        + '<label class="vblock">Remplacement coffret ?</label>'
+        + '<select id="rc-rempl">'+ouiNon+'</select>'
+        + '<div id="rc-coffret-wrap" style="display:none; margin-top:10px;">'
+          + '<label class="vblock">Nombre de rangées</label><select id="rc-rang">'+rangs+'</select>'
+          + '<label class="vblock">Modules</label><select id="rc-mod">'+modules+'</select>'
+          + '<label class="vblock">Pose</label><select id="rc-pose">'+poses+'</select>'
+          + '<small class="muted vblock">Le coffret est valorisé via le tarif de pose (intervention « '
+          + escapeHtml(TARIFS_TABMODS.recablage.intervention_rempl_defaut)
+          + ' »).</small>'
+        + '</div>'
+      + '</div>'
+
+      + '<div id="rc-preview" class="muted mtx"></div>'
+      + '<div class="row mtx" style="gap:8px;">'
+        + b('Ajouter','addTabMod_Recablage()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+
+  document.getElementById('rc-rempl').addEventListener('change', function(){
+    var show = this.value === 'Oui';
+    document.getElementById('rc-coffret-wrap').style.display = show ? '' : 'none';
+    refreshRcPreview();
+  });
+  ['rc-circuits','rc-rang','rc-mod','rc-pose'].forEach(id=>{
+    var el=document.getElementById(id); if(el) el.addEventListener('input', refreshRcPreview);
+  });
+  refreshRcPreview();
+}
+
+function calcRecablageTotal(nCircuits, remplacement, rangs, modules, pose){
+  var t = TARIFS_TABMODS.recablage || {};
+  var total = roundUp5((+nCircuits) * (+t.par_circuit||18));
+
+  if(remplacement){
+    // Utilise la logique du Chapitre 6 si disponible
+    var interv = t.intervention_rempl_defaut || 'Avec dépose de l’existant';
+    var prixCoffret = (typeof getTabPrice==='function')
+      ? getTabPrice(+rangs, +modules, String(pose||'Saillie'), String(interv))
+      : 0;
+    total = roundUp5(total + prixCoffret);
+  }
+  return total;
+}
+
+function refreshRcPreview(){
+  var n  = parseInt(document.getElementById('rc-circuits').value,10)||0;
+  var repl = (document.getElementById('rc-rempl').value==='Oui');
+  var r = parseInt(document.getElementById('rc-rang')?.value||'1',10)||1;
+  var m = parseInt(document.getElementById('rc-mod')?.value||'13',10)||13;
+  var p = document.getElementById('rc-pose')?.value || 'Saillie';
+  var total = calcRecablageTotal(n, repl, r, m, p);
+
+  var txt = 'Récap : '+n+' circuit(s) recâblé(s)';
+  if(repl){ txt += ' + Remplacement coffret ('+r+' rangée(s), '+m+' modules, '+p+')'; }
+  txt += ' → Total estimé : <strong>'+euro(total)+'</strong>';
+  document.getElementById('rc-preview').innerHTML = txt;
+}
+
+function addTabMod_Recablage(){
+  var n  = parseInt(document.getElementById('rc-circuits').value,10)||0;
+  var repl = (document.getElementById('rc-rempl').value==='Oui');
+  var r = parseInt(document.getElementById('rc-rang')?.value||'1',10)||1;
+  var m = parseInt(document.getElementById('rc-mod')?.value||'13',10)||13;
+  var p = document.getElementById('rc-pose')?.value || 'Saillie';
+  var total = calcRecablageTotal(n, repl, r, m, p);
+
+  var key = _ensureModsSection();
+  var designation = 'Recâblage '+n+' circuit(s)';
+  if(repl){ designation += ' — Remplacement coffret : '+r+' rangée(s), '+m+' modules, '+p; }
+
+  devis[key].items.push({
+    category:'Recâblage tableau',
+    designation: designation,
+    qty:1, prixU:total, __tabKey:key
+  });
+  saveLocal(); pageTabModsAccueil();
+}
 </script>
-<!-- ===== FIN PATCH ===== -->
 
   
 
