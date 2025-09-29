@@ -1777,7 +1777,6 @@ function ventAddEntretien(key){
 
   
   
-  
 <!-- =============================
      CHAPITRE 8 : PARAMÉTRAGE DES TARIFS
      Index :
@@ -1788,12 +1787,12 @@ function ventAddEntretien(key){
        8.4 • Éclairage — Commandes (intitulés en “appareillage”)
        8.5 • Circuit spécialisé (base + coefficients de section)
        8.6 • Coefficients de pose (communs)
+       8.7 • Personnalisation avancée (JSON, ajout-only)
      ============================= -->
 
 <!-- 8.0 • Styles + Helpers + Overrides -->
 <style>
-  /* Mise en page plus lisible sur le chapitre Paramétrage */
-  .tarif-wrap .card.tarif-card{ margin-bottom:24px; }               /* espace entre blocs */
+  .tarif-wrap .card.tarif-card{ margin-bottom:24px; }
   .tarif-wrap h2, .tarif-wrap h3{ margin:8px 0 10px; }
   .tarif-wrap label{ display:block; margin-top:14px; font-weight:600; }
   .tarif-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
@@ -1823,7 +1822,6 @@ function loadTarifsOverrides(){
     var raw = localStorage.getItem('tarifsOverrides');
     if(!raw) return;
     var ov = JSON.parse(raw||'{}')||{};
-    // Fusion avec les objets globaux du Chapitre 3
     if(ov.TARIFS_BASE) deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
     if(ov.COEFF_POSE) deepMergeTarifs(COEFF_POSE, ov.COEFF_POSE);
     if(ov.COEFF_SECTIONS_CS) deepMergeTarifs(COEFF_SECTIONS_CS, ov.COEFF_SECTIONS_CS);
@@ -1837,13 +1835,11 @@ function saveTarifsOverrides(partialOv){
     alert('✅ Paramètres sauvegardés.');
   }catch(e){ alert('Impossible de sauvegarder les paramètres.'); }
 }
-
 // Charger d’éventuels overrides dès le chargement de ce chapitre
 loadTarifsOverrides();
 
 // ========== Helpers UI ==========
 function _tfVal(id){ var el=document.getElementById(id); return parseFloat(el && el.value || '0')||0; }
-function _setVal(id, v){ var el=document.getElementById(id); if(el) el.value = (v!=null?v:''); }
 function _numInput(id, val){ return '<input id="'+id+'" type="number" inputmode="decimal" step="1" min="0" value="'+(val||0)+'" />'; }
 </script>
 
@@ -1862,6 +1858,12 @@ function pageTarifsAccueil(){
         + b('Éclairage — Commandes','pageTarifsEclCommandes()','btn')
         + b('Circuit spécialisé','pageTarifsCS()','btn')
         + b('Coefficients de pose','pageTarifsCoeffsPose()','btn')
+      + '</div>'
+    + '</div>'
+    + '<div class="card tarif-card">'
+      + '<div class="row" style="gap:8px;">'
+      + b('Personnalisation (UI simple)','pageCustomizeAccueil()','btn')
+      + b('Personnalisation avancée (JSON)','pageTarifsPersoJSON()','btn ghost')
       + '</div>'
     + '</div>'
     + '</div>'
@@ -1884,9 +1886,7 @@ function pageTarifsPrises(){
         + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('pris_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('pris_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsPrises()','btn primary')
-      + '</div>'
+      + '<div class="tarif-actions">'+ b('💾 Enregistrer','saveTarifsPrises()','btn primary') +'</div>'
     + '</div>'
     + '</div>'
   );
@@ -1902,7 +1902,6 @@ function saveTarifsPrises(){
       }
     }
   };
-  // Appliquer en mémoire + sauver
   deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
   saveTarifsOverrides(ov);
 }
@@ -1926,7 +1925,6 @@ function pageTarifsEclLuminaires(){
         + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_pdc_rec_avec', PDC['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_pdc_rec_sans', PDC['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
-
       + '<h3 style="margin-top:18px;">Applique</h3>'
       + '<div class="tarif-grid">'
         + '<div class="field"><label>Création</label>'+_numInput('lum_app_cre', APP['Création'])+'<small>Tarif unitaire</small></div>'
@@ -1934,10 +1932,7 @@ function pageTarifsEclLuminaires(){
         + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_app_rec_avec', APP['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_app_rec_sans', APP['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
-
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsEclLuminaires()','btn primary')
-      + '</div>'
+      + '<div class="tarif-actions">'+ b('💾 Enregistrer','saveTarifsEclLuminaires()','btn primary') +'</div>'
     + '</div>'
     + '</div>'
   );
@@ -1984,7 +1979,6 @@ function pageTarifsEclCommandes(){
         + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cmd_is_rec_avec', IS['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cmd_is_rec_sans', IS['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
-
       + '<h3 style="margin-top:18px;">Interrupteur double</h3>'
       + '<div class="tarif-grid">'
         + '<div class="field"><label>Création</label>'+_numInput('cmd_id_cre', ID['Création'])+'<small>Tarif unitaire</small></div>'
@@ -1992,10 +1986,7 @@ function pageTarifsEclCommandes(){
         + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cmd_id_rec_avec', ID['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cmd_id_rec_sans', ID['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
-
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsEclCommandes()','btn primary')
-      + '</div>'
+      + '<div class="tarif-actions">'+ b('💾 Enregistrer','saveTarifsEclCommandes()','btn primary') +'</div>'
     + '</div>'
     + '</div>'
   );
@@ -2033,7 +2024,6 @@ function pageTarifsCS(){
     + '<div class="card tarif-card">'
       + b('Retour','pageTarifsAccueil()','btn back')
       + '<h2>Circuit spécialisé — base & coefficients</h2>'
-
       + '<h3>Tarifs base (par intervention)</h3>'
       + '<div class="tarif-grid">'
         + '<div class="field"><label>Création</label>'+_numInput('cs_cre', base['Création'])+'<small>Tarif unitaire</small></div>'
@@ -2041,7 +2031,6 @@ function pageTarifsCS(){
         + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cs_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cs_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
-
       + '<h3 style="margin-top:18px;">Coefficients de section</h3>'
       + '<div class="tarif-grid">'
         + '<div class="field"><label>0,75 mm²</label>'+_numInput('cs_coef_075', COEFF_SECTIONS_CS['0,75 mm²'])+'<small>Coefficient</small></div>'
@@ -2049,10 +2038,7 @@ function pageTarifsCS(){
         + '<div class="field"><label>2,5 mm²</label>'+_numInput('cs_coef_25', COEFF_SECTIONS_CS['2,5 mm²'])+'<small>Coefficient</small></div>'
         + '<div class="field"><label>6 mm²</label>'+_numInput('cs_coef_6', COEFF_SECTIONS_CS['6 mm²'])+'<small>Coefficient</small></div>'
       + '</div>'
-
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsCS()','btn primary')
-      + '</div>'
+      + '<div class="tarif-actions">'+ b('💾 Enregistrer','saveTarifsCS()','btn primary') +'</div>'
     + '</div>'
     + '</div>'
   );
@@ -2096,9 +2082,7 @@ function pageTarifsCoeffsPose(){
         + '<div class="field"><label>Saillie avec moulure</label>'+_numInput('cp_moul', COEFF_POSE['Saillie avec moulure'])+'<small>Coefficient</small></div>'
         + '<div class="field"><label>Sous tube IRL</label>'+_numInput('cp_irl', COEFF_POSE['Sous tube IRL'])+'<small>Coefficient</small></div>'
       + '</div>'
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsCoeffsPose()','btn primary')
-      + '</div>'
+      + '<div class="tarif-actions">'+ b('💾 Enregistrer','saveTarifsCoeffsPose()','btn primary') +'</div>'
     + '</div>'
     + '</div>'
   );
@@ -2119,858 +2103,105 @@ function saveTarifsCoeffsPose(){
 }
 </script>
 
-<!-- Expose minimal (si tu veux appeler depuis le menu principal) -->
+<!-- 8.7 • Personnalisation avancée (JSON, ajout-only) -->
 <script>
-Object.assign(window, {
-  pageTarifsAccueil,
-  pageTarifsPrises,
-  pageTarifsEclLuminaires,
-  pageTarifsEclCommandes,
-  pageTarifsCS,
-  pageTarifsCoeffsPose
-});
-</script>
-
-  <!-- =============================
-     8.7 • Personnalisation avancée (JSON, ajout-only)
-     ============================= -->
-<script>
-// ---------- Stockage ----------
 const CUSTOM_SCHEMA_KEY = 'tarifsCustomSchema';
-
-// ---------- Helpers merge (ajouts SANS écrasement du tronc) ----------
-function addUniqueToArray(baseArr, addArr){
-  if(!Array.isArray(baseArr) || !Array.isArray(addArr)) return;
-  addArr.forEach(v => { if(baseArr.indexOf(v) === -1) baseArr.push(v); });
-}
+function addUniqueToArray(baseArr, addArr){ if(!Array.isArray(baseArr)||!Array.isArray(addArr)) return; addArr.forEach(v=>{ if(baseArr.indexOf(v)===-1) baseArr.push(v); }); }
 function mergeObjectAddOnly(base, add){
   if(!add || typeof add!=='object') return;
   Object.keys(add).forEach(k=>{
-    const v = add[k];
-    if(base[k] == null){
-      // clé nouvelle → on ajoute telle quelle
-      base[k] = Array.isArray(v) ? v.slice() : (typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v);
-    }else{
-      // clé existante → on N'ÉCRASE PAS, on complète seulement
+    const v=add[k];
+    if(base[k]==null){ base[k]=Array.isArray(v)?v.slice(): (typeof v==='object'?JSON.parse(JSON.stringify(v)):v); }
+    else{
       if(Array.isArray(base[k]) && Array.isArray(v)) addUniqueToArray(base[k], v);
       else if(typeof base[k]==='object' && typeof v==='object') mergeObjectAddOnly(base[k], v);
-      // sinon (nombre/string déjà défini) → on ne touche pas
     }
   });
 }
-
-// ---------- Application du schéma perso au runtime ----------
 function applyCustomSchema(){
-  let custom;
-  try{ custom = JSON.parse(localStorage.getItem(CUSTOM_SCHEMA_KEY)||'{}')||{}; }catch(e){ custom = {}; }
-
-  // 1) Listes “simples” (catégories, poses, sections) — ajouts only
-  if(Array.isArray(custom.CATEGORIES))        addUniqueToArray(CATEGORIES, custom.CATEGORIES);
-  if(Array.isArray(custom.POSES))             addUniqueToArray(POSES, custom.POSES);
-  if(Array.isArray(custom.SECTIONS_CABLE))    addUniqueToArray(SECTIONS_CABLE, custom.SECTIONS_CABLE);
-
-  // 2) Désignations par branche (ex: "Éclairage/Luminaires": ["Rail LED", ...])
+  let custom; try{ custom=JSON.parse(localStorage.getItem(CUSTOM_SCHEMA_KEY)||'{}')||{}; }catch(e){ custom={}; }
+  if(Array.isArray(custom.CATEGORIES))     addUniqueToArray(CATEGORIES, custom.CATEGORIES);
+  if(Array.isArray(custom.POSES))          addUniqueToArray(POSES, custom.POSES);
+  if(Array.isArray(custom.SECTIONS_CABLE)) addUniqueToArray(SECTIONS_CABLE, custom.SECTIONS_CABLE);
   if(custom.DESIGNATIONS_PAR_CATEGORIE && typeof custom.DESIGNATIONS_PAR_CATEGORIE==='object'){
     Object.keys(custom.DESIGNATIONS_PAR_CATEGORIE).forEach(cat=>{
-      const adds = custom.DESIGNATIONS_PAR_CATEGORIE[cat];
-      if(!Array.isArray(adds)) return;
-      if(!DESIGNATIONS_PAR_CATEGORIE[cat]) DESIGNATIONS_PAR_CATEGORIE[cat] = [];
+      const adds=custom.DESIGNATIONS_PAR_CATEGORIE[cat]; if(!Array.isArray(adds)) return;
+      if(!DESIGNATIONS_PAR_CATEGORIE[cat]) DESIGNATIONS_PAR_CATEGORIE[cat]=[];
       addUniqueToArray(DESIGNATIONS_PAR_CATEGORIE[cat], adds);
     });
   }
-
-  // 3) Tarifs pour les NOUVELLES désignations d’éclairage (on n’écrase pas les existantes)
-  //    Format attendu :
-  //    { "TARIFS_BASE": { "eclairage": { "Ma nouvelle désignation": { "Création": 120, ... } } } }
   if(custom.TARIFS_BASE && custom.TARIFS_BASE.eclairage){
-    const src = custom.TARIFS_BASE.eclairage;
+    const src=custom.TARIFS_BASE.eclairage;
     Object.keys(src).forEach(desig=>{
-      if(!TARIFS_BASE.eclairage[desig]) TARIFS_BASE.eclairage[desig] = {}; // nouvelle désignation permise
-      mergeObjectAddOnly(TARIFS_BASE.eclairage[desig], src[desig]);        // ajoute interventions sans écraser celles déjà présentes
+      if(!TARIFS_BASE.eclairage[desig]) TARIFS_BASE.eclairage[desig] = {};
+      mergeObjectAddOnly(TARIFS_BASE.eclairage[desig], src[desig]);
     });
   }
-
-  // 4) (facultatif) coefficients de pose/sections — ajoute les nouvelles clés uniquement
-  if(custom.COEFF_POSE)           mergeObjectAddOnly(COEFF_POSE, custom.COEFF_POSE);
-  if(custom.COEFF_SECTIONS_CS)    mergeObjectAddOnly(COEFF_SECTIONS_CS, custom.COEFF_SECTIONS_CS);
+  if(custom.COEFF_POSE)        mergeObjectAddOnly(COEFF_POSE, custom.COEFF_POSE);
+  if(custom.COEFF_SECTIONS_CS) mergeObjectAddOnly(COEFF_SECTIONS_CS, custom.COEFF_SECTIONS_CS);
 }
-// Applique au chargement du chapitre
 applyCustomSchema();
 
-// ---------- UI ----------
 function pageTarifsPersoJSON(){
-  // modèle minimal affiché si aucun JSON encore enregistré
   const example = JSON.stringify({
-    "CATEGORIES": ["Domotique"],                // ajouté au menu Catégorie
-    "POSES": ["Goulotte design"],               // ajouté aux types de pose
-    "SECTIONS_CABLE": ["10 mm²"],               // ajouté aux choix de section
+    "CATEGORIES": ["Domotique"],
+    "POSES": ["Goulotte design"],
+    "SECTIONS_CABLE": ["10 mm²"],
     "DESIGNATIONS_PAR_CATEGORIE": {
       "Éclairage/Luminaires": ["Rail LED", "Suspension déco"],
       "Éclairage/Commandes": ["Variateur rotatif"],
-      "Circuit spécialisé": ["Pompe de relevage"]  // libellé suggéré lors de la saisie CS
+      "Circuit spécialisé": ["Pompe de relevage"]
     },
     "TARIFS_BASE": {
       "eclairage": {
-        "Rail LED": {
-          "Création": 120,
-          "Remplacement luminaire": 40
-        },
-        "Variateur rotatif": {
-          "Création": 55,
-          "Remplacement appareillage": 30
-        }
+        "Rail LED": { "Création": 120, "Remplacement luminaire": 40 },
+        "Variateur rotatif": { "Création": 55, "Remplacement appareillage": 30 }
       }
     }
   }, null, 2);
 
-  let current = '';
-  try{ current = localStorage.getItem(CUSTOM_SCHEMA_KEY) || ''; }catch(e){}
-
+  let current=''; try{ current=localStorage.getItem(CUSTOM_SCHEMA_KEY)||''; }catch(e){}
   view(
-    '<div class="tarif-wrap">'
-    + '<div class="card tarif-card">'
-      + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Personnalisation avancée (JSON)</h2>'
-      + '<p class="muted">Ajoute catégories, poses, sections, désignations et <em>tarifs pour les nouvelles désignations</em>. Le tronc existant n’est jamais écrasé.</p>'
-      + '<label>JSON (ajouts only)</label>'
-      + '<textarea id="custom-json" style="width:100%;height:320px;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;"></textarea>'
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsPersoJSON()','btn primary')
-        + b('🧹 Réinitialiser','resetTarifsPersoJSON()','btn')
-        + b('⬇️ Exporter','exportTarifsPersoJSON()','btn')
-        + b('⬆️ Importer','importTarifsPersoJSON()','btn')
-      + '</div>'
-      + '<details style="margin-top:12px;"><summary>Exemple de structure</summary>'
-      + '<pre style="margin-top:8px">'+escapeHtml(example)+'</pre>'
-      + '</details>'
+    '<div class="tarif-wrap"><div class="card tarif-card">'
+    + b('Retour','pageTarifsAccueil()','btn back')
+    + '<h2>Personnalisation avancée (JSON)</h2>'
+    + '<p class="muted">Ajoute catégories, poses, sections, désignations et <em>tarifs pour les nouvelles désignations</em>. Le tronc n’est jamais écrasé.</p>'
+    + '<label>JSON (ajouts only)</label>'
+    + '<textarea id="custom-json" style="width:100%;height:320px;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;"></textarea>'
+    + '<div class="tarif-actions">'
+      + b('💾 Enregistrer','saveTarifsPersoJSON()','btn primary')
+      + b('🧹 Réinitialiser','resetTarifsPersoJSON()','btn')
+      + b('⬇️ Exporter','exportTarifsPersoJSON()','btn')
+      + b('⬆️ Importer','importTarifsPersoJSON()','btn')
     + '</div>'
-    + '</div>'
+    + '<details style="margin-top:12px;"><summary>Exemple de structure</summary>'
+    + '<pre style="margin-top:8px">'+escapeHtml(example)+'</pre></details>'
+    + '</div></div>'
   );
-
-  // remplir la zone
-  const ta = document.getElementById('custom-json');
-  ta.value = current || example;
+  document.getElementById('custom-json').value = current || example;
 }
-
 function saveTarifsPersoJSON(){
-  const ta = document.getElementById('custom-json');
-  let obj;
-  try{
-    obj = JSON.parse(ta.value);
-  }catch(e){
-    alert('❌ JSON invalide : '+e.message);
-    return;
-  }
-  // garde-fous simples : seules ces racines sont acceptées
-  const allowed = ['CATEGORIES','POSES','SECTIONS_CABLE','DESIGNATIONS_PAR_CATEGORIE','TARIFS_BASE','COEFF_POSE','COEFF_SECTIONS_CS'];
-  const ok = Object.keys(obj).every(k=>allowed.indexOf(k)>=0);
-  if(!ok){ alert('❌ Clés non autorisées au niveau racine. Racines valides : '+allowed.join(', ')); return; }
-
-  localStorage.setItem(CUSTOM_SCHEMA_KEY, JSON.stringify(obj));
-  applyCustomSchema();
-  alert('✅ Ajouts enregistrés. Ils sont utilisables immédiatement.');
+  const ta=document.getElementById('custom-json'); let obj;
+  try{ obj=JSON.parse(ta.value); }catch(e){ alert('❌ JSON invalide : '+e.message); return; }
+  const allowed=['CATEGORIES','POSES','SECTIONS_CABLE','DESIGNATIONS_PAR_CATEGORIE','TARIFS_BASE','COEFF_POSE','COEFF_SECTIONS_CS'];
+  const ok=Object.keys(obj).every(k=>allowed.indexOf(k)>=0);
+  if(!ok){ alert('❌ Clés non autorisées. Valides : '+allowed.join(', ')); return; }
+  localStorage.setItem(CUSTOM_SCHEMA_KEY, JSON.stringify(obj)); applyCustomSchema(); alert('✅ Ajouts enregistrés.');
 }
-
-function resetTarifsPersoJSON(){
-  if(!confirm('Réinitialiser toutes les personnalisations JSON ?')) return;
-  localStorage.removeItem(CUSTOM_SCHEMA_KEY);
-  // recharger les listes runtime (on repart sur le tronc)
-  location.reload();
-}
-
+function resetTarifsPersoJSON(){ if(!confirm('Réinitialiser toutes les personnalisations JSON ?')) return; localStorage.removeItem(CUSTOM_SCHEMA_KEY); location.reload(); }
 function exportTarifsPersoJSON(){
-  const raw = localStorage.getItem(CUSTOM_SCHEMA_KEY) || '{}';
-  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'minidevis_personnalisation.json';
-  a.click(); URL.revokeObjectURL(url);
+  const raw=localStorage.getItem(CUSTOM_SCHEMA_KEY)||'{}';
+  const blob=new Blob([raw],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='minidevis_personnalisation.json'; a.click(); URL.revokeObjectURL(url);
 }
-
 function importTarifsPersoJSON(){
-  const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'application/json';
-  input.onchange = function(){
-    const f = input.files && input.files[0]; if(!f) return;
-    const rd = new FileReader();
-    rd.onload = function(){
-      try{
-        const obj = JSON.parse(rd.result||'{}');
-        localStorage.setItem(CUSTOM_SCHEMA_KEY, JSON.stringify(obj));
-        applyCustomSchema();
-        alert('✅ Fichier importé et appliqué.');
-        pageTarifsPersoJSON();
-      }catch(e){ alert('❌ Import impossible : '+e.message); }
-    };
-    rd.readAsText(f, 'utf-8');
-  };
-  input.click();
+  const input=document.createElement('input'); input.type='file'; input.accept='application/json';
+  input.onchange=function(){ const f=input.files && input.files[0]; if(!f) return;
+    const rd=new FileReader(); rd.onload=function(){
+      try{ const obj=JSON.parse(rd.result||'{}'); localStorage.setItem(CUSTOM_SCHEMA_KEY, JSON.stringify(obj)); applyCustomSchema(); alert('✅ Fichier importé.'); pageTarifsPersoJSON(); }
+      catch(e){ alert('❌ Import impossible : '+e.message); }
+    }; rd.readAsText(f,'utf-8');
+  }; input.click();
 }
-
-// ---------- Hook : ajoute le bouton dans l'accueil Chap. 8 ----------
-(function patchTarifsAccueilButton(){
-  // on monkey-patche la fonction existante pour insérer le bouton si pas déjà présent
-  const _orig = window.pageTarifsAccueil;
-  if(typeof _orig === 'function'){
-    window.pageTarifsAccueil = function(){
-      // construire la vue standard puis la modifier en y ajoutant le bouton
-      _orig();
-      const app = document.getElementById('app');
-      if(!app) return;
-      const btnLabel = 'Personnalisation avancée (JSON)';
-      if(app.innerHTML.indexOf(btnLabel) === -1){
-        app.innerHTML = app.innerHTML.replace(
-          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
-          '$1<div class="card tarif-card"><div class="row" style="gap:8px;">'
-          + '<button class="btn ghost" onclick="pageTarifsPersoJSON()">'+btnLabel+'</button>'
-          + '</div></div>'
-        );
-      }
-    };
-  }
-})();
-</script>
-
-
-
-
-
-
-
-
-
-  
-
-
-<!-- ===== PATCH : MODIFICATION TABLEAU (Déplacement) ===== -->
-<script>
-// 1) Petits styles pour l’aération
-(function(){
-  var css = `
-    .mtx { margin-top:14px; }
-    .mbx { margin-bottom:14px; }
-    .vblock { display:block; margin-top:10px; }
-    .fieldset { border:1px solid var(--line); background:#fff; border-radius:10px; padding:12px; margin-top:10px; }
-    .fieldset h3 { margin:0 0 8px; font-size:16px; }
-  `;
-  var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
-})();
-
-// 2) Tarifs par défaut (utilisés si non configurés ailleurs)
-window.TARIFS_TABMODS = window.TARIFS_TABMODS || {
-  deplacement: {
-    par_circuit: 20,          // € / circuit à rallonger
-    boite_base: 50,           // € base pour la boîte
-    boite_par_circuit: 10,    // € additionnels par circuit
-    goulotte_base: 50,        // € base pour la goulotte
-    goulotte_par_m: 20        // € / mètre
-  }
-};
-
-// 3) Bouton pérenne "Modifications Tableau" sur l'accueil
-//    -> on monkey-patche pageHome pour injecter le bouton si absent
-(function(){
-  var _oldPageHome = window.pageHome;
-  window.pageHome = function(){
-    if (typeof _oldPageHome === 'function') _oldPageHome();
-    // insère le bouton si non présent
-    var app = document.getElementById('app');
-    if(!app) return;
-    // cherche le premier card Accueil
-    var btnHtml = '<button class="btn" onclick="pageTabModsAccueil()">Modifications Tableau</button>';
-    // si déjà présent, ne pas dupliquer
-    if (app.innerHTML.indexOf('pageTabModsAccueil()') === -1) {
-      app.innerHTML = app.innerHTML.replace(
-        /(<div class="card">[\s\S]*?<h2>Accueil<\/h2>[\s\S]*?<div class="row">[\s\S]*?)(<\/div>)/,
-        function(m, a, b){ return a + btnHtml + b; }
-      );
-    }
-  };
-})();
-
-// 4) Accueil des modifications de tableau (peut être enrichi plus tard)
-function pageTabModsAccueil(){
-  view(
-    '<div class="card">'
-      + b('Retour','pageHome()','btn back')
-      + '<h2>Modifications de Tableau</h2>'
-      + '<div class="row mtx">'
-        + b('Modification emplacement Tableau','pageTabModsDeplacement()','btn primary')
-        // + b('Recâblage tableau','pageTabModsRecablage()','btn') // si tu veux réactiver plus tard
-      + '</div>'
-    + '</div>'
-  );
-}
-
-// 5) Formulaire "Modification emplacement Tableau"
-function pageTabModsDeplacement(){
-  // options circuits 0..30
-  var circuits = Array.from({length:31},(_,i)=>'<option value="'+i+'">'+i+'</option>').join('');
-
-  // (pour l’instant une seule boîte au catalogue comme demandé)
-  var boites = [
-    {id:'MICHAUD_250x300', label:'Boîte Michaud 250×300'}
-  ].map(function(b){ return '<option value="'+b.id+'">'+b.label+'</option>'; }).join('');
-
-  var t = TARIFS_TABMODS.deplacement || {};
-  // UI
-  view(
-    '<div class="card">'
-      + b('Retour','pageTabModsAccueil()','btn back')
-      + '<h2>Modification emplacement Tableau</h2>'
-
-      + '<div class="fieldset">'
-        + '<h3>1) Nombre de circuits à rallonger</h3>'
-        + '<label class="vblock">Choix</label>'
-        + '<select id="mt-circuits">'+circuits+'</select>'
-        + '<small class="muted vblock">Tarif : '+euro(+t.par_circuit||20)+' / circuit</small>'
-      + '</div>'
-
-      + '<div class="fieldset">'
-        + '<h3>2) Création d’une boîte de dérivation</h3>'
-        + '<label class="vblock">Modèle</label>'
-        + '<select id="mt-boite">'+boites+'</select>'
-        + '<small class="muted vblock">Base : '+euro(+t.boite_base||50)+' + '+euro(+t.boite_par_circuit||10)+' par circuit</small>'
-      + '</div>'
-
-      + '<div class="fieldset">'
-        + '<h3>3) Longueur de goulotte</h3>'
-        + '<label class="vblock">Longueur (m)</label>'
-        + '<input id="mt-goulotte" type="number" step="0.1" min="0" value="0" inputmode="decimal" />'
-        + '<small class="muted vblock">Base : '+euro(+t.goulotte_base||50)+' + '+euro(+t.goulotte_par_m||20)+' / mètre</small>'
-      + '</div>'
-
-      + '<div id="mt-preview" class="muted mtx"></div>'
-
-      + '<div class="row mtx" style="gap:8px;">'
-        + b('Ajouter la modification Tableau','addTabMod_Deplacement()','btn primary')
-      + '</div>'
-    + '</div>'
-  );
-
-  // live preview
-  ['mt-circuits','mt-boite','mt-goulotte'].forEach(function(id){
-    var el=document.getElementById(id);
-    if(el) el.addEventListener('input', refreshMtPreview);
-  });
-  refreshMtPreview();
-}
-
-// 6) Calcul + aperçu + ajout
-function calcDeplacementTotal(nbCircuits, boiteId, lgM){
-  var t = TARIFS_TABMODS.deplacement || {};
-  var parCircuit = +t.par_circuit || 20;
-  var bBase      = +t.boite_base || 50;
-  var bPerC      = +t.boite_par_circuit || 10;
-  var gBase      = +t.goulotte_base || 50;
-  var gPerM      = +t.goulotte_par_m || 20;
-
-  var pCircuits = nbCircuits * parCircuit;
-  var pBoite    = bBase + nbCircuits * bPerC;
-  var pGoulotte = gBase + (Math.max(0, +lgM) * gPerM);
-
-  return roundUp5(pCircuits + pBoite + pGoulotte);
-}
-
-function refreshMtPreview(){
-  var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
-  var b  = document.getElementById('mt-boite').value;
-  var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
-
-  var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
-  var total = calcDeplacementTotal(n, b, lm);
-
-  document.getElementById('mt-preview').innerHTML =
-    'Récap : '+n+' circuit(s) — '+labelBoite+' — goulotte '+lm.toFixed(1)+' m'
-    +' → Total estimé : <strong>'+euro(total)+'</strong>';
-}
-
-function addTabMod_Deplacement(){
-  var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
-  var b  = document.getElementById('mt-boite').value;
-  var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
-  var total = calcDeplacementTotal(n, b, lm);
-
-  var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
-
-  // 👇 Une seule ligne synthétique pour l’estimatif (prix global)
-  var designation = 'Circuits: '+n+' — Boîte: '+labelBoite+' — Goulotte: '+lm.toFixed(1)+' m';
-
-  // On range ça dans une section dédiée "Modifications de Tableau"
-  var key = 'Modifications de Tableau';
-  if(!devis[key]) devis[key] = { __base:'Modifications de Tableau', items:[], note:'' };
-
-  devis[key].items.push({
-    category: 'Modification emplacement Tableau', // s’affiche comme titre dans l’estimatif
-    intervention: '', // pas nécessaire ici
-    pose: '',
-    designation: designation,   // résumé voulu
-    qty: 1,
-    prixU: total,
-    __tabKey: key
-  });
-  saveLocal();
-
-  // Retour à l’accueil des modifs pour pouvoir enchaîner
-  pageTabModsAccueil();
-}
-
-// 7) Expose
-Object.assign(window, {
-  pageTabModsAccueil,
-  pageTabModsDeplacement,
-  addTabMod_Deplacement
-});
-</script>
-<!-- ===== FIN PATCH ===== -->
-
-  
-
-
-
-
-
-
-  
-  
-  <!-- ============================================================
-     CHAPITRE 10 : ESTIMATIF & EXPORTS — vNEXT
-     Index :
-       §7.0 • Détection / libellé des pièces (Tableaux inclus)
-       §7.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
-       §7.2 • Pages : Estimatif détaillé & Totaux par groupe
-       §7.3 • Exports : .txt par groupe / .zip par groupe
-       §7.4 • Exports : complet .txt / complet .zip
-     ============================================================ -->
-<script>
-// §7.0 • Détection & libellés
-window.PIECE_GROUPS = window.PIECE_GROUPS || {
-  "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
-  "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
-  "Cuisine":"Cuisine",
-  "Salon":"Pièces de vie","Salle à manger":"Pièces de vie","Couloir":"Pièces de vie","Entrée":"Pièces de vie",
-  "Salle de bain":"Pièces d'eau","Salle d'eau":"Pièces d'eau","Toilettes":"Pièces d'eau",
-  "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau",
-  "Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
-  "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
-  "Mise à la terre":"Mise à la terre","VMC":"VMC"
-};
-function groupDevis(){
-  var g = {};
-  for (var key in devis){
-    if (key.indexOf("__") === 0) continue;
-    var s = devis[key];
-    var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
-    var grp  = window.PIECE_GROUPS[base] || "Divers";
-    if (!g[grp]) g[grp] = {};
-    g[grp][key] = s;
-  }
-  return g;
-}
-function isTableauKey(key){
-  var s = devis[key] || {};
-  return ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
-}
-function pieceDisplayLabel(key){
-  var s = devis[key] || {};
-  var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
-  var qual = s.qualificatif || '';
-  var etg  = s.etage || '';
-  var label = base===key ? key : (base + (qual ? ' ('+qual+')':'') + (etg ? ' — '+etg:''));
-  if(isTableauKey(key) && s.__customName && s.__customName.trim()){
-    label = key + ' — ' + s.__customName.trim();
-  }else{
-    if(!isTableauKey(key)){
-      label = (typeof formatPieceLabel === 'function') ? formatPieceLabel(key) : key;
-    }else{
-      label = key;
-    }
-  }
-  return label;
-}
-
-// §7.1 • Tri dédié Tableaux
-function sortedItemsForPiece(key, items){
-  if(!Array.isArray(items)) return [];
-  if(!isTableauKey(key)) return items.slice();
-
-  function score(it){
-    var d = (it && it.designation ? String(it.designation) : '').trim();
-    if (/^ID\s/i.test(d))             return 0;
-    if (/^Coupure générale/i.test(d)) return 1;
-    if (/^Disjoncteur\s/i.test(d))    return 2;
-    return 3;
-  }
-  return items.map(function(it, i){ return {it:it, i:i, s:score(it)}; })
-              .sort(function(a,b){ return (a.s - b.s) || (a.i - b.i); })
-              .map(function(x){ return x.it; });
-}
-
-// §7.2 • Pages : Estimatif + Totaux
-function itemLine(it){
-  var unit = it.unit || "u";
-  var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
-  var left = it.intervention ? (it.intervention + " — ") : "";
-  var pu = (+it.prixU || 0).toFixed(2);
-  var q  = +it.qty || 0;
-  var total = (q * (+it.prixU || 0)).toFixed(2);
-  return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
-}
-function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
-
-function pageEstimatif(){
-  var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
-  var totalGlobal = 0;
-  var grouped = groupDevis();
-
-  for (var grp in grouped){
-    html += '<h2 style="border-top:2px solid #000; padding-top:8px;">'+grp+'</h2>';
-    var groupTotal = 0;
-
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-
-      var pieceLabel = pieceDisplayLabel(key);
-      var items = sortedItemsForPiece(key, s.items);
-      var sectionTotal = 0;
-
-      html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
-      items.forEach(function(it){
-        var q  = +it.qty || 0;
-        var pu = +it.prixU || 0;
-        var t  = q * pu;
-        sectionTotal += t; groupTotal += t; totalGlobal += t;
-
-        var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
-        var unit    = it.unit || "u";
-        var left    = it.intervention ? (it.intervention+" — ") : "";
-        html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
-      });
-      if (s.note) html += '<li><em>Note : '+s.note+'</em></li>';
-
-      html += '</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
-    }
-
-    html += '<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
-  }
-
-  html += '<h3>Total global : '+euro(totalGlobal)+'</h3>'
-       +  '<div class="row" style="margin-top:10px;">'
-       +    b("Export .txt (par groupe)","exportText()","btn")
-       +    b("Export .zip (par groupe)","exportZipGroups()","btn")
-       +    b("Export .txt (complet)","exportTextFull()","btn")
-       +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div></div>';
-
-  view(html);
-}
-
-function pageTotaux(){
-  var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
-  var totalGlobal = 0;
-  var grouped = groupDevis();
-
-  for (var grp in grouped){
-    var gt = 0;
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-      var items = sortedItemsForPiece(key, s.items);
-      var st = items.reduce(function(sum,it){ return sum + (((+it.prixU)||0)*((+it.qty)||0)); }, 0);
-      gt += st; totalGlobal += st;
-    }
-    html += '<p><strong>'+grp+'</strong> : '+euro(gt)+'</p>';
-  }
-
-  html += '<hr><p><strong>Total global : '+euro(totalGlobal)+'</strong></p>'
-       +  '<div class="row" style="margin-top:10px;">'
-       +    b("Export .txt (par groupe)","exportText()","btn")
-       +    b("Export .zip (par groupe)","exportZipGroups()","btn")
-       +    b("Export .txt (complet)","exportTextFull()","btn")
-       +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div></div>';
-
-  view(html);
-}
-
-// §7.3 • Exports : TXT/ZIP par groupe
-function exportText(){
-  var grouped = groupDevis();
-  for (var grp in grouped){
-    var lines = ['=== '+grp+' ===\n'];
-    var groupTotal = 0;
-
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-
-      var label = pieceDisplayLabel(key);
-      var items = sortedItemsForPiece(key, s.items);
-      var st = 0;
-      lines.push(pieceSeparator(label));
-
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t;
-        lines.push(itemLine(it));
-      });
-      if (s.note) lines.push('Note : '+s.note);
-      lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
-    }
-
-    lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€');
-
-    var blob = new Blob([lines.join('\r\n')], {type:'text/plain;charset=utf-8'});
-    var url  = URL.createObjectURL(blob);
-    var a    = document.createElement('a');
-    a.href = url; a.download = 'devis_'+grp+'.txt'; a.click();
-    URL.revokeObjectURL(url);
-  }
-  alert('✅ Export terminé : un fichier .txt par groupe généré.');
-}
-
-async function exportZipGroups(){
-  if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
-
-  var grouped = groupDevis();
-  var zip = new JSZip();
-  var global = 0;
-
-  for (var grp in grouped){
-    var lines = ['=== '+grp+' ===\n'];
-    var groupTotal = 0;
-
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-
-      var label = pieceDisplayLabel(key);
-      var items = sortedItemsForPiece(key, s.items);
-      var st = 0;
-      lines.push(pieceSeparator(label));
-
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t;
-        lines.push(itemLine(it));
-      });
-      if (s.note) lines.push('Note : '+s.note);
-      lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
-    }
-
-    lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€');
-    global += groupTotal;
-
-    zip.file('devis_'+grp+'.txt', lines.join('\r\n'));
-  }
-
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var readme = 'Récapitulatif — '+name+'\nDate: '+new Date().toLocaleString()
-             + '\n\nTotal global: '+global.toFixed(2)+'€\n';
-  zip.file('README.txt', readme);
-
-  var blob = await zip.generateAsync({type:'blob'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_groupes.zip';
-  a.click(); URL.revokeObjectURL(url);
-
-  alert('✅ Export ZIP (par groupe) généré.');
-}
-
-// §7.4 • Exports : COMPLET (.txt/.zip)
-function buildFullText(){
-  var grouped = groupDevis();
-  var lines = ['=== DEVIS COMPLET ===\n'];
-  var globalTotal = 0;
-
-  for (var grp in grouped){
-    lines.push('\n## '+grp+' ##\n');
-    var groupTotal = 0;
-
-    for (var key in grouped[grp]){
-      var s = grouped[grp][key];
-      if (!s || !s.items || !s.items.length) continue;
-
-      var label = pieceDisplayLabel(key);
-      var items = sortedItemsForPiece(key, s.items);
-      var st = 0;
-      lines.push(pieceSeparator(label));
-
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t; globalTotal += t;
-        lines.push(itemLine(it));
-      });
-      if (s.note) lines.push('Note : '+s.note);
-      lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
-    }
-
-    lines.push('Total '+grp+' : '+groupTotal.toFixed(2)+'€\n');
-  }
-
-  lines.push('\n=== Total global : '+globalTotal.toFixed(2)+'€ ===\n');
-  return lines.join('\r\n');
-}
-function exportTextFull(){
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt';
-  a.click(); URL.revokeObjectURL(url);
-  alert('✅ Export .txt complet généré.');
-}
-async function exportZipFull(){
-  if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
-
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var zip  = new JSZip();
-  zip.file(name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt', buildFullText());
-  zip.file('README.txt', 'Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
-
-  var blob = await zip.generateAsync({type:'blob'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip';
-  a.click(); URL.revokeObjectURL(url);
-
-  alert('✅ Export .zip complet généré.');
-}
-</script>
-
-
-
-
-
-
-
-  
-
-
-  
-<!-- =============================
-     CHAPITRE 12 : DÉMARRAGE & EXPOSE
-     Index :
-       §0  • init() : chargement + reprise sauvegardes + pageMain()
-       §1  • Expose : fonctions rendues accessibles (UI)
-       §2  • Shim compat : neutralise les anciens appels goIntervention(...)
-     ============================= -->
-<script>
-/* ======================
-   §0 • DÉMARRAGE (init)
-   ====================== */
-function init(){
-  try{
-    // Charge l'état courant
-    loadLocal();
-
-    // ✅ Tentative de restauration si la liste des devis sauvegardés est vide
-    // (fourni par le chapitre 4 robuste — sans effet si absent)
-    if (typeof recoverSavedIfEmpty === 'function') recoverSavedIfEmpty();
-
-    // Démarrage UI
-    pageMain();
-  }catch(err){
-    var el = document.getElementById('app');
-    if(el){
-      el.innerHTML =
-        '<div class="card"><h2>Erreur init()</h2><pre>'
-        + ((err && err.stack) || String(err))
-        + '</pre></div>';
-    }
-  }
-}
-
-/* ======================
-   §1 • EXPOSE (window)
-   ====================== */
-Object.assign(window, {
-  // Chap.4 — Menu & sauvegarde (robuste)
-  pageMain,
-  actionNouveauDevis,
-  pageSavedDevis,
-  loadDevis,
-  deleteDevis,
-  saveCurrentDevis,
-  exportSavedDevis,     // ➕ export .json (liste complète)
-  importSavedDevisUI,   // ➕ import .json (merge par __id)
-
-  // Chap.5 — Pièces (flux one-page) + Ventilation (raccourci)
-  pageHome,
-  pageAddPiece,
-  confirmPieceChoice,
-  removePiece,
-  goPiece,
-  delLine,
-  editPieceNote,
-  pageSpecifiqueForm,
-  saveSpecifique,
-  pagePieceSpecifique: pageSpecifiqueForm, // alias
-  goCategory,
-  goEclairageSub,
-  setEclairageBranch,
-  pageOneShotSelection,
-  saveOneShotItem,
-  goVent, // bouton "Ventilation" (redirige vers pageVentAccueil si chargée)
-
-  // Chap.6 — Tableaux (multi-tableaux)
-  pageTabCreate,
-  saveTabCustomName,
-  pageTabHome,
-  pageTabPose,
-  addTabPose,
-  pageTab_ID,
-  submitTab_ID,
-  pageTab_Coupure,       // (coupure générale)
-  submitTab_Coupure,     // (coupure générale)
-  pageTab_Disjoncteurs,
-  pageTab_DisjDetails,
-  pageTab_DisjSaveDetails,
-  pageTab_DisjValider,
-  pageTabMod_Commandes,
-  submitTabMod_Commandes,
-  pageTabMod_Specifique,
-  submitTabMod_Specifique,
-
-  // Chap.7 — Ventilation
-  pageVentAccueil,
-  pageVentNew,
-  saveVentName,
-  ventDelete,
-  pageVentHome,
-  pageVentCreation,
-  kitConduitMut, kitPercMut, exConduitMut, exPercMut, vcPercMut,
-  ventAddKit, ventAddExtracteur, ventAddVentilateur,
-  pageVentRetirage,
-  ventAddRetirage,
-  pageVentEntretien, ventAddEntretien,
-
-  // Chap.9 — Estimatif & exports
-  pageEstimatif,
-  pageTotaux,
-  exportText,
-  exportZipGroups,
-  exportTextFull,
-  exportZipFull,
-
-  // Navigation commune
-  confirmBackHome
-});
-
-/* =========================================
-   §2 • SHIM COMPAT (sécurité anti-crash)
-   - Si l’ancienne fonction goIntervention est appelée
-     via un vieux bouton, on neutralise proprement.
-   ========================================= */
-if (typeof window.goIntervention !== 'function') {
-  window.goIntervention = function(){
-    alert('⚠️ Ce raccourci "Intervention" n’est plus utilisé.\n' +
-          'Choisissez directement l’intervention dans la page de saisie.');
-  };
-}
-
-// Lancement auto
-init();
 </script>
