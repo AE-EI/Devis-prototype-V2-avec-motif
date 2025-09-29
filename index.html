@@ -1465,16 +1465,17 @@ function submitTabMod_Specifique(key){
 
   
   
-  <!-- =============================
+<!-- =============================
      CHAPITRE 7 : VENTILATION
      Index :
        7.0 • Accueil ventilation
-       7.1 • Création d’une installation
-       7.2 • Retirage (conduits, percements, kits)
+       7.1 • Création d’une installation (kits, extracteurs, ventilateurs)
+       7.2 • Retirage (conduits, percements)
        7.3 • Entretien & maintenance
      ============================= -->
+<script>
+/* ========== 7.x • État local & helpers ========== */
 
-  
 /* État local par ventilation */
 var ventState = {};
 
@@ -1508,7 +1509,7 @@ function pickVal(id, def){ var el=document.getElementById(id); return (el?el.val
 function pickNum(id, def){ var el=document.getElementById(id); var v=parseFloat(el?el.value:NaN); return isNaN(v)?(def||0):v; }
 
 /* ============================
-   Accueil Ventilation
+   7.0 • Accueil Ventilation
    ============================ */
 function pageVentAccueil(){
   if(typeof devis.__ventCounter!=="number") devis.__ventCounter = 0;
@@ -1575,7 +1576,7 @@ function pageVentHome(key){
   var custom = devis[key].__customName ? ' — '+devis[key].__customName : '';
   view(
     '<div class="card">'
-      + b('Retour','pageVentAccueil('+')','btn back')
+      + b('Retour','pageVentAccueil()','btn back')   /* ✅ corrigé */
       + '<h2>'+key+custom+'</h2>'
       + '<div class="row" style="margin-top:8px; gap:8px;">'
         + b('1 · Création','pageVentCreation('+JSON.stringify(key)+')','btn primary')
@@ -1588,8 +1589,7 @@ function pageVentHome(key){
 }
 
 /* ============================
-   Création (Kit / Extracteur / Ventilateur)
-   — Sans gros titres, mais avec libellés explicites
+   7.1 • Création (Kit / Extracteur / Ventilateur)
    ============================ */
 function pageVentCreation(key){
   ensureVentKey(key);
@@ -1641,7 +1641,7 @@ function pageVentCreation(key){
       + b('Retour','pageVentHome('+JSON.stringify(key)+')','btn back')
       + '<h2>Création</h2>'
 
-      // — Kit VMC (avec libellés)
+      // — Kit VMC
       + '<div class="pill" style="margin:6px 0;"><strong>Kit VMC</strong></div>'
       + '<label>Référence (optionnel)</label>'
       + '<input id="kit-ref" placeholder="Réf. du kit" value="'+st.kit.ref+'"/>'
@@ -1702,7 +1702,7 @@ function exConduitMut(key,cmd,idx){ var arr=ventState[key].creation.extracteur.c
 function exPercMut(key,cmd,idx){ var arr=ventState[key].creation.extracteur.percements; if(cmd==="add") arr.push({support:"Placo",qty:0}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key); }
 function vcPercMut(key,cmd,idx){ var arr=ventState[key].creation.ventilateur.percements; if(cmd==="add") arr.push({support:"Placo",qty:0}); if(cmd==="del") arr.splice(idx,1); pageVentCreation(key); }
 
-/* Ajouts d’items (on garde le même niveau de détail que précédemment) */
+/* Ajouts d’items */
 function ventAddKit(key){
   devis[key].items.push({category:'Ventilation/Création',designation:'Kit VMC',qty:1,prixU:0,__tabKey:key});
   saveLocal(); pageVentHome(key);
@@ -1717,7 +1717,7 @@ function ventAddVentilateur(key){
 }
 
 /* ============================
-   Retirage des conduits
+   7.2 • Retirage des conduits
    ============================ */
 function pageVentRetirage(key){
   ensureVentKey(key); var st=ventState[key].retirage;
@@ -1752,7 +1752,7 @@ function ventAddRetirage(key){
 }
 
 /* ============================
-   Entretien
+   7.3 • Entretien & maintenance
    ============================ */
 function pageVentEntretien(key){
   ensureVentKey(key); var st=ventState[key].entretien;
@@ -1781,8 +1781,23 @@ function ventAddEntretien(key){
   });
   saveLocal(); pageVentHome(key);
 }
-</script>
 
+/* ========== 7.x • Expose ========== */
+Object.assign(window, {
+  pageVentAccueil,
+  pageVentNew,
+  saveVentName,
+  ventDelete,
+  pageVentHome,
+  pageVentCreation,
+  kitConduitMut, kitPercMut, exConduitMut, exPercMut, vcPercMut,
+  ventAddKit, ventAddExtracteur, ventAddVentilateur,
+  pageVentRetirage,
+  ventAddRetirage,
+  pageVentEntretien,
+  ventAddEntretien
+});
+</script>
 
 
 
