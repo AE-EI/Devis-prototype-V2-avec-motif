@@ -629,11 +629,11 @@ function mergeSavedLists(existing, incoming){
   
 
 <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (sécurisé)
      Index :
        5.0 • Accueil (menu principal)
        5.1 • Raccourcis sécurisés (Ventilation / Modifs Tableau / Tableaux)
-       5.2 • Stubs flux “Pièces” (compatibilité — neutralisés proprement)
+       5.2 • Stubs flux “Pièces” (compat neutralisée)
      ============================= -->
 <script>
 /* ============================
@@ -642,26 +642,20 @@ function mergeSavedLists(existing, incoming){
 
 /** Ouvre l’accueil Ventilation si disponible */
 function goVent(){
-  if (typeof window.pageVentAccueil === 'function') {
-    pageVentAccueil();
-  } else {
-    alert("⚠️ Le module Ventilation (Chapitre 7) n'est pas chargé.");
-  }
+  if (typeof window.pageVentAccueil === 'function') pageVentAccueil();
+  else alert("⚠️ Le module Ventilation (Chapitre 7) n'est pas chargé.");
 }
 
 /** Ouvre l’accueil Modifications de Tableau si disponible */
 function goTabMods(){
-  if (typeof window.pageTabModsAccueil === 'function') {
-    pageTabModsAccueil();
-  } else {
-    alert("⚠️ Le module 'Modifications de Tableau' n'est pas chargé (Chapitre 9).");
-  }
+  if (typeof window.pageTabModsAccueil === 'function') pageTabModsAccueil();
+  else alert("⚠️ Le module 'Modifications de Tableau' n'est pas chargé (Chapitre 9).");
 }
 
 /** Accès Tableaux (accueil/création) selon ce qui existe */
 function goTableaux(){
-  if (typeof window.pageTabHome === 'function') { pageTabHome(); return; }
-  if (typeof window.pageTabCreate === 'function') { pageTabCreate(); return; }
+  if (typeof window.pageTabHome === 'function')      { pageTabHome(); return; }
+  if (typeof window.pageTabCreate === 'function')    { pageTabCreate(); return; }
   alert("⚠️ Le module Tableaux (Chapitre 6) n'est pas chargé.");
 }
 
@@ -669,30 +663,36 @@ function goTableaux(){
    5.0 • Accueil principal
    ============================ */
 function pageHome(){
-  // Petite sécurité : devis existe
+  // Petite sécurité
   window.devis = window.devis || {};
 
   var hasMods = (typeof window.pageTabModsAccueil === 'function');
   var hasVent = (typeof window.pageVentAccueil === 'function');
 
-  // Carte Accueil — On intègre directement le bouton "Modifications de Tableau"
-  // → aucune insertion ultérieure, pas de doublons possible.
+  // Détecte si “Ajouter une pièce” est VRAIMENT implémenté (pas le stub)
+  var showAddPiece = (typeof window.pageAddPiece === 'function' && window.pageAddPiece !== _stub);
+
+  var buttons = [
+    showAddPiece ? b('Ajouter une pièce','pageAddPiece()','btn') : '',
+    b('Tableaux','goTableaux()','btn'),
+    b('Ventilation','goVent()','btn'),
+    b('Modifications de Tableau','goTabMods()','btn primary'),
+    b('Estimatif détaillé','pageEstimatif()','btn'),
+    b('Totaux par groupe','pageTotaux()','btn'),
+    (typeof pageSavedDevis==='function' ? b('Dossiers sauvegardés','pageSavedDevis()','btn') : '')
+  ].filter(Boolean).join('');
+
+  var hint = [
+    hasMods ? 'Le module “Modifications de Tableau” est prêt.' : 'Astuce : charge le Chapitre 9 pour activer “Modifications de Tableau”.',
+    hasVent ? '' : ' Le Chapitre 7 activera la gestion Ventilation.',
+    showAddPiece ? '' : ' Le module “Pièces” n’est pas chargé — le bouton est masqué.'
+  ].join('').trim();
+
   view(
     '<div class="card">'
       + '<h2>Accueil</h2>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-        + b('Ajouter une pièce','pageAddPiece()','btn')
-        + b('Tableaux','goTableaux()','btn')
-        + b('Ventilation','goVent()','btn')
-        + b('Modifications de Tableau','goTabMods()','btn primary')   /* ✅ verrouillé ici */
-        + b('Estimatif détaillé','pageEstimatif()','btn')
-        + b('Totaux par groupe','pageTotaux()','btn')
-        + (typeof pageSavedDevis==='function' ? b('Dossiers sauvegardés','pageSavedDevis()','btn') : '')
-      + '</div>'
-      + '<p class="muted" style="margin-top:10px;">'
-      +   (hasMods ? 'Le module “Modifications de Tableau” est prêt.' : 'Astuce : charge le Chapitre 9 pour activer “Modifications de Tableau”.')
-      +   (hasVent ? '' : ' Le Chapitre 7 activera la gestion Ventilation.')
-      + '</p>'
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'+ buttons +'</div>'
+      + (hint ? '<p class="muted" style="margin-top:10px;">'+hint+'</p>' : '')
     + '</div>'
   );
 }
@@ -700,7 +700,6 @@ function pageHome(){
 /* ============================
    5.2 • Stubs flux “Pièces” (compat)
    - Neutralisés proprement pour éviter tout crash si appelés.
-   - Tu peux remplacer chacun par tes vraies pages quand tu veux.
    ============================ */
 function _stub(msg){
   alert('ℹ️ Module non encore branché : ' + msg);
@@ -745,9 +744,6 @@ Object.assign(window, {
   saveOneShotItem
 });
 </script>
-
-
-
 
 
 
