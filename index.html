@@ -2332,7 +2332,7 @@ Object.assign(window, {
 
   
   
-  <!-- ============================================================
+<!-- ============================================================
      CHAPITRE 10 : ESTIMATIF & EXPORTS — vNEXT
      Index :
        §7.0 • Détection / libellé des pièces (Tableaux inclus)
@@ -2352,7 +2352,8 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau",
   "Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
   "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
-  "Mise à la terre":"Mise à la terre","VMC":"VMC"
+  "Mise à la terre":"Mise à la terre","VMC":"VMC",
+  "Modifications de Tableau":"Tableau & distribution"
 };
 function groupDevis(){
   var g = {};
@@ -2405,6 +2406,28 @@ function sortedItemsForPiece(key, items){
               .map(function(x){ return x.it; });
 }
 
+// ===== Ajout : helpers d'affichage pour "Modifications de Tableau" =====
+function isModsTableauSection(key, section){
+  var s = devis[key] || {};
+  var isMods = ((s.__base||'').toLowerCase()==='modifications de tableau') || /^Modifications de Tableau$/i.test(key);
+  return isMods && section;
+}
+function groupItemsByCategoryForMods(items){
+  var groups = {};
+  items.forEach(function(it){
+    var cat = (it.category||'Autres').trim();
+    if(!groups[cat]) groups[cat] = [];
+    groups[cat].push(it);
+  });
+  return groups;
+}
+// Ordre d'affichage voulu pour les catégories de modifs
+var MODS_CATS_ORDER = [
+  'Modification emplacement Tableau',
+  'ReCâblage Tableau',
+  'Autres'
+];
+
 // §7.2 • Pages : Estimatif + Totaux
 function itemLine(it){
   var unit = it.unit || "u";
@@ -2413,7 +2436,9 @@ function itemLine(it){
   var pu = (+it.prixU || 0).toFixed(2);
   var q  = +it.qty || 0;
   var total = (q * (+it.prixU || 0)).toFixed(2);
-  return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
+  // on garde la catégorie visible pour plus de clarté globale
+  var cat = it.category ? ('['+it.category+'] ') : '';
+  return cat + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
 }
 function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
 
@@ -2434,21 +2459,59 @@ function pageEstimatif(){
       var items = sortedItemsForPiece(key, s.items);
       var sectionTotal = 0;
 
-      html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
-      items.forEach(function(it){
-        var q  = +it.qty || 0;
-        var pu = +it.prixU || 0;
-        var t  = q * pu;
-        sectionTotal += t; groupTotal += t; totalGlobal += t;
+      html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3>';
 
-        var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
-        var unit    = it.unit || "u";
-        var left    = it.intervention ? (it.intervention+" — ") : "";
-        html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
-      });
-      if (s.note) html += '<li><em>Note : '+s.note+'</em></li>';
+      // === Affichage spécifique pour "Modifications de Tableau" ===
+      if (isModsTableauSection(key, true)){
+        var byCat = groupItemsByCategoryForMods(items);
+        MODS_CATS_ORDER.forEach(function(cat){
+          if(!byCat[cat] || !byCat[cat].length) return;
+          html += '<h4 style="margin:6px 0">'+cat+'</h4><ul>';
+          byCat[cat].forEach(function(it){
+            var q  = +it.qty || 0, pu = +it.prixU || 0, t  = q * pu;
+            sectionTotal += t; groupTotal += t; totalGlobal += t;
+            var unit    = it.unit || "u";
+            var left    = it.intervention ? (it.intervention+" — ") : "";
+            var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
+            html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
+          });
+          html += '</ul>';
+        });
 
-      html += '</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
+        // Reste des items non classés (le cas échéant)
+        Object.keys(byCat).forEach(function(cat){
+          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
+          html += '<h4 style="margin:6px 0">'+cat+'</h4><ul>';
+          byCat[cat].forEach(function(it){
+            var q  = +it.qty || 0, pu = +it.prixU || 0, t  = q * pu;
+            sectionTotal += t; groupTotal += t; totalGlobal += t;
+            var unit    = it.unit || "u";
+            var left    = it.intervention ? (it.intervention+" — ") : "";
+            var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
+            html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
+          });
+          html += '</ul>';
+        });
+
+      } else {
+        // === Affichage standard ===
+        html += '<ul>';
+        items.forEach(function(it){
+          var q  = +it.qty || 0;
+          var pu = +it.prixU || 0;
+          var t  = q * pu;
+          sectionTotal += t; groupTotal += t; totalGlobal += t;
+
+          var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
+          var unit    = it.unit || "u";
+          var left    = it.intervention ? (it.intervention+" — ") : "";
+          html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
+        });
+        html += '</ul>';
+      }
+
+      if (s.note) html += '<p class="muted"><em>Note : '+s.note+'</em></p>';
+      html += '<p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
     }
 
     html += '<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
@@ -2509,11 +2572,40 @@ function exportText(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t;
-        lines.push(itemLine(it));
-      });
+      // Spécifique "Modifications de Tableau"
+      if (isModsTableauSection(key, true)){
+        var byCat = groupItemsByCategoryForMods(items);
+
+        MODS_CATS_ORDER.forEach(function(cat){
+          if(!byCat[cat] || !byCat[cat].length) return;
+          lines.push('> '+cat);
+          byCat[cat].forEach(function(it){
+            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+            st += t; groupTotal += t;
+            lines.push('- ' + itemLine(it));
+          });
+          lines.push('');
+        });
+
+        Object.keys(byCat).forEach(function(cat){
+          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
+          lines.push('> '+cat);
+          byCat[cat].forEach(function(it){
+            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+            st += t; groupTotal += t;
+            lines.push('- ' + itemLine(it));
+          });
+          lines.push('');
+        });
+
+      } else {
+        items.forEach(function(it){
+          var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+          st += t; groupTotal += t;
+          lines.push(itemLine(it));
+        });
+      }
+
       if (s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
@@ -2549,11 +2641,39 @@ async function exportZipGroups(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t;
-        lines.push(itemLine(it));
-      });
+      if (isModsTableauSection(key, true)){
+        var byCat = groupItemsByCategoryForMods(items);
+
+        MODS_CATS_ORDER.forEach(function(cat){
+          if(!byCat[cat] || !byCat[cat].length) return;
+          lines.push('> '+cat);
+          byCat[cat].forEach(function(it){
+            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+            st += t; groupTotal += t;
+            lines.push('- ' + itemLine(it));
+          });
+          lines.push('');
+        });
+
+        Object.keys(byCat).forEach(function(cat){
+          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
+          lines.push('> '+cat);
+          byCat[cat].forEach(function(it){
+            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+            st += t; groupTotal += t;
+            lines.push('- ' + itemLine(it));
+          });
+          lines.push('');
+        });
+
+      } else {
+        items.forEach(function(it){
+          var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+          st += t; groupTotal += t;
+          lines.push(itemLine(it));
+        });
+      }
+
       if (s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
@@ -2597,11 +2717,39 @@ function buildFullText(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      items.forEach(function(it){
-        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-        st += t; groupTotal += t; globalTotal += t;
-        lines.push(itemLine(it));
-      });
+      if (isModsTableauSection(key, true)){
+        var byCat = groupItemsByCategoryForMods(items);
+
+        MODS_CATS_ORDER.forEach(function(cat){
+          if(!byCat[cat] || !byCat[cat].length) return;
+          lines.push('> '+cat);
+          byCat[cat].forEach(function(it){
+            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+            st += t; groupTotal += t; globalTotal += t;
+            lines.push('- ' + itemLine(it));
+          });
+          lines.push('');
+        });
+
+        Object.keys(byCat).forEach(function(cat){
+          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
+          lines.push('> '+cat);
+          byCat[cat].forEach(function(it){
+            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+            st += t; groupTotal += t; globalTotal += t;
+            lines.push('- ' + itemLine(it));
+          });
+          lines.push('');
+        });
+
+      } else {
+        items.forEach(function(it){
+          var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+          st += t; groupTotal += t; globalTotal += t;
+          lines.push(itemLine(it));
+        });
+      }
+
       if (s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
@@ -2638,7 +2786,6 @@ async function exportZipFull(){
   alert('✅ Export .zip complet généré.');
 }
 </script>
-
 
 
 
