@@ -629,11 +629,11 @@ function mergeSavedLists(existing, incoming){
   
 
 <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES (sécurisé)
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES
      Index :
        5.0 • Accueil (menu principal)
        5.1 • Raccourcis sécurisés (Ventilation / Modifs Tableau / Tableaux)
-       5.2 • Stubs flux “Pièces” (compat neutralisée)
+       5.2 • Stubs flux “Pièces” (compatibilité — neutralisés proprement)
      ============================= -->
 <script>
 /* ============================
@@ -642,20 +642,26 @@ function mergeSavedLists(existing, incoming){
 
 /** Ouvre l’accueil Ventilation si disponible */
 function goVent(){
-  if (typeof window.pageVentAccueil === 'function') pageVentAccueil();
-  else alert("⚠️ Le module Ventilation (Chapitre 7) n'est pas chargé.");
+  if (typeof window.pageVentAccueil === 'function') {
+    pageVentAccueil();
+  } else {
+    alert("⚠️ Le module Ventilation (Chapitre 7) n'est pas chargé.");
+  }
 }
 
 /** Ouvre l’accueil Modifications de Tableau si disponible */
 function goTabMods(){
-  if (typeof window.pageTabModsAccueil === 'function') pageTabModsAccueil();
-  else alert("⚠️ Le module 'Modifications de Tableau' n'est pas chargé (Chapitre 9).");
+  if (typeof window.pageTabModsAccueil === 'function') {
+    pageTabModsAccueil();
+  } else {
+    alert("⚠️ Le module 'Modifications de Tableau' n'est pas chargé (Chapitre 9).");
+  }
 }
 
 /** Accès Tableaux (accueil/création) selon ce qui existe */
 function goTableaux(){
-  if (typeof window.pageTabHome === 'function')      { pageTabHome(); return; }
-  if (typeof window.pageTabCreate === 'function')    { pageTabCreate(); return; }
+  if (typeof window.pageTabHome === 'function') { pageTabHome(); return; }
+  if (typeof window.pageTabCreate === 'function') { pageTabCreate(); return; }
   alert("⚠️ Le module Tableaux (Chapitre 6) n'est pas chargé.");
 }
 
@@ -663,36 +669,30 @@ function goTableaux(){
    5.0 • Accueil principal
    ============================ */
 function pageHome(){
-  // Petite sécurité
+  // Petite sécurité : devis existe
   window.devis = window.devis || {};
 
   var hasMods = (typeof window.pageTabModsAccueil === 'function');
   var hasVent = (typeof window.pageVentAccueil === 'function');
 
-  // Détecte si “Ajouter une pièce” est VRAIMENT implémenté (pas le stub)
-  var showAddPiece = (typeof window.pageAddPiece === 'function' && window.pageAddPiece !== _stub);
-
-  var buttons = [
-    showAddPiece ? b('Ajouter une pièce','pageAddPiece()','btn') : '',
-    b('Tableaux','goTableaux()','btn'),
-    b('Ventilation','goVent()','btn'),
-    b('Modifications de Tableau','goTabMods()','btn primary'),
-    b('Estimatif détaillé','pageEstimatif()','btn'),
-    b('Totaux par groupe','pageTotaux()','btn'),
-    (typeof pageSavedDevis==='function' ? b('Dossiers sauvegardés','pageSavedDevis()','btn') : '')
-  ].filter(Boolean).join('');
-
-  var hint = [
-    hasMods ? 'Le module “Modifications de Tableau” est prêt.' : 'Astuce : charge le Chapitre 9 pour activer “Modifications de Tableau”.',
-    hasVent ? '' : ' Le Chapitre 7 activera la gestion Ventilation.',
-    showAddPiece ? '' : ' Le module “Pièces” n’est pas chargé — le bouton est masqué.'
-  ].join('').trim();
-
+  // Carte Accueil — On intègre directement le bouton "Modifications de Tableau"
+  // → aucune insertion ultérieure, pas de doublons possible.
   view(
     '<div class="card">'
       + '<h2>Accueil</h2>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'+ buttons +'</div>'
-      + (hint ? '<p class="muted" style="margin-top:10px;">'+hint+'</p>' : '')
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+        + b('Ajouter une pièce','pageAddPiece()','btn')
+        + b('Tableaux','goTableaux()','btn')
+        + b('Ventilation','goVent()','btn')
+        + b('Modifications de Tableau','goTabMods()','btn primary')   /* ✅ verrouillé ici */
+        + b('Estimatif détaillé','pageEstimatif()','btn')
+        + b('Totaux par groupe','pageTotaux()','btn')
+        + (typeof pageSavedDevis==='function' ? b('Dossiers sauvegardés','pageSavedDevis()','btn') : '')
+      + '</div>'
+      + '<p class="muted" style="margin-top:10px;">'
+      +   (hasMods ? 'Le module “Modifications de Tableau” est prêt.' : 'Astuce : charge le Chapitre 9 pour activer “Modifications de Tableau”.')
+      +   (hasVent ? '' : ' Le Chapitre 7 activera la gestion Ventilation.')
+      + '</p>'
     + '</div>'
   );
 }
@@ -700,6 +700,7 @@ function pageHome(){
 /* ============================
    5.2 • Stubs flux “Pièces” (compat)
    - Neutralisés proprement pour éviter tout crash si appelés.
+   - Tu peux remplacer chacun par tes vraies pages quand tu veux.
    ============================ */
 function _stub(msg){
   alert('ℹ️ Module non encore branché : ' + msg);
@@ -744,6 +745,11 @@ Object.assign(window, {
   saveOneShotItem
 });
 </script>
+
+
+
+
+
 
 
 
@@ -2077,316 +2083,263 @@ function importTarifsPersoJSON(){
 
   
 
+
 <!-- =============================
      CHAPITRE 9 : MODIFICATIONS DE TABLEAU
      Index :
-       9.0 • État, tarifs, helpers
-       9.1 • Accueil / création / renommage / suppression
-       9.2 • Modification d’emplacement (circuits à rallonger, boîte, goulotte)
-       9.3 • ReCâblage Tableau (circuits à recâbler, « remplacement au coffret »)
-       9.4 • Coffret (mêmes menus que création de tableau, sans « dépose »)
+       9.0 • Styles & tarifs (défauts)
+       9.1 • Accueil des modifications
+       9.2 • Modification d’emplacement (déplacement)
+       9.3 • Recâblage tableau (+ option Remplacement coffret)
      ============================= -->
+
 <script>
-/* ============================
-   9.0 • ÉTAT, TARIFS, HELPERS
-   ============================ */
-function ensureTabModsKey(key){
-  if(!devis[key]) devis[key] = {
-    __base: 'Modifications de Tableau',
-    __customName: '',
-    items: [],
-    note: ''
-  };
-  saveLocal();
+// ========== 9.0 • Styles & tarifs par défaut ==========
+(function(){
+  var css = `
+    .mtx{margin-top:14px} .mbx{margin-bottom:14px}
+    .vblock{display:block;margin-top:10px}
+    .fieldset{border:1px solid var(--line);background:#fff;border-radius:10px;padding:12px;margin-top:10px}
+    .fieldset h3{margin:0 0 8px;font-size:16px}
+  `;
+  var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
+})();
+
+window.TARIFS_TABMODS = window.TARIFS_TABMODS || {};
+TARIFS_TABMODS.deplacement = Object.assign({
+  par_circuit: 20,        // € / circuit à rallonger
+  boite_base: 50,         // € base pour la boîte
+  boite_par_circuit: 10,  // € / circuit en plus pour la boîte
+  goulotte_base: 50,      // € base goulotte
+  goulotte_par_m: 20      // € / mètre
+}, TARIFS_TABMODS.deplacement || {});
+
+// Recâblage : simple base “par circuit”
+TARIFS_TABMODS.recablage = Object.assign({
+  par_circuit: 20         // € / circuit à recâbler
+}, TARIFS_TABMODS.recablage || {});
+
+// helper prix pose tableau (on réutilise Chap.6)
+function _tabPrice(rangs, modules, pose, intervention){
+  if (typeof getTabPrice === 'function') return getTabPrice(rangs, modules, pose, intervention);
+  return 0;
 }
 
-// Tarifs par défaut (surchargeables via window.TARIFS_TABMODS)
-window.TARIFS_TABMODS = window.TARIFS_TABMODS || {
-  deplacement: {
-    par_circuit: 20,      // € / circuit à rallonger
-    boite_base:   50,     // € si une boîte est créée (0 si "Non")
-    goulotte_par_m: 20    // € / mètre de goulotte
-  },
-  recablage: {
-    par_circuit: 25       // € / circuit à recâbler
-  }
-};
-
-// Tailles de boîtes (inclut "Non")
-var BOITE_TAILLES = [
-  {id:'NON',      label:'Non'},            // pas de boîte → 0 €
-  {id:'100x150',  label:'100 × 150'},
-  {id:'150x200',  label:'150 × 200'},
-  {id:'200x250',  label:'200 × 250'},
-  {id:'300x350',  label:'300 × 350'}
-];
-
-// Helpers
-function _pickVal(id, def){ var el=document.getElementById(id); return (el?el.value:def); }
-function _pickNum(id, def){ var el=document.getElementById(id); var v=parseFloat(el?el.value:NaN); return isNaN(v)?(def||0):v; }
-
-/* ===============================================
-   9.1 • ACCUEIL / CRÉATION / RENOMMAGE / SUPPR.
-   =============================================== */
+// ========== 9.1 • Accueil ==========
 function pageTabModsAccueil(){
-  // liste des dossiers base === "Modifications de Tableau"
-  var keys = Object.keys(devis).filter(function(k){
-    if(k.indexOf('__')===0) return false;
-    var s = devis[k]||{};
-    return (s.__base||'').toLowerCase() === 'modifications de tableau';
-  });
-
-  var list = keys.length ? keys.map(function(k){
-    var s = devis[k]||{};
-    var titre = k + (s.__customName ? (' — '+s.__customName) : '');
-    var nb = (s.items||[]).length;
-    return '<div class="pill" style="width:100%;justify-content:space-between;">'
-         +   '<span><strong>'+titre+'</strong> <small class="muted">'+nb+' ligne(s)</small></span>'
-         +   '<span>'
-         +     b('Ouvrir','pageTabModsHome('+JSON.stringify(k)+')','btn')
-         +     b('Supprimer','deleteTabMods('+JSON.stringify(k)+')','btn')
-         +   '</span>'
-         + '</div>';
-  }).join('') : '<p class="muted">Aucune modification de tableau.</p>';
-
   view(
     '<div class="card">'
       + b('Retour','pageHome()','btn back')
       + '<h2>Modifications de Tableau</h2>'
-      + b('➕ Nouveau dossier','pageTabModsNew()','btn primary')
-    + '</div>'
-    + '<div class="card" style="margin-top:12px;">'
-      + '<h2>Liste</h2>'
-      + list
+      + '<div class="row mtx">'
+        + b('Modification emplacement Tableau','pageTabModsDeplacement()','btn primary')
+        + b('Recâblage tableau','pageTabModsRecablage()','btn')
+      + '</div>'
     + '</div>'
   );
 }
 
-function pageTabModsNew(){
-  // identifiant auto
-  if(typeof devis.__tabModsCounter!=='number') devis.__tabModsCounter = 0;
-  devis.__tabModsCounter++;
-  var key = 'Modifications de Tableau ' + devis.__tabModsCounter;
-  ensureTabModsKey(key);
-
+// ========== 9.2 • Déplacement (modif d’emplacement) ==========
+function pageTabModsDeplacement(){
+  var circuits = Array.from({length:31},(_,i)=>'<option value="'+i+'">'+i+'</option>').join('');
+  var boites = '<option value="MICHAUD_250x300">Boîte Michaud 250×300</option>';
+  var t = TARIFS_TABMODS.deplacement || {};
   view(
     '<div class="card">'
       + b('Retour','pageTabModsAccueil()','btn back')
-      + '<h2>Nouveau dossier</h2>'
-      + '<p><strong>Identifiant : '+key+'</strong></p>'
-      + '<label>Nom du tableau modifié (optionnel)</label>'
-      + '<input id="tabmods-name" placeholder="ex : Tableau principal RDC" />'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('Valider','saveTabModsName('+JSON.stringify(key)+')','btn primary')
+      + '<h2>Modification emplacement Tableau</h2>'
+      + '<div class="fieldset">'
+        + '<h3>1) Nombre de circuits à rallonger</h3>'
+        + '<label class="vblock">Choix</label>'
+        + '<select id="mt-circuits">'+circuits+'</select>'
+        + '<small class="muted vblock">Tarif : '+euro(+t.par_circuit||20)+' / circuit</small>'
+      + '</div>'
+      + '<div class="fieldset">'
+        + '<h3>2) Création d’une boîte de dérivation</h3>'
+        + '<label class="vblock">Modèle</label>'
+        + '<select id="mt-boite">'+boites+'</select>'
+        + '<small class="muted vblock">Base : '+euro(+t.boite_base||50)+' + '+euro(+t.boite_par_circuit||10)+' par circuit</small>'
+      + '</div>'
+      + '<div class="fieldset">'
+        + '<h3>3) Longueur de goulotte</h3>'
+        + '<label class="vblock">Longueur (m)</label>'
+        + '<input id="mt-goulotte" type="number" step="0.1" min="0" value="0" inputmode="decimal" />'
+        + '<small class="muted vblock">Base : '+euro(+t.goulotte_base||50)+' + '+euro(+t.goulotte_par_m||20)+' / mètre</small>'
+      + '</div>'
+      + '<div id="mt-preview" class="muted mtx"></div>'
+      + '<div class="row mtx" style="gap:8px;">'
+        + b('Ajouter la modification Tableau','addTabMod_Deplacement()','btn primary')
       + '</div>'
     + '</div>'
   );
-}
-function saveTabModsName(key){
-  var name = (_pickVal('tabmods-name','')||'').trim();
-  if(devis[key]) devis[key].__customName = name;
-  saveLocal(); pageTabModsHome(key);
-}
-function deleteTabMods(key){
-  if(!confirm('Supprimer « '+key+' » ?')) return;
-  delete devis[key]; saveLocal(); pageTabModsAccueil();
+  ['mt-circuits','mt-boite','mt-goulotte'].forEach(id=>{
+    var el=document.getElementById(id); if(el) el.addEventListener('input', refreshMtPreview);
+  });
+  refreshMtPreview();
 }
 
-function pageTabModsHome(key){
-  ensureTabModsKey(key);
-  var custom = devis[key].__customName ? ' — '+devis[key].__customName : '';
-  view(
-    '<div class="card">'
-      + b('Retour','pageTabModsAccueil()','btn back')
-      + '<h2>'+key+custom+'</h2>'
-      + '<div class="row" style="gap:8px;margin-top:8px;">'
-        + b('1 · Modification emplacement','pageTabMods_Empl('+JSON.stringify(key)+')','btn primary')
-        + b('2 · ReCâblage Tableau','pageTabMods_Recab('+JSON.stringify(key)+')','btn')
-        + b('3 · Coffret','pageTabMods_Coffret('+JSON.stringify(key)+')','btn')
-        + b('Renommer','pageTabModsRename('+JSON.stringify(key)+')','btn ghost')
-      + '</div>'
-      + '<p class="muted" style="margin-top:6px;">Ajoute ici les lignes liées au déplacement / recâblage / coffret.</p>'
-    + '</div>'
-  );
+function _calcDeplacementTotal(nbCircuits, boiteId, lgM){
+  var t = TARIFS_TABMODS.deplacement || {};
+  var pCircuits = (+nbCircuits) * (+t.par_circuit||20);
+  var pBoite    = (+t.boite_base||50) + (+nbCircuits) * (+t.boite_par_circuit||10);
+  var pGoulotte = (+t.goulotte_base||50) + Math.max(0, +lgM) * (+t.goulotte_par_m||20);
+  return roundUp5(pCircuits + pBoite + pGoulotte);
 }
-function pageTabModsRename(key){
-  var cur = (devis[key] && devis[key].__customName) || '';
-  var name = prompt('Nom du tableau modifié :', cur) || '';
-  if(devis[key]) devis[key].__customName = name.trim();
-  saveLocal(); pageTabModsHome(key);
+function refreshMtPreview(){
+  var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
+  var b  = document.getElementById('mt-boite').value;
+  var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
+  var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
+  var total = _calcDeplacementTotal(n, b, lm);
+  document.getElementById('mt-preview').innerHTML =
+    'Récap : '+n+' circuit(s) — '+labelBoite+' — goulotte '+lm.toFixed(1)+' m'
+    +' → Total estimé : <strong>'+euro(total)+'</strong>';
 }
+function addTabMod_Deplacement(){
+  var n  = parseInt(document.getElementById('mt-circuits').value,10)||0;
+  var b  = document.getElementById('mt-boite').value;
+  var lm = parseFloat(document.getElementById('mt-goulotte').value)||0;
+  var total = _calcDeplacementTotal(n, b, lm);
+  var labelBoite = (b==='MICHAUD_250x300') ? 'Boîte Michaud 250×300' : b;
 
-/* =========================================================
-   9.2 • MODIFICATION D’EMPLACEMENT (circuits, boîte, Lm)
-   ========================================================= */
-function pageTabMods_Empl(key){
-  ensureTabModsKey(key);
-  var boiteOpts = BOITE_TAILLES.map(function(b){
-    return '<option value="'+b.id+'">'+b.label+'</option>';
-  }).join('');
+  var key = 'Modifications de Tableau';
+  if(!devis[key]) devis[key] = { __base:'Modifications de Tableau', items:[], note:'' };
 
-  view(
-    '<div class="card">'
-      + b('Retour','pageTabModsHome('+JSON.stringify(key)+')','btn back')
-      + '<h2>Modification d’emplacement</h2>'
-      + '<div class="row">'
-        + '<div style="flex:1 1 220px;">'
-          + '<label>Nombre de circuits à rallonger</label>'
-          + '<input id="empl-n" type="number" min="0" value="0" inputmode="numeric" />'
-        + '</div>'
-        + '<div style="flex:1 1 220px;">'
-          + '<label>Création d’une boîte de dérivation</label>'
-          + '<select id="empl-boite">'+boiteOpts+'</select>'
-          + '<small class="muted">Choisir « Non » pour ne pas créer de boîte (0 €).</small>'
-        + '</div>'
-        + '<div style="flex:1 1 220px;">'
-          + '<label>Longueur de goulotte (m)</label>'
-          + '<input id="empl-l" type="number" min="0" step="0.1" value="0" inputmode="decimal" />'
-        + '</div>'
-      + '</div>'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('Ajouter la ligne','submitTabMods_Empl('+JSON.stringify(key)+')','btn primary')
-      + '</div>'
-    + '</div>'
-  );
-}
-function submitTabMods_Empl(key){
-  var N   = Math.max(0, _pickNum('empl-n',0));
-  var BID = _pickVal('empl-boite','NON');
-  var L   = Math.max(0, _pickNum('empl-l',0));
-
-  var t = window.TARIFS_TABMODS || {};
-  var td = t.deplacement || {};
-  var pu = 0;
-  pu += N * (+td.par_circuit || 0);
-  if (BID !== 'NON') pu += (+td.boite_base || 0);
-  pu += L * (+td.goulotte_par_m || 0);
-  pu = roundUp5(pu);
-
-  var boiteLabel = (BOITE_TAILLES.find(function(b){return b.id===BID;})||{label:'Non'}).label;
-  var label = 'Nombre de circuits à rallonger : ('+N+') — Création d’une boîte de dérivation : ('+boiteLabel+') — Longueur de goulotte : ('+L+') m';
-
-  ensureTabModsKey(key);
   devis[key].items.push({
     category: 'Modification emplacement Tableau',
-    designation: label,
-    qty: 1, unit:'u', prixU: pu,
-    __tabKey: key
+    designation: 'Circuits: '+n+' — Boîte: '+labelBoite+' — Goulotte: '+lm.toFixed(1)+' m',
+    qty: 1, prixU: total, intervention:'', pose:'', __tabKey:key
   });
-  saveLocal(); pageTabModsHome(key);
+  saveLocal(); pageTabModsAccueil();
 }
 
-/* ===============================================
-   9.3 • RECÂBLAGE TABLEAU (circuits + libellé voulu)
-   =============================================== */
-function pageTabMods_Recab(key){
-  ensureTabModsKey(key);
+// ========== 9.3 • Recâblage tableau ==========
+function pageTabModsRecablage(){
+  // circuits à recâbler
+  var circuits = Array.from({length:31},(_,i)=>'<option value="'+i+'">'+i+'</option>').join('');
+  // remplacement coffret (Oui/Non)
+  var ouiNon = '<option value="non">Non</option><option value="oui">Oui</option>';
+  // mêmes menus que “Pose du tableau” SAUF intervention
+  var rangs   = [1,2,3,4].map(r=>`<option value="${r}">${r} rangée(s)</option>`).join('');
+  var modules = [13,18,24].map(m=>`<option value="${m}">${m} modules</option>`).join('');
+  var poses   = ['Saillie','Encastré'].map(p=>`<option value="${p}">${p}</option>`).join('');
+
+  var t = TARIFS_TABMODS.recablage || {};
   view(
     '<div class="card">'
-      + b('Retour','pageTabModsHome('+JSON.stringify(key)+')','btn back')
-      + '<h2>ReCâblage Tableau</h2>'
-      + '<label>Nombre de circuits à recâbler</label>'
-      + '<input id="recab-n" type="number" min="0" value="0" inputmode="numeric" />'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('Ajouter la ligne','submitTabMods_Recab('+JSON.stringify(key)+')','btn primary')
+      + b('Retour','pageTabModsAccueil()','btn back')
+      + '<h2>Recâblage tableau</h2>'
+
+      + '<div class="fieldset">'
+        + '<h3>1) Nombre de circuits à recâbler</h3>'
+        + '<label class="vblock">Choix</label>'
+        + '<select id="rc-circuits">'+circuits+'</select>'
+        + '<small class="muted vblock">Tarif : '+euro(+t.par_circuit||20)+' / circuit</small>'
+      + '</div>'
+
+      + '<div class="fieldset">'
+        + '<h3>2) Remplacement coffret</h3>'
+        + '<label class="vblock">Souhaitez-vous remplacer le coffret ?</label>'
+        + '<select id="rc-coffret" onchange="toggleCoffretBlock()">'+ouiNon+'</select>'
+        + '<div id="rc-coffret-block" style="display:none; margin-top:10px;">'
+          + '<label class="vblock">Nombre de rangées</label><select id="rc-rang">'+rangs+'</select>'
+          + '<label class="vblock">Modules</label><select id="rc-mod">'+modules+'</select>'
+          + '<label class="vblock">Pose</label><select id="rc-pose">'+poses+'</select>'
+          + '<small class="muted vblock">Le prix de pose est calculé comme “Avec dépose de l’existant”.</small>'
+        + '</div>'
+      + '</div>'
+
+      + '<div id="rc-preview" class="muted mtx"></div>'
+
+      + '<div class="row mtx" style="gap:8px;">'
+        + b('Ajouter la modification Tableau','addTabMod_Recablage()','btn primary')
       + '</div>'
     + '</div>'
   );
+
+  ['rc-circuits','rc-coffret','rc-rang','rc-mod','rc-pose'].forEach(id=>{
+    var el=document.getElementById(id); if(el) el.addEventListener('input', refreshRcPreview);
+  });
+  toggleCoffretBlock();  // initialise visibilité
+  refreshRcPreview();
 }
-function submitTabMods_Recab(key){
-  var N = Math.max(0,_pickNum('recab-n',0));
-  var t = window.TARIFS_TABMODS || {};
-  var tr = t.recablage || {};
-  var pu = roundUp5(N * (+tr.par_circuit || 0));
 
-  var label = 'Câblage Tableau — circuits à recâbler : ('+N+') — remplacement au coffret';
+function toggleCoffretBlock(){
+  var v = (document.getElementById('rc-coffret').value||'non');
+  document.getElementById('rc-coffret-block').style.display = (v==='oui') ? '' : 'none';
+}
 
-  ensureTabModsKey(key);
+function _calcRecablageTotal(nbCircuits, withCoffret, rangs, modules, pose){
+  var base = (+nbCircuits) * (+(TARIFS_TABMODS.recablage?.par_circuit||20));
+  var coff = 0;
+  if(withCoffret){
+    // même calcul que la pose, en prenant l’intervention “Avec dépose de l’existant”
+    coff = _tabPrice(+rangs, +modules, pose, 'Avec dépose de l’existant');
+  }
+  return roundUp5(base + coff);
+}
+
+function refreshRcPreview(){
+  var n   = parseInt(document.getElementById('rc-circuits').value,10)||0;
+  var rep = (document.getElementById('rc-coffret').value==='oui');
+  var r   = parseInt(document.getElementById('rc-rang')?.value||'1',10);
+  var m   = parseInt(document.getElementById('rc-mod')?.value||'13',10);
+  var p   = (document.getElementById('rc-pose')?.value||'Saillie');
+  var total = _calcRecablageTotal(n, rep, r, m, p);
+
+  var parts = ['Circuits: '+n];
+  if(rep) parts.push('Remplacement coffret: '+r+' rangée(s), '+m+' modules, '+p.toLowerCase());
+  document.getElementById('rc-preview').innerHTML =
+    'Récap : '+parts.join(' — ')+' → Total estimé : <strong>'+euro(total)+'</strong>';
+}
+
+function addTabMod_Recablage(){
+  var n   = parseInt(document.getElementById('rc-circuits').value,10)||0;
+  var rep = (document.getElementById('rc-coffret').value==='oui');
+  var r   = parseInt(document.getElementById('rc-rang')?.value||'1',10);
+  var m   = parseInt(document.getElementById('rc-mod')?.value||'13',10);
+  var p   = (document.getElementById('rc-pose')?.value||'Saillie');
+  var total = _calcRecablageTotal(n, rep, r, m, p);
+
+  var key = 'Modifications de Tableau';
+  if(!devis[key]) devis[key] = { __base:'Modifications de Tableau', items:[], note:'' };
+
+  var label = 'Circuits: '+n+(rep?(' — Coffret: '+r+' rangée(s), '+m+' modules, '+p.toLowerCase()):'');
   devis[key].items.push({
-    category: 'ReCâblage Tableau',
+    category:'Recâblage tableau',
     designation: label,
-    qty: 1, unit:'u', prixU: pu,
-    __tabKey: key
+    qty:1, prixU: total, intervention:'', pose:'', __tabKey:key
   });
-  saveLocal(); pageTabModsHome(key);
+  saveLocal(); pageTabModsAccueil();
 }
 
-/* ===============================================
-   9.4 • COFFRET (pose sans « dépose »)
-   – mêmes menus que la création de tableau (Chap. 6.2)
-   – prix calculé avec TARIFS_TABLEAU sans coeff « intervention »
-   =============================================== */
-function _priceCoffret(rangs, modules, pose){
-  try{
-    var base13 = (TARIFS_TABLEAU && TARIFS_TABLEAU.pose_base_13) ? (TARIFS_TABLEAU.pose_base_13[rangs]||0) : 0;
-    var cm = (TARIFS_TABLEAU && TARIFS_TABLEAU.coef && TARIFS_TABLEAU.coef.modules) ? (TARIFS_TABLEAU.coef.modules[modules]||1) : 1;
-    var cp = (TARIFS_TABLEAU && TARIFS_TABLEAU.coef && TARIFS_TABLEAU.coef.pose) ? (TARIFS_TABLEAU.coef.pose[pose]||1) : 1;
-    return roundUp5(base13 * cm * cp); // pas d'intervention
-  }catch(e){ return 0; }
-}
-function pageTabMods_Coffret(key){
-  ensureTabModsKey(key);
-  var rangs  = [1,2,3,4].map(function(r){return '<option>'+r+'</option>';}).join('');
-  var modules= [13,18,24].map(function(m){return '<option>'+m+'</option>';}).join('');
-  var poses  = ['Saillie','Encastré'].map(function(p){return '<option>'+p+'</option>';}).join('');
-
-  view(
-    '<div class="card">'
-      + b('Retour','pageTabModsHome('+JSON.stringify(key)+')','btn back')
-      + '<h2>Coffret</h2>'
-      + '<label>Rangées</label><select id="cof-r">'+rangs+'</select>'
-      + '<label>Modules</label><select id="cof-m">'+modules+'</select>'
-      + '<label>Pose</label><select id="cof-p">'+poses+'</select>'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('Ajouter la ligne','submitTabMods_Coffret('+JSON.stringify(key)+')','btn primary')
-      + '</div>'
-      + '<p class="muted" style="margin-top:6px;">Menus identiques à la création d’un tableau, sans l’option « avec dépose ».</p>'
-    + '</div>'
-  );
-}
-function submitTabMods_Coffret(key){
-  var r = +_pickVal('cof-r',1);
-  var m = +_pickVal('cof-m',13);
-  var p = _pickVal('cof-p','Saillie');
-  var pu= _priceCoffret(r,m,p);
-
-  ensureTabModsKey(key);
-  devis[key].items.push({
-    category: 'Modification emplacement Tableau', // on regroupe sous ce titre
-    designation: 'Remplacement au coffret — '+r+' rangée(s), '+m+' modules — pose '+p,
-    qty: 1, unit:'u', prixU: pu,
-    __tabKey: key
-  });
-  saveLocal(); pageTabModsHome(key);
-}
-
-/* ========== Expose (chapitre 9) ========== */
+// ========== 9.x • Expose public ==========
 Object.assign(window, {
   pageTabModsAccueil,
-  pageTabModsNew,
-  saveTabModsName,
-  deleteTabMods,
-  pageTabModsHome,
-  pageTabModsRename,
-  pageTabMods_Empl,
-  submitTabMods_Empl,
-  pageTabMods_Recab,
-  submitTabMods_Recab,
-  pageTabMods_Coffret,
-  submitTabMods_Coffret
+  pageTabModsDeplacement,
+  pageTabModsRecablage,
+  addTabMod_Deplacement,
+  addTabMod_Recablage
 });
 </script>
-  
-
-
-
-
-
 
   
+
+
+
+
+
+
   
-<!-- ============================================================
-     CHAPITRE 10 : ESTIMATIF & EXPORTS — vNEXT (REMPLACEMENT)
+  
+  <!-- ============================================================
+     CHAPITRE 10 : ESTIMATIF & EXPORTS — vNEXT
+     Index :
+       §7.0 • Détection / libellé des pièces (Tableaux inclus)
+       §7.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
+       §7.2 • Pages : Estimatif détaillé & Totaux par groupe
+       §7.3 • Exports : .txt par groupe / .zip par groupe
+       §7.4 • Exports : complet .txt / complet .zip
      ============================================================ -->
 <script>
 // §7.0 • Détection & libellés
@@ -2399,8 +2352,7 @@ window.PIECE_GROUPS = window.PIECE_GROUPS || {
   "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau",
   "Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
   "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
-  "Mise à la terre":"Mise à la terre","VMC":"VMC",
-  "Modifications de Tableau":"Tableau & distribution"
+  "Mise à la terre":"Mise à la terre","VMC":"VMC"
 };
 function groupDevis(){
   var g = {};
@@ -2418,22 +2370,16 @@ function isTableauKey(key){
   var s = devis[key] || {};
   return ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
 }
-function isModsKey(key){
-  var s = devis[key] || {};
-  return ((s.__base||'').toLowerCase()==='modifications de tableau') || /^Modifications de Tableau/i.test(key);
-}
 function pieceDisplayLabel(key){
   var s = devis[key] || {};
   var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
   var qual = s.qualificatif || '';
   var etg  = s.etage || '';
   var label = base===key ? key : (base + (qual ? ' ('+qual+')':'') + (etg ? ' — '+etg:''));
-
-  if((isTableauKey(key) || isModsKey(key)) && s.__customName && s.__customName.trim()){
-    // ✅ affiche le nom personnalisé pour Tableaux ET Modifs de Tableau
+  if(isTableauKey(key) && s.__customName && s.__customName.trim()){
     label = key + ' — ' + s.__customName.trim();
   }else{
-    if(!isTableauKey(key) && !isModsKey(key)){
+    if(!isTableauKey(key)){
       label = (typeof formatPieceLabel === 'function') ? formatPieceLabel(key) : key;
     }else{
       label = key;
@@ -2459,23 +2405,6 @@ function sortedItemsForPiece(key, items){
               .map(function(x){ return x.it; });
 }
 
-// ===== Helpers spécifiques "Modifications de Tableau" =====
-function isModsTableauSection(key){ return isModsKey(key); }
-function groupItemsByCategoryForMods(items){
-  var groups = {};
-  items.forEach(function(it){
-    var cat = (it.category||'Autres').trim();
-    if(!groups[cat]) groups[cat] = [];
-    groups[cat].push(it);
-  });
-  return groups;
-}
-var MODS_CATS_ORDER = [
-  'Modification emplacement Tableau',
-  'ReCâblage Tableau',
-  'Autres'
-];
-
 // §7.2 • Pages : Estimatif + Totaux
 function itemLine(it){
   var unit = it.unit || "u";
@@ -2484,7 +2413,7 @@ function itemLine(it){
   var pu = (+it.prixU || 0).toFixed(2);
   var q  = +it.qty || 0;
   var total = (q * (+it.prixU || 0)).toFixed(2);
-  return left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
+  return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
 }
 function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
 
@@ -2505,57 +2434,21 @@ function pageEstimatif(){
       var items = sortedItemsForPiece(key, s.items);
       var sectionTotal = 0;
 
-      html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3>';
+      html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
+      items.forEach(function(it){
+        var q  = +it.qty || 0;
+        var pu = +it.prixU || 0;
+        var t  = q * pu;
+        sectionTotal += t; groupTotal += t; totalGlobal += t;
 
-      if (isModsTableauSection(key)){
-        // rendu par sous-rubriques
-        var byCat = groupItemsByCategoryForMods(items);
-        MODS_CATS_ORDER.forEach(function(cat){
-          if(!byCat[cat] || !byCat[cat].length) return;
-          html += '<h4 style="margin:6px 0">'+cat+'</h4><ul>';
-          byCat[cat].forEach(function(it){
-            var q  = +it.qty || 0, pu = +it.prixU || 0, t  = q * pu;
-            sectionTotal += t; groupTotal += t; totalGlobal += t;
-            var unit    = it.unit || "u";
-            var left    = it.intervention ? (it.intervention+" — ") : "";
-            var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
-            html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
-          });
-          html += '</ul>';
-        });
-        // catégories restantes (s'il y en a)
-        Object.keys(byCat).forEach(function(cat){
-          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
-          html += '<h4 style="margin:6px 0">'+cat+'</h4><ul>';
-          byCat[cat].forEach(function(it){
-            var q  = +it.qty || 0, pu = +it.prixU || 0, t  = q * pu;
-            sectionTotal += t; groupTotal += t; totalGlobal += t;
-            var unit    = it.unit || "u";
-            var left    = it.intervention ? (it.intervention+" — ") : "";
-            var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
-            html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
-          });
-          html += '</ul>';
-        });
+        var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
+        var unit    = it.unit || "u";
+        var left    = it.intervention ? (it.intervention+" — ") : "";
+        html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
+      });
+      if (s.note) html += '<li><em>Note : '+s.note+'</em></li>';
 
-      } else {
-        html += '<ul>';
-        items.forEach(function(it){
-          var q  = +it.qty || 0;
-          var pu = +it.prixU || 0;
-          var t  = q * pu;
-          sectionTotal += t; groupTotal += t; totalGlobal += t;
-
-          var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
-          var unit    = it.unit || "u";
-          var left    = it.intervention ? (it.intervention+" — ") : "";
-          html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
-        });
-        html += '</ul>';
-      }
-
-      if (s.note) html += '<p class="muted"><em>Note : '+s.note+'</em></p>';
-      html += '<p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
+      html += '</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
     }
 
     html += '<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
@@ -2616,36 +2509,11 @@ function exportText(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      if (isModsTableauSection(key)){
-        var byCat = groupItemsByCategoryForMods(items);
-        MODS_CATS_ORDER.forEach(function(cat){
-          if(!byCat[cat] || !byCat[cat].length) return;
-          lines.push('> '+cat);
-          byCat[cat].forEach(function(it){
-            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-            st += t; groupTotal += t;
-            lines.push('- ' + itemLine(it));
-          });
-          lines.push('');
-        });
-        Object.keys(byCat).forEach(function(cat){
-          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
-          lines.push('> '+cat);
-          byCat[cat].forEach(function(it){
-            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-            st += t; groupTotal += t;
-            lines.push('- ' + itemLine(it));
-          });
-          lines.push('');
-        });
-      } else {
-        items.forEach(function(it){
-          var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-          st += t; groupTotal += t;
-          lines.push(itemLine(it));
-        });
-      }
-
+      items.forEach(function(it){
+        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+        st += t; groupTotal += t;
+        lines.push(itemLine(it));
+      });
       if (s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
@@ -2681,36 +2549,11 @@ async function exportZipGroups(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      if (isModsTableauSection(key)){
-        var byCat = groupItemsByCategoryForMods(items);
-        MODS_CATS_ORDER.forEach(function(cat){
-          if(!byCat[cat] || !byCat[cat].length) return;
-          lines.push('> '+cat);
-          byCat[cat].forEach(function(it){
-            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-            st += t; groupTotal += t;
-            lines.push('- ' + itemLine(it));
-          });
-          lines.push('');
-        });
-        Object.keys(byCat).forEach(function(cat){
-          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
-          lines.push('> '+cat);
-          byCat[cat].forEach(function(it){
-            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-            st += t; groupTotal += t;
-            lines.push('- ' + itemLine(it));
-          });
-          lines.push('');
-        });
-      } else {
-        items.forEach(function(it){
-          var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-          st += t; groupTotal += t;
-          lines.push(itemLine(it));
-        });
-      }
-
+      items.forEach(function(it){
+        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+        st += t; groupTotal += t;
+        lines.push(itemLine(it));
+      });
       if (s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
@@ -2754,34 +2597,11 @@ function buildFullText(){
       var st = 0;
       lines.push(pieceSeparator(label));
 
-      if (isModsTableauSection(key)){
-        var byCat = groupItemsByCategoryForMods(items);
-        MODS_CATS_ORDER.forEach(function(cat){
-          if(!byCat[cat] || !byCat[cat].length) return;
-          byCat[cat].forEach(function(it){
-            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-            st += t; groupTotal += t; globalTotal += t;
-            lines.push('- ' + itemLine(it));
-          });
-          lines.push('');
-        });
-        Object.keys(byCat).forEach(function(cat){
-          if (MODS_CATS_ORDER.indexOf(cat) >= 0) return;
-          byCat[cat].forEach(function(it){
-            var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-            st += t; groupTotal += t; globalTotal += t;
-            lines.push('- ' + itemLine(it));
-          });
-          lines.push('');
-        });
-      } else {
-        items.forEach(function(it){
-          var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
-          st += t; groupTotal += t; globalTotal += t;
-          lines.push(itemLine(it));
-        });
-      }
-
+      items.forEach(function(it){
+        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+        st += t; groupTotal += t; globalTotal += t;
+        lines.push(itemLine(it));
+      });
       if (s.note) lines.push('Note : '+s.note);
       lines.push('Total '+label+' : '+st.toFixed(2)+'€\n');
     }
@@ -2823,6 +2643,8 @@ async function exportZipFull(){
 
 
 
+
+
   
 
 
@@ -2841,23 +2663,14 @@ async function exportZipFull(){
 function init(){
   try{
     // Charge l'état courant
-    if (typeof loadLocal === 'function') loadLocal();
+    loadLocal();
 
     // ✅ Tentative de restauration si la liste des devis sauvegardés est vide
     // (fourni par le chapitre 4 robuste — sans effet si absent)
     if (typeof recoverSavedIfEmpty === 'function') recoverSavedIfEmpty();
 
-    // Démarrage UI (chapitre 4 -> pageMain)
-    if (typeof pageMain === 'function') {
-      pageMain();
-    } else {
-      // Secours minimal si le chapitre 4 n'est pas encore dispo
-      var el = document.getElementById('app');
-      if(el){
-        el.innerHTML = '<div class="card"><h2>Accueil</h2>'
-                     + '<p class="muted">Le chapitre Menu (4) n\'est pas encore chargé.</p></div>';
-      }
-    }
+    // Démarrage UI
+    pageMain();
   }catch(err){
     var el = document.getElementById('app');
     if(el){
@@ -2883,13 +2696,8 @@ Object.assign(window, {
   exportSavedDevis,     // ➕ export .json (liste complète)
   importSavedDevisUI,   // ➕ import .json (merge par __id)
 
-  // Chap.5 — Accueil & raccourcis (Ventilation / Modifs Tableau / Tableaux)
+  // Chap.5 — Pièces (flux one-page) + Ventilation (raccourci)
   pageHome,
-  goVent,
-  goTabMods,
-  goTableaux,
-
-  // Stubs "Pièces" (compat si appelés par vieux boutons)
   pageAddPiece,
   confirmPieceChoice,
   removePiece,
@@ -2898,13 +2706,15 @@ Object.assign(window, {
   editPieceNote,
   pageSpecifiqueForm,
   saveSpecifique,
+  pagePieceSpecifique: pageSpecifiqueForm, // alias
   goCategory,
   goEclairageSub,
   setEclairageBranch,
   pageOneShotSelection,
   saveOneShotItem,
+  goVent, // bouton "Ventilation" (redirige vers pageVentAccueil si chargée)
 
-  // Chap.6 — Tableaux
+  // Chap.6 — Tableaux (multi-tableaux)
   pageTabCreate,
   saveTabCustomName,
   pageTabHome,
@@ -2912,8 +2722,8 @@ Object.assign(window, {
   addTabPose,
   pageTab_ID,
   submitTab_ID,
-  pageTab_Coupure,
-  submitTab_Coupure,
+  pageTab_Coupure,       // (coupure générale)
+  submitTab_Coupure,     // (coupure générale)
   pageTab_Disjoncteurs,
   pageTab_DisjDetails,
   pageTab_DisjSaveDetails,
@@ -2934,8 +2744,18 @@ Object.assign(window, {
   ventAddKit, ventAddExtracteur, ventAddVentilateur,
   pageVentRetirage,
   ventAddRetirage,
-  pageVentEntretien,
-  ventAddEntretien
+  pageVentEntretien, ventAddEntretien,
+
+  // Chap.9 — Estimatif & exports
+  pageEstimatif,
+  pageTotaux,
+  exportText,
+  exportZipGroups,
+  exportTextFull,
+  exportZipFull,
+
+  // Navigation commune
+  confirmBackHome
 });
 
 /* =========================================
