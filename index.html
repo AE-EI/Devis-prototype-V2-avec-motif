@@ -2337,6 +2337,183 @@ function importTarifsPersoJSON(){
 
 
 
+<!-- =============================
+     CHAPITRE 9 : FACTURATION (export .txt)
+     - Génère une facture texte
+     - Mode 'séparé' : blocs PRESTATIONS & MATÉRIEL + totaux
+     - Bouton injecté sur Estimatif & Totaux
+     ============================= -->
+<script>
+/* ==== Helpers prefs/entreprise ==== */
+function _getPrefsSafe(){
+  try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; }
+}
+function _getCompanySafe(){
+  try{ return JSON.parse(localStorage.getItem('companyConfig_v1')||'null') || {}; }catch(e){ return {}; }
+}
+function _fmtEuro(n, sym){
+  var s = (sym || '€').trim();
+  return (+(n||0)).toFixed(2)+' '+s;
+}
+function _todayFR(){
+  try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }
+  catch(e){ return new Date().toLocaleDateString(); }
+}
+
+/* ==== Totaliseur devis courant ==== */
+function _totalGlobalDevis(){
+  var sum = 0;
+  for (var key in devis){
+    if(key.indexOf('__')===0) continue;
+    var s = devis[key]; var items = (s&&s.items)||[];
+    for (var i=0;i<items.length;i++){
+      var it=items[i]; sum += ((+it.prixU||0) * (+it.qty||0));
+    }
+  }
+  return sum;
+}
+
+/* ==== Génération du corps de facture (TXT) ==== */
+function buildInvoiceText(){
+  var prefs = _getPrefsSafe();
+  var company = _getCompanySafe();
+  var devise = prefs.devise || '€';
+
+  var modeSepare = (prefs.facturation_mode === 'separe');
+  var ratioMat = Math.min(100, Math.max(0, parseInt(prefs.ratio_materiel_defaut||40,10)));
+  var ratioPrest = 100 - ratioMat;
+
+  var totalTT = _totalGlobalDevis(); // HT “tout compris”
+  var totalMat = modeSepare ? (totalTT * (ratioMat/100)) : 0;
+  var totalPrest = modeSepare ? (totalTT * (ratioPrest/100)) : totalTT;
+
+  var tvaOn   = !!prefs.tva_applicable;
+  var tauxTVA = Math.max(0, +prefs.taux_tva || 20);
+  var tvaPrest= tvaOn ? (totalPrest * tauxTVA/100) : 0;
+  var tvaMat  = tvaOn ? (totalMat   * tauxTVA/100) : 0;
+
+  // En-tête société / facture
+  var header = [];
+  header.push('================= FACTURE (brouillon) =================');
+  header.push('Date : '+_todayFR());
+  var facPrefix = (prefs.numerotation_fact_prefix || 'FAC-');
+  var numCourant= Math.max(1, parseInt(prefs.numerotation_courante||1,10));
+  header.push('N° : '+facPrefix+String(numCourant).padStart(4,'0'));
+  header.push('');
+  header.push('Émetteur :');
+  var rs = (company.raison_sociale || company.nom_commercial || '').trim();
+  if(rs) header.push('  '+rs);
+  var adr = [company.adresse, company.code_postal, company.ville].filter(Boolean).join(' ');
+  if(adr) header.push('  '+adr);
+  if(company.pays) header.push('  '+company.pays);
+  if(company.email) header.push('  Email : '+company.email);
+  if(company.telephone) header.push('  Tél   : '+company.telephone);
+  if(company.siren) header.push('  SIREN : '+company.siren);
+  if(company.tva_intracom) header.push('  TVA   : '+company.tva_intracom);
+  header.push('========================================================');
+  header.push('');
+
+  // Corps
+  var body = [];
+  if(modeSepare){
+    body.push('--- PRESTATIONS ---');
+    body.push('Total Prestations (HT) : '+_fmtEuro(totalPrest, devise));
+    if(tvaOn) body.push('TVA Prestations ('+tauxTVA+'%) : '+_fmtEuro(tvaPrest, devise));
+    body.push('');
+    body.push('--- MATÉRIEL ---');
+    body.push('Total Matériel (HT) : '+_fmtEuro(totalMat, devise));
+    if(tvaOn) body.push('TVA Matériel ('+tauxTVA+'%) : '+_fmtEuro(tvaMat, devise));
+    body.push('');
+  } else {
+    body.push('--- TOTAL (fournitures + pose) ---');
+    body.push('Montant HT : '+_fmtEuro(totalTT, devise));
+    if(tvaOn) body.push('TVA ('+tauxTVA+'%) : '+_fmtEuro(totalTT * tauxTVA/100, devise));
+    body.push('');
+  }
+
+  // Récap global
+  var htGlobal  = modeSepare ? (totalPrest + totalMat) : totalTT;
+  var tvaGlobal = tvaOn ? (modeSepare ? (tvaPrest + tvaMat) : (totalTT * tauxTVA/100)) : 0;
+
+  body.push('================= RÉCAPITULATIF =================');
+  body.push('Total HT  : '+_fmtEuro(htGlobal, devise));
+  if(tvaOn) body.push('TVA       : '+_fmtEuro(tvaGlobal, devise));
+  body.push('Total TTC : '+_fmtEuro(htGlobal + tvaGlobal, devise));
+  body.push('=================================================');
+  body.push('');
+
+  // Mentions / paiement
+  var foot = [];
+  if(company.conditions_paiement) foot.push('Conditions de paiement : '+company.conditions_paiement);
+  if(company.iban) foot.push('IBAN : '+company.iban+(company.bic?(' — BIC : '+company.bic):''));
+  if(company.rc_pro) foot.push('RC Pro : '+company.rc_pro);
+  if(company.decennale) foot.push('Décennale : '+company.decennale);
+  if(company.assureur) foot.push('Assureur : '+company.assureur);
+  if(company.mentions_legales){
+    foot.push('');
+    foot.push(company.mentions_legales);
+  }
+
+  return header.concat(body).concat(foot).join('\r\n');
+}
+
+/* ==== Export .txt + incrément numérotation ==== */
+function exportInvoiceText(){
+  var prefs = _getPrefsSafe();
+  try{
+    var cur = Math.max(1, parseInt(prefs.numerotation_courante||1,10));
+    prefs.numerotation_courante = cur + 1;
+    localStorage.setItem('appPrefs_v1', JSON.stringify(prefs));
+  }catch(e){}
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var blob = new Blob([buildInvoiceText()], {type:'text/plain;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url;
+  a.download = name.replace(/\s+/g,'_').toLowerCase()+'_facture.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ Facture (texte) exportée.');
+}
+
+/* ==== Injection du bouton dans Estimatif & Totaux ==== */
+(function patchButtons(){
+  var origEst = window.pageEstimatif;
+  if(typeof origEst === 'function'){
+    window.pageEstimatif = function(){
+      origEst();
+      var app = document.getElementById('app'); if(!app) return;
+      if(app.innerHTML.indexOf('exportInvoiceText()')===-1){
+        app.innerHTML = app.innerHTML.replace(
+          /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
+          '$1<div class="row" style="margin-top:10px;">'
+          + '<button class="btn primary" onclick="exportInvoiceText()">🧾 Exporter facture (texte)</button>'
+          + '</div>'
+        );
+      }
+    };
+  }
+  var origTot = window.pageTotaux;
+  if(typeof origTot === 'function'){
+    window.pageTotaux = function(){
+      origTot();
+      var app = document.getElementById('app'); if(!app) return;
+      if(app.innerHTML.indexOf('exportInvoiceText()')===-1){
+        app.innerHTML = app.innerHTML.replace(
+          /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
+          '$1<div class="row" style="margin-top:10px;">'
+          + '<button class="btn primary" onclick="exportInvoiceText()">🧾 Exporter facture (texte)</button>'
+          + '</div>'
+        );
+      }
+    };
+  }
+})();
+</script>
+
+
+  
+
 
 
   
@@ -3153,12 +3330,414 @@ Object.assign(window, {
 
   
 
+<!-- =============================
+     CHAPITRE 12 : CATALOGUE MATÉRIEL
+     (Autonome, rangé sous Paramétrage — Chap. 8)
+     ============================= -->
+
+<style>
+  .cat-wrap .card{ margin-bottom:24px; }
+  .cat-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .cat-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .cat-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .cat-note{ color:var(--muted); font-size:14px; }
+  .pill.small{ padding:6px 10px; font-size:14px; }
+  .row.gap8{ gap:8px; flex-wrap:wrap; }
+  .list-plain{ display:flex; flex-direction:column; gap:6px; }
+  .table-mini{ width:100%; border-collapse:collapse; }
+  .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; }
+  .table-mini th{ background:#fafafa; }
+</style>
+
+<script>
+/* ============================================================
+   §13.0 • Stockage & valeurs par défaut
+   ============================================================ */
+const KEY_CATALOG = 'catalogueConfig_v1';
+
+/*
+  Structure de stockage (compacte, extensible via JSON) :
+
+  {
+    "types": {                       // Types de produits usuels
+      "Appareillage": ["Prise 2P+T","Prise 2P+T IP44","Interrupteur simple","Interrupteur double","Variateur","Plaque 1 poste"],
+      "Éclairage":   ["Point de centre","Applique"],
+      "Circuit spécialisé": ["Four","Plaque de cuisson","Lave-linge","Lave-vaisselle","Sèche-linge","Cumulus","VMC","Chauffage","Climatisation","Prise extérieure étanche"],
+      "Tableau":     ["Tableau 1 rangée","Tableau 2 rangées","Tableau 3 rangées","Inter diff 30mA","Disjoncteur modulaire"],
+      "VMC":         ["Kit VMC simple flux","Extracteur","Ventilateur de conduit"]
+    },
+    "marques": {                     // Marques & gammes par grande famille
+      "Appareillage": [
+        { marque:"Legrand",   gammes:[ {nom:"Dooxie", coef:1.00}, {nom:"Céliane", coef:1.10} ] },
+        { marque:"Schneider", gammes:[ {nom:"Odace",  coef:1.00}, {nom:"Unica",   coef:1.05} ] },
+        { marque:"Hager",     gammes:[ {nom:"Essensya", coef:0.98} ] }
+      ],
+      "Tableau": [
+        { marque:"Schneider", gammes:[ {nom:"Resi9 (résidentiel)", coef:1.00}, {nom:"Acti9 (tertiaire)", coef:1.10} ] },
+        // Pour Legrand/Hager on reste volontairement générique (résidentiel/tertiaire),
+        // l'utilisateur précisera / complètera si besoin via JSON.
+        { marque:"Legrand",   gammes:[ {nom:"Résidentiel", coef:1.00}, {nom:"Tertiaire", coef:1.08} ] },
+        { marque:"Hager",     gammes:[ {nom:"Résidentiel", coef:1.00}, {nom:"Tertiaire", coef:1.08} ] }
+      ]
+    },
+    "vmc": {                         // VMC : constructeurs & systèmes
+      "S&P": {
+        "systèmes": ["Autoréglable","Hygro A","Hygro B","Hygro avec sonde hygro"]
+      },
+      "Atlantic": {
+        "systèmes": ["Autoréglable","Hygro A","Hygro B","Hygro avec sonde hygro"]
+      }
+    },
+    "coef_defaut": 1.00              // multiplicateur si aucune gamme n'est choisie
+  }
+*/
+
+function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+function getCatalog(){
+  return readJsonLS(KEY_CATALOG, {
+    types: {
+      "Appareillage": ["Prise 2P+T","Prise 2P+T IP44","Interrupteur simple","Interrupteur double","Variateur","Plaque 1 poste"],
+      "Éclairage":   ["Point de centre","Applique"],
+      "Circuit spécialisé": ["Four","Plaque de cuisson","Lave-linge","Lave-vaisselle","Sèche-linge","Cumulus","VMC","Chauffage","Climatisation","Prise extérieure étanche"],
+      "Tableau":     ["Tableau 1 rangée","Tableau 2 rangées","Tableau 3 rangées","Inter diff 30mA","Disjoncteur modulaire"],
+      "VMC":         ["Kit VMC simple flux","Extracteur","Ventilateur de conduit"]
+    },
+    marques: {
+      "Appareillage": [
+        { marque:"Legrand",   gammes:[ {nom:"Dooxie", coef:1.00}, {nom:"Céliane", coef:1.10} ] },
+        { marque:"Schneider", gammes:[ {nom:"Odace",  coef:1.00}, {nom:"Unica",   coef:1.05} ] },
+        { marque:"Hager",     gammes:[ {nom:"Essensya", coef:0.98} ] }
+      ],
+      "Tableau": [
+        { marque:"Schneider", gammes:[ {nom:"Resi9 (résidentiel)", coef:1.00}, {nom:"Acti9 (tertiaire)", coef:1.10} ] },
+        { marque:"Legrand",   gammes:[ {nom:"Résidentiel", coef:1.00}, {nom:"Tertiaire", coef:1.08} ] },
+        { marque:"Hager",     gammes:[ {nom:"Résidentiel", coef:1.00}, {nom:"Tertiaire", coef:1.08} ] }
+      ]
+    },
+    vmc: {
+      "S&P":     { "systèmes": ["Autoréglable","Hygro A","Hygro B","Hygro avec sonde hygro"] },
+      "Atlantic":{ "systèmes": ["Autoréglable","Hygro A","Hygro B","Hygro avec sonde hygro"] }
+    },
+    coef_defaut: 1.00
+  });
+}
+function setCatalog(obj){ writeJsonLS(KEY_CATALOG, obj||{}); }
+
+/* ============================================================
+   §13.1 • Entrée du Catalogue
+   ============================================================ */
+function pageCatalogue(){
+  const c = getCatalog();
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'
+        + b('⬅️ Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+        + '<h2>Catalogue matériel (compact)</h2>'
+        + '<p class="cat-note">Types usuels, marques/gammes avec coefficients, et systèmes VMC. Tu peux étendre via JSON.</p>'
+        + '<div class="row gap8" style="margin-top:8px;">'
+          + b('🧩 Types de produits','pageCatalogue_Types()','btn primary')
+          + b('🏷️ Marques & gammes','pageCatalogue_Marques()','btn')
+          + b('💨 VMC — Constructeurs & systèmes','pageCatalogue_VMC()','btn')
+          + b('⬇️ Export JSON','catalogExport()','btn ghost')
+          + b('⬆️ Import JSON','catalogImport()','btn ghost')
+          + b('🧹 Réinitialiser','catalogReset()','btn')
+        + '</div>'
+      + '</div>'
+      + '<div class="card">'
+        + '<h3>Aperçu rapide</h3>'
+        + '<p><strong>Types :</strong> '
+          + Object.keys(c.types).map(k=>k+': '+c.types[k].length).join(' • ')
+        + '</p>'
+        + '<p><strong>Marques (appareillage/tableau) :</strong> '
+          + ['Appareillage','Tableau'].map(fam=> fam+': '+(c.marques[fam]?c.marques[fam].length:0)).join(' • ')
+        + '</p>'
+        + '<p><strong>VMC :</strong> '+ Object.keys(c.vmc).join(', ') +'</p>'
+      + '</div>'
+    + '</div>'
+  );
+}
+
+/* ============================================================
+   §13.2 • Types usuels
+   ============================================================ */
+function pageCatalogue_Types(){
+  const c = getCatalog();
+  const familles = Object.keys(c.types);
+
+  function blocFamille(fam){
+    const list = (c.types[fam]||[]).map((t,i)=>
+      '<div class="pill small" style="justify-content:space-between; width:100%;">'
+        + '<span>'+t+'</span>'
+        + '<span>'+ b('×','catTypeDel('+JSON.stringify(fam)+','+i+')','btn') +'</span>'
+      + '</div>'
+    ).join('');
+    return (
+      '<div class="card">'
+        + '<h3>'+fam+'</h3>'
+        + '<div class="list-plain">'+ (list || '<div class="cat-note">Aucun type ajouté.</div>') +'</div>'
+        + '<div class="row gap8" style="margin-top:8px;">'
+          + '<input id="new-type-'+fam+'" placeholder="Nouveau type (« Prise 2P+T IP55 »…)" />'
+          + b('Ajouter','catTypeAdd('+JSON.stringify(fam)+')','btn')
+        + '</div>'
+      + '</div>'
+    );
+  }
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+ b('⬅️ Retour','pageCatalogue()','btn back') +'<h2>Types de produits</h2></div>'
+      + familles.map(blocFamille).join('')
+    + '</div>'
+  );
+
+  // expose handlers
+  window.catTypeAdd = function(fam){
+    const id='new-type-'+fam; const el=document.getElementById(id);
+    const val=(el&&el.value||'').trim(); if(!val) return;
+    const cat=getCatalog(); cat.types[fam]=cat.types[fam]||[];
+    if(cat.types[fam].indexOf(val)===-1) cat.types[fam].push(val);
+    setCatalog(cat); pageCatalogue_Types();
+  };
+  window.catTypeDel = function(fam, idx){
+    const cat=getCatalog(); (cat.types[fam]||[]).splice(idx,1);
+    setCatalog(cat); pageCatalogue_Types();
+  };
+}
+
+/* ============================================================
+   §13.3 • Marques & gammes (Appareillage / Tableau)
+   ============================================================ */
+function pageCatalogue_Marques(){
+  const c = getCatalog();
+  const familles = ['Appareillage','Tableau'];
+
+  function tableFamille(fam){
+    const rows = (c.marques[fam]||[]).map((m,mi)=>{
+      const gam = (m.gammes||[]).map((g,gi)=>
+        '<div class="pill small" style="justify-content:space-between;">'
+          + '<span>'+g.nom+' <span class="cat-note">(coef '+(+g.coef||1).toFixed(2)+')</span></span>'
+          + '<span>'+ b('×','catGamDel('+JSON.stringify(fam)+','+mi+','+gi+')','btn') +'</span>'
+        + '</div>'
+      ).join('');
+      return (
+        '<tr>'
+          + '<td style="width:180px;"><strong>'+m.marque+'</strong></td>'
+          + '<td>'+ (gam || '<span class="cat-note">Aucune gamme</span>') +'</td>'
+          + '<td style="width:220px;">'
+              + '<input id="gname-'+fam+'-'+mi+'" placeholder="Nom de gamme"/>'
+          +   '</td>'
+          + '<td style="width:140px;">'
+              + '<input id="gcoef-'+fam+'-'+mi+'" type="number" step="0.01" inputmode="decimal" value="1.00" />'
+          +   '</td>'
+          + '<td style="width:120px;">'
+              + b('Ajouter','catGamAdd('+JSON.stringify(fam)+','+mi+')','btn')
+          +   '</td>'
+          + '<td style="width:80px;">'+ b('Suppr. marque','catMarqueDel('+JSON.stringify(fam)+','+mi+')','btn') +'</td>'
+        + '</tr>'
+      );
+    }).join('');
+
+    return (
+      '<div class="card">'
+        + '<h3>'+fam+'</h3>'
+        + '<table class="table-mini">'
+          + '<thead><tr><th>Marque</th><th>Gammes</th><th>Nouvelle gamme</th><th>Coef</th><th></th><th></th></tr></thead>'
+          + '<tbody>'+ (rows || '<tr><td colspan="6" class="cat-note">Aucune marque</td></tr>') +'</tbody>'
+        + '</table>'
+        + '<div class="row gap8" style="margin-top:10px;">'
+          + '<input id="new-brand-'+fam+'" placeholder="Nouvelle marque (ex: Legrand)"/>'
+          + b('Ajouter la marque','catMarqueAdd('+JSON.stringify(fam)+')','btn')
+        + '</div>'
+      + '</div>'
+    );
+  }
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+ b('⬅️ Retour','pageCatalogue()','btn back') +'<h2>Marques & gammes</h2></div>'
+      + familles.map(tableFamille).join('')
+    + '</div>'
+  );
+
+  // Handlers
+  window.catMarqueAdd = function(fam){
+    const el=document.getElementById('new-brand-'+fam);
+    const name=(el&&el.value||'').trim(); if(!name) return;
+    const cat=getCatalog(); cat.marques[fam]=cat.marques[fam]||[];
+    if(!cat.marques[fam].some(m=>m.marque.toLowerCase()===name.toLowerCase())){
+      cat.marques[fam].push({ marque:name, gammes:[] });
+    }
+    setCatalog(cat); pageCatalogue_Marques();
+  };
+  window.catMarqueDel = function(fam, mi){
+    const cat=getCatalog(); (cat.marques[fam]||[]).splice(mi,1);
+    setCatalog(cat); pageCatalogue_Marques();
+  };
+  window.catGamAdd = function(fam, mi){
+    const n = (document.getElementById('gname-'+fam+'-'+mi)?.value||'').trim();
+    const c = parseFloat(document.getElementById('gcoef-'+fam+'-'+mi)?.value)||1;
+    if(!n) return;
+    const cat=getCatalog(); const m=(cat.marques[fam]||[])[mi]; if(!m) return;
+    m.gammes = m.gammes||[];
+    if(!m.gammes.some(g=>g.nom.toLowerCase()===n.toLowerCase())) m.gammes.push({nom:n, coef: (+c||1)});
+    setCatalog(cat); pageCatalogue_Marques();
+  };
+  window.catGamDel = function(fam, mi, gi){
+    const cat=getCatalog(); const m=(cat.marques[fam]||[])[mi]; if(!m) return;
+    (m.gammes||[]).splice(gi,1); setCatalog(cat); pageCatalogue_Marques();
+  };
+}
+
+/* ============================================================
+   §13.4 • VMC — Constructeurs & systèmes
+   ============================================================ */
+function pageCatalogue_VMC(){
+  const c = getCatalog();
+  const constructeurs = Object.keys(c.vmc||{});
+
+  function blocVMCCtor(brand){
+    const sys = (c.vmc[brand]?.['systèmes']||[]).map((s,i)=>
+      '<div class="pill small" style="justify-content:space-between; width:100%;">'
+        + '<span>'+s+'</span>'
+        + '<span>'+ b('×','vmcSysDel('+JSON.stringify(brand)+','+i+')','btn') +'</span>'
+      + '</div>'
+    ).join('');
+
+    return (
+      '<div class="card">'
+        + '<h3>'+brand+'</h3>'
+        + '<div class="list-plain">'+ (sys || '<div class="cat-note">Aucun système défini.</div>') +'</div>'
+        + '<div class="row gap8" style="margin-top:8px;">'
+          + '<input id="new-sys-'+brand+'" placeholder="Ajouter un système (ex: Hygro A)"/>'
+          + b('Ajouter','vmcSysAdd('+JSON.stringify(brand)+')','btn')
+        + '</div>'
+      + '</div>'
+    );
+  }
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+ b('⬅️ Retour','pageCatalogue()','btn back') +'<h2>VMC — Constructeurs & systèmes</h2></div>'
+      + constructeurs.map(blocVMCCtor).join('')
+      + '<div class="card">'
+        + '<h3>Ajouter un constructeur</h3>'
+        + '<div class="row gap8">'
+          + '<input id="vmc-brand" placeholder="Nom constructeur (ex: Aldes)"/>'
+          + b('Ajouter constructeur','vmcCtorAdd()','btn')
+        + '</div>'
+      + '</div>'
+    + '</div>'
+  );
+
+  // Handlers
+  window.vmcSysAdd = function(brand){
+    const id='new-sys-'+brand; const el=document.getElementById(id);
+    const val=(el&&el.value||'').trim(); if(!val) return;
+    const cat=getCatalog(); cat.vmc[brand]=cat.vmc[brand]||{"systèmes":[]};
+    if(cat.vmc[brand]["systèmes"].indexOf(val)===-1) cat.vmc[brand]["systèmes"].push(val);
+    setCatalog(cat); pageCatalogue_VMC();
+  };
+  window.vmcSysDel = function(brand, idx){
+    const cat=getCatalog(); (cat.vmc[brand]?.["systèmes"]||[]).splice(idx,1);
+    setCatalog(cat); pageCatalogue_VMC();
+  };
+  window.vmcCtorAdd = function(){
+    const el=document.getElementById('vmc-brand');
+    const name=(el&&el.value||'').trim(); if(!name) return;
+    const cat=getCatalog(); cat.vmc = cat.vmc || {};
+    if(!cat.vmc[name]) cat.vmc[name] = {"systèmes":[]};
+    setCatalog(cat); pageCatalogue_VMC();
+  };
+}
+
+/* ============================================================
+   §13.5 • Import / Export / Reset JSON
+   ============================================================ */
+function catalogExport(){
+  const raw = JSON.stringify(getCatalog(), null, 2);
+  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'catalogue_materiel.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+function catalogImport(){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'application/json';
+  input.onchange = function(){
+    const f = input.files && input.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = function(){
+      try{
+        const obj = JSON.parse(rd.result||'{}');
+        // Validation basique
+        if(!obj || typeof obj!=='object' || !obj.types || !obj.marques || !obj.vmc){
+          alert('❌ Structure inattendue. Clés attendues : types, marques, vmc.');
+          return;
+        }
+        setCatalog(obj);
+        alert('✅ Catalogue importé.');
+        pageCatalogue();
+      }catch(e){ alert('❌ Import impossible : '+e.message); }
+    };
+    rd.readAsText(f,'utf-8');
+  };
+  input.click();
+}
+function catalogReset(){
+  if(!confirm('Réinitialiser le catalogue aux valeurs par défaut ?')) return;
+  localStorage.removeItem(KEY_CATALOG);
+  alert('✅ Catalogue réinitialisé.');
+  pageCatalogue();
+}
+
+/* ============================================================
+   §13.6 • Intégration douce dans “Paramétrage”
+   ============================================================ */
+(function injectIntoParametrage(){
+  const orig = window.pageTarifsAccueil;
+  if(typeof orig === 'function'){
+    window.pageTarifsAccueil = function(){
+      orig();
+      const app = document.getElementById('app');
+      if(!app) return;
+      const btn = 'Catalogue matériel';
+      if(app.innerHTML.indexOf(btn)===-1){
+        app.innerHTML = app.innerHTML.replace(
+          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
+          '$1'
+          + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
+          +   '<button class="btn" onclick="pageCatalogue()">'+btn+'</button>'
+          + '</div></div>'
+        );
+      }
+    };
+  }
+})();
+
+/* Expose global (si besoin ailleurs) */
+Object.assign(window, {
+  pageCatalogue,
+  pageCatalogue_Types,
+  pageCatalogue_Marques,
+  pageCatalogue_VMC,
+  catalogExport,
+  catalogImport,
+  catalogReset
+});
+</script>
+
+
+
+  
   
 
 
   
 <!-- =============================
-     CHAPITRE 12 : DÉMARRAGE & EXPOSE
+     CHAPITRE 13 : DÉMARRAGE & EXPOSE
      Index :
        §0  • init() : chargement + reprise sauvegardes + pageMain()
        §1  • Expose : fonctions rendues accessibles (UI)
