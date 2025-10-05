@@ -2846,6 +2846,313 @@ async function exportZipFull(){
 
 
 
+<!-- =============================
+     CHAPITRE 11 : CONFIG ENTREPRISE & PRÉFÉRENCES
+     (Autonome, non intrusif — ajoute 2 pages et 1 bouton dans le Chap.8)
+     ============================= -->
+
+<style>
+  .cfg-wrap .card{ margin-bottom:24px; }
+  .cfg-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .cfg-grid .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .cfg-grid .field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .cfg-actions{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  .cfg-logo{ display:flex; align-items:center; gap:10px; }
+  .cfg-logo img{ max-height:48px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:4px; }
+  .cfg-note{ color:var(--muted); font-size:14px; }
+</style>
+
+<script>
+/* ============================================================
+   §11.0 • Stockage & helpers (localStorage)
+   ============================================================ */
+const KEY_COMPANY   = 'companyConfig_v1';
+const KEY_PREFS     = 'appPrefs_v1';
+
+function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+function getCompany(){
+  return readJsonLS(KEY_COMPANY, {
+    // Identité
+    raison_sociale: '', nom_commercial: '',
+    siren: '', tva_intracom: '',
+    adresse: '', code_postal: '', ville: '', pays: 'France',
+    email: '', telephone: '', site: '',
+    // Assurance / mentions
+    rc_pro: '', decennale: '', assureur: '',
+    iban: '', bic: '', conditions_paiement: 'Virement bancaire à 30 jours.',
+    mentions_legales: '',
+    // Logo (dataURL)
+    logo_dataurl: ''
+  });
+}
+function setCompany(obj){ writeJsonLS(KEY_COMPANY, obj||{}); }
+
+function getPrefs(){
+  return readJsonLS(KEY_PREFS, {
+    facturation_mode: 'tout_compris', // 'tout_compris' | 'separe'
+    ratio_materiel_defaut: 40,        // % matériel par défaut (utile tant que les fournitures ne sont pas détaillées)
+    devise: '€',
+    tva_applicable: false,  // pour futur « réel »
+    taux_tva: 20,           // % (non utilisé tant que tva_applicable=false)
+    numerotation_prefix: 'DEV-', // pour devis
+    numerotation_fact_prefix: 'FAC-', // pour facture
+    numerotation_courante: 1
+  });
+}
+function setPrefs(obj){ writeJsonLS(KEY_PREFS, obj||{}); }
+
+/* DataURL helper pour logo */
+function pickImageFile(cb){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = function(){
+    const f = input.files && input.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = () => cb(rd.result||''); // dataURL
+    rd.readAsDataURL(f);
+  };
+  input.click();
+}
+
+/* ============================================================
+   §11.1 • UI — Configuration entreprise
+   ============================================================ */
+function pageConfigEntreprise(){
+  const cfg = getCompany();
+
+  function f(label, id, val, placeholder){
+    return '<div class="field"><label for="'+id+'">'+label+'</label>'
+         + '<input id="'+id+'" value="'+(val?String(val).replace(/"/g,'&quot;'):'')+'" placeholder="'+(placeholder||'')+'"/></div>';
+  }
+  function ta(label, id, val, placeholder){
+    return '<div class="field"><label for="'+id+'">'+label+'</label>'
+         + '<textarea id="'+id+'" rows="5" placeholder="'+(placeholder||'')+'">'+(val||'')+'</textarea></div>';
+  }
+
+  const logoHtml =
+    '<div class="field">'
+      + '<label>Logo</label>'
+      + '<div class="cfg-logo">'
+        + (cfg.logo_dataurl ? ('<img id="cfg-logo-preview" src="'+cfg.logo_dataurl+'"/>') : '<div class="cfg-note">Aucun logo</div>')
+        + b('Choisir une image','cfgPickLogo()','btn')
+        + (cfg.logo_dataurl ? b('Retirer','cfgRemoveLogo()','btn') : '')
+      + '</div>'
+      + '<div class="cfg-note" style="margin-top:6px;">PNG/JPG recommandé, il sera intégré dans les futurs PDF.</div>'
+    + '</div>';
+
+  view(
+    '<div class="cfg-wrap">'
+    +  '<div class="card">'
+        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+        + '<h2>Configuration entreprise</h2>'
+        + '<p class="cfg-note">Ces informations seront utilisées pour les futurs export PDF (devis/factures) et rappels légaux.</p>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Identité & coordonnées</h3>'
+        + '<div class="cfg-grid">'
+          + f('Raison sociale','ce_rs', cfg.raison_sociale, 'Ex : SARL Dupont Électricité')
+          + f('Nom commercial','ce_nc', cfg.nom_commercial, 'Ex : Dupont Élec')
+          + f('SIREN','ce_siren', cfg.siren, 'Ex : 123 456 789')
+          + f('N° TVA intracom','ce_tva', cfg.tva_intracom, 'Ex : FRXX999999999')
+          + f('Adresse','ce_addr', cfg.adresse, 'Rue et n°')
+          + f('Code postal','ce_cp', cfg.code_postal, '75000')
+          + f('Ville','ce_ville', cfg.ville, 'Paris')
+          + f('Pays','ce_pays', cfg.pays || 'France', 'France')
+          + f('Email','ce_mail', cfg.email, 'contact@exemple.fr')
+          + f('Téléphone','ce_tel', cfg.telephone, '+33 6 12 34 56 78')
+          + f('Site web','ce_web', cfg.site, 'https://…')
+        + '</div>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Assurances & RIB</h3>'
+        + '<div class="cfg-grid">'
+          + f('RC Pro (n°)','ce_rc', cfg.rc_pro, '')
+          + f('Décennale (n°)','ce_dec', cfg.decennale, '')
+          + f('Assureur','ce_ass', cfg.assureur, '')
+          + f('IBAN','ce_iban', cfg.iban, '')
+          + f('BIC','ce_bic', cfg.bic, '')
+        + '</div>'
+        + ta('Conditions de paiement','ce_cond', cfg.conditions_paiement, 'Ex : Virement sous 30 jours…')
+        + ta('Mentions légales (pied de page)','ce_mentions', cfg.mentions_legales, 'Textes libres…')
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Logo</h3>'
+        + logoHtml
+      + '</div>'
+
+      + '<div class="cfg-actions">'
+        + b('💾 Enregistrer','saveConfigEntreprise()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+
+  // expose handlers internes sur window (pour inline onclick)
+  window.cfgPickLogo = function(){
+    pickImageFile(function(dataUrl){
+      const c = getCompany(); c.logo_dataurl = dataUrl; setCompany(c); pageConfigEntreprise();
+    });
+  };
+  window.cfgRemoveLogo = function(){
+    const c = getCompany(); c.logo_dataurl = ''; setCompany(c); pageConfigEntreprise();
+  };
+}
+
+function saveConfigEntreprise(){
+  const cfg = getCompany();
+  function gv(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+  Object.assign(cfg, {
+    raison_sociale: gv('ce_rs'),
+    nom_commercial: gv('ce_nc'),
+    siren: gv('ce_siren'),
+    tva_intracom: gv('ce_tva'),
+    adresse: gv('ce_addr'),
+    code_postal: gv('ce_cp'),
+    ville: gv('ce_ville'),
+    pays: gv('ce_pays'),
+    email: gv('ce_mail'),
+    telephone: gv('ce_tel'),
+    site: gv('ce_web'),
+    rc_pro: gv('ce_rc'),
+    decennale: gv('ce_dec'),
+    assureur: gv('ce_ass'),
+    iban: gv('ce_iban'),
+    bic: gv('ce_bic'),
+    conditions_paiement: gv('ce_cond'),
+    mentions_legales: gv('ce_mentions')
+  });
+  setCompany(cfg);
+  alert('✅ Configuration entreprise enregistrée.');
+}
+
+/* ============================================================
+   §11.2 • UI — Préférences (mode facturation, devise, TVA…)
+   ============================================================ */
+function pagePreferences(){
+  const p = getPrefs();
+  const radio = (id, name, val, cur, label) =>
+    '<label class="pill"><input type="radio" name="'+name+'" value="'+val+'" '+(cur===val?'checked':'')+'> '+label+'</label>';
+
+  view(
+    '<div class="cfg-wrap">'
+      + '<div class="card">'
+        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+        + '<h2>Préférences</h2>'
+        + '<p class="cfg-note">Ces réglages influencent la présentation des futurs exports (devis/factures) et la logique de calcul lorsqu’on séparera matériel/prestations.</p>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Mode de facturation</h3>'
+        + '<div class="row" style="gap:8px;">'
+          + radio('pfm1','pf_fmode','tout_compris', p.facturation_mode, 'Tarifs « fournitures + pose » (tout compris)')
+          + radio('pfm2','pf_fmode','separe', p.facturation_mode, 'Séparer prestations et matériel')
+        + '</div>'
+        + '<div class="cfg-grid" style="margin-top:10px;">'
+          + '<div class="field">'
+            + '<label>Ratio matériel par défaut (%)</label>'
+            + '<input id="pf_ratio" type="number" inputmode="numeric" min="0" max="100" value="'+(+p.ratio_materiel_defaut||40)+'"/>'
+            + '<div class="cfg-note">Utilisé provisoirement tant que les fournitures ne sont pas détaillées ligne par ligne.</div>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Devise</label>'
+            + '<input id="pf_dev" value="'+(p.devise||'€')+'" placeholder="€"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>TVA applicable</label>'
+            + '<select id="pf_tva_on"><option value="no" '+(!p.tva_applicable?'selected':'')+'>Non (Micro)</option><option value="yes" '+(p.tva_applicable?'selected':'')+'>Oui (Régime réel)</option></select>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Taux de TVA (%)</label>'
+            + '<input id="pf_tva" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="'+(+p.taux_tva||20)+'"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Préfixe numérotation devis</label>'
+            + '<input id="pf_pref_dev" value="'+(p.numerotation_prefix||'DEV-')+'"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Préfixe numérotation facture</label>'
+            + '<input id="pf_pref_fac" value="'+(p.numerotation_fact_prefix||'FAC-')+'"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Compteur courant</label>'
+            + '<input id="pf_counter" type="number" inputmode="numeric" min="1" value="'+(+p.numerotation_courante||1)+'"/>'
+            + '<div class="cfg-note">Servira pour générer DEV-0001, FAC-0001, etc.</div>'
+          + '</div>'
+        + '</div>'
+      + '</div>'
+
+      + '<div class="cfg-actions">'
+        + b('💾 Enregistrer','savePreferences()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+
+function savePreferences(){
+  const cur = getPrefs();
+  function gv(id){ const el=document.getElementById(id); return el?el.value:''; }
+  function gi(name){ const el=document.querySelector('input[name="'+name+'"]:checked'); return el?el.value:cur[name]; }
+  const tvay = (gv('pf_tva_on')==='yes');
+
+  const out = Object.assign({}, cur, {
+    facturation_mode: gi('pf_fmode') || cur.facturation_mode,
+    ratio_materiel_defaut: Math.min(100, Math.max(0, parseInt(gv('pf_ratio'),10)||cur.ratio_materiel_defaut||40)),
+    devise: gv('pf_dev') || cur.devise || '€',
+    tva_applicable: tvay,
+    taux_tva: Math.max(0, parseFloat(gv('pf_tva'))||cur.taux_tva||20),
+    numerotation_prefix: gv('pf_pref_dev') || cur.numerotation_prefix || 'DEV-',
+    numerotation_fact_prefix: gv('pf_pref_fac') || cur.numerotation_fact_prefix || 'FAC-',
+    numerotation_courante: Math.max(1, parseInt(gv('pf_counter'),10)||cur.numerotation_courante||1)
+  });
+  setPrefs(out);
+  alert('✅ Préférences enregistrées.');
+}
+
+/* ============================================================
+   §11.3 • Intégration douce : ajoute 2 boutons au Chapitre 8
+   (si présent) et expose les pages au global
+   ============================================================ */
+(function injectButtonsIntoParametrage(){
+  // Si le Chap.8 a déjà défini pageTarifsAccueil, on l’enrichit.
+  const orig = window.pageTarifsAccueil;
+  if(typeof orig === 'function'){
+    window.pageTarifsAccueil = function(){
+      orig();
+      const app = document.getElementById('app');
+      if(!app) return;
+      const btn1 = 'Configuration entreprise';
+      const btn2 = 'Préférences';
+      if(app.innerHTML.indexOf(btn1)===-1 || app.innerHTML.indexOf(btn2)===-1){
+        app.innerHTML = app.innerHTML.replace(
+          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
+          '$1'
+          + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
+          +   '<button class="btn" onclick="pageConfigEntreprise()">'+btn1+'</button>'
+          +   '<button class="btn" onclick="pagePreferences()">'+btn2+'</button>'
+          + '</div></div>'
+        );
+      }
+    };
+  }
+})();
+
+/* Expose au global pour pouvoir les appeler ailleurs si besoin */
+Object.assign(window, {
+  pageConfigEntreprise,
+  pagePreferences,
+  saveConfigEntreprise,
+  savePreferences
+});
+</script>
+
+
+
+  
+
   
 
 
