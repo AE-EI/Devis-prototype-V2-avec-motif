@@ -2795,7 +2795,7 @@ Object.assign(window,{
 <!-- =============================
      CHAPITRE 10 : FACTURATION (export .txt)
      - Génère une facture texte
-     - Mode 'séparé' : (v1) pas de décomposition matériel → tout en Prestations
+     - Mode 'séparé' : 2 LIGNES DISTINCTES (Prestations / Matériel)
      - Bouton injecté sur Estimatif & Totaux
      ============================= -->
 <script>
@@ -2809,7 +2809,7 @@ function _getCompanySafe(){
 function _fmtEuro(n, sym){ var s = (sym || '€').trim(); return (+(n||0)).toFixed(2)+' '+s; }
 function _todayFR(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
 
-/* ==== Totaliseur devis courant ==== */
+/* ==== Totaliseur devis courant (HT) ==== */
 function _totalGlobalDevis(){
   var sum = 0;
   for (var key in devis){
@@ -2822,88 +2822,109 @@ function _totalGlobalDevis(){
   return sum;
 }
 
-/* ==== Génération du corps de facture (TXT) ==== */
+/* ===========================================================
+   FACTURE (TXT)
+   - Mode "tout_compris" : 1 ligne globale (Fournitures + pose)
+   - Mode "separe"       : 2 lignes DISTINCTES (Prestations / Matériel)
+     ➜ on demande le % Matériel pour le découpage global
+   =========================================================== */
 function buildInvoiceText(){
-  var prefs = _getPrefsSafe();
+  var prefs   = _getPrefsSafe();
   var company = _getCompanySafe();
-  var devise = prefs.devise || '€';
+  var devise  = prefs.devise || '€';
 
   var modeSepare = (prefs.facturation_mode === 'separe');
+  var totalHT    = _totalGlobalDevis(); // Montant HT global (tout compris)
 
-  var totalHT = _totalGlobalDevis(); // Montant HT global (tout compris)
-  var totalPrest = totalHT; // v1 : sans décomposition, on impute 100% en prestations
-  var totalMat   = 0;
+  // Découpage (si séparé)
+  var ratioMat = 0, ratioPrest = 1;
+  if(modeSepare){
+    var ask = prompt('Facture séparée : % MATÉRIEL ?', '40');
+    if(ask==null || ask===''){ ask = '40'; }
+    ratioMat   = Math.min(100, Math.max(0, parseFloat(ask)||40))/100;
+    ratioPrest = 1 - ratioMat;
+  }
 
-  var tvaOn   = !!prefs.tva_applicable;
-  var tauxTVA = Math.max(0, +prefs.taux_tva || 20);
-  var tvaPrest= tvaOn ? (totalPrest * tauxTVA/100) : 0;
-  var tvaMat  = tvaOn ? (totalMat   * tauxTVA/100) : 0;
+  var totalMatHT   = modeSepare ? (totalHT * ratioMat)   : 0;
+  var totalPrestHT = modeSepare ? (totalHT * ratioPrest) : totalHT;
 
-  // En-tête société / facture
-  var header = [];
-  header.push('================= FACTURE (brouillon) =================');
-  header.push('Date : '+_todayFR());
+  var tvaOn    = !!prefs.tva_applicable;
+  var tauxTVA  = Math.max(0, +prefs.taux_tva || 20);
+  var tvaPrest = tvaOn ? (totalPrestHT * tauxTVA/100) : 0;
+  var tvaMat   = tvaOn ? (totalMatHT   * tauxTVA/100) : 0;
+
+  /* ---------- En-tête société / facture ---------- */
+  var out = [];
+  out.push('================= FACTURE (brouillon) =================');
+  out.push('Date : '+_todayFR());
   var facPrefix = (prefs.numerotation_fact_prefix || 'FAC-');
   var numCourant= Math.max(1, parseInt(prefs.numerotation_courante||1,10));
-  header.push('N° : '+facPrefix+String(numCourant).padStart(4,'0'));
-  header.push('');
-  header.push('Émetteur :');
-  var rs = (company.raison_sociale || company.nom_commercial || '').trim();
-  if(rs) header.push('  '+rs);
-  var adr = [company.adresse, company.code_postal, company.ville].filter(Boolean).join(' ');
-  if(adr) header.push('  '+adr);
-  if(company.pays) header.push('  '+company.pays);
-  if(company.email) header.push('  Email : '+company.email);
-  if(company.telephone) header.push('  Tél   : '+company.telephone);
-  if(company.siren) header.push('  SIREN : '+company.siren);
-  if(company.tva_intracom) header.push('  TVA   : '+company.tva_intracom);
-  header.push('========================================================');
-  header.push('');
+  out.push('N° : '+facPrefix+String(numCourant).padStart(4,'0'));
+  out.push('');
 
-  // Corps
-  var body = [];
+  out.push('Émetteur :');
+  var rs = (company.raison_sociale || company.nom_commercial || '').trim();
+  if(rs) out.push('  '+rs);
+  var adr = [company.adresse, company.code_postal, company.ville].filter(Boolean).join(' ');
+  if(adr) out.push('  '+adr);
+  if(company.pays) out.push('  '+company.pays);
+  if(company.email) out.push('  Email : '+company.email);
+  if(company.telephone) out.push('  Tél   : '+company.telephone);
+  if(company.siren) out.push('  SIREN : '+company.siren);
+  if(company.tva_intracom) out.push('  TVA   : '+company.tva_intracom);
+  out.push('========================================================');
+  out.push('');
+
+  /* ---------- Lignes de facture ---------- */
   if(modeSepare){
-    body.push('--- PRESTATIONS ---');
-    body.push('Total Prestations (HT) : '+_fmtEuro(totalPrest, devise));
-    if(tvaOn) body.push('TVA Prestations ('+tauxTVA+'%) : '+_fmtEuro(tvaPrest, devise));
-    body.push('');
-    body.push('--- MATÉRIEL ---');
-    body.push('Total Matériel (HT) : '+_fmtEuro(totalMat, devise));
-    if(tvaOn) body.push('TVA Matériel ('+tauxTVA+'%) : '+_fmtEuro(tvaMat, devise));
-    body.push('');
-    body.push('[Note] Mode “séparé” : v1 sans décomposition matérielle → tout imputé en Prestations.');
-    body.push('');
+    // LIGNE 1 — Prestations de services
+    out.push('1) Prestations de services');
+    out.push('   Montant HT : '+_fmtEuro(totalPrestHT, devise));
+    if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(tvaPrest, devise));
+    out.push('   Montant TTC : '+_fmtEuro(totalPrestHT + tvaPrest, devise));
+    out.push('');
+
+    // LIGNE 2 — Vente de matériel
+    out.push('2) Vente de matériel');
+    out.push('   Montant HT : '+_fmtEuro(totalMatHT, devise));
+    if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(tvaMat, devise));
+    out.push('   Montant TTC : '+_fmtEuro(totalMatHT + tvaMat, devise));
+    out.push('');
+
+    out.push('[Info] Répartition appliquée : Matériel = '+Math.round(ratioMat*100)+'% | Prestations = '+Math.round(ratioPrest*100)+'%');
+    out.push('');
   } else {
-    body.push('--- TOTAL (fournitures + pose) ---');
-    body.push('Montant HT : '+_fmtEuro(totalHT, devise));
-    if(tvaOn) body.push('TVA ('+tauxTVA+'%) : '+_fmtEuro(totalHT * tauxTVA/100, devise));
-    body.push('');
+    // LIGNE UNIQUE — Tout compris
+    out.push('1) Fournitures + pose (tout compris)');
+    out.push('   Montant HT : '+_fmtEuro(totalHT, devise));
+    if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(totalHT * tauxTVA/100, devise));
+    out.push('   Montant TTC : '+_fmtEuro(totalHT + (tvaOn? (totalHT*tauxTVA/100):0), devise));
+    out.push('');
   }
 
-  // Récap global
-  var htGlobal  = totalPrest + totalMat;
+  /* ---------- Récap global ---------- */
+  var htGlobal  = modeSepare ? (totalPrestHT + totalMatHT) : totalHT;
   var tvaGlobal = tvaOn ? (modeSepare ? (tvaPrest + tvaMat) : (totalHT * tauxTVA/100)) : 0;
 
-  body.push('================= RÉCAPITULATIF =================');
-  body.push('Total HT  : '+_fmtEuro(modeSepare?htGlobal:totalHT, devise));
-  if(tvaOn) body.push('TVA       : '+_fmtEuro(tvaGlobal, devise));
-  body.push('Total TTC : '+_fmtEuro((modeSepare?htGlobal:totalHT) + tvaGlobal, devise));
-  body.push('=================================================');
-  body.push('');
+  out.push('================= RÉCAPITULATIF =================');
+  out.push('Total HT  : '+_fmtEuro(htGlobal, devise));
+  if(tvaOn) out.push('TVA       : '+_fmtEuro(tvaGlobal, devise));
+  out.push('Total TTC : '+_fmtEuro(htGlobal + tvaGlobal, devise));
+  out.push('=================================================');
+  out.push('');
 
-  // Mentions / paiement
-  var foot = [];
-  if(company.conditions_paiement) foot.push('Conditions de paiement : '+company.conditions_paiement);
-  if(company.iban) foot.push('IBAN : '+company.iban+(company.bic?(' — BIC : '+company.bic):''));
-  if(company.rc_pro) foot.push('RC Pro : '+company.rc_pro);
-  if(company.decennale) foot.push('Décennale : '+company.decennale);
-  if(company.assureur) foot.push('Assureur : '+company.assureur);
+  /* ---------- Mentions / paiement ---------- */
+  if(company.conditions_paiement) out.push('Conditions de paiement : '+company.conditions_paiement);
+  if(company.iban) out.push('IBAN : '+company.iban+(company.bic?(' — BIC : '+company.bic):''));
+  if(company.rc_pro) out.push('RC Pro : '+company.rc_pro);
+  if(company.decennale) out.push('Décennale : '+company.decennale);
+  if(company.assureur) out.push('Assureur : '+company.assureur);
   if(company.mentions_legales){
-    foot.push('');
-    foot.push(company.mentions_legales);
+    out.push('');
+    out.push(company.mentions_legales);
   }
 
-  return header.concat(body).concat(foot).join('\r\n');
+  return out.join('\r\n');
 }
 
 /* ==== Export .txt + incrément numérotation ==== */
@@ -2936,7 +2957,7 @@ function exportInvoiceText(){
         app.innerHTML = app.innerHTML.replace(
           /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
           '$1<div class="row" style="margin-top:10px;">'
-          + '<button class="btn primary" onclick="exportInvoiceText()">🧾 Exporter facture (texte)</button>'
+          + '<button class="btn primary" onclick="exportInvoiceText()">💶 Exporter facture (texte)</button>'
           + '</div>'
         );
       }
@@ -2951,7 +2972,7 @@ function exportInvoiceText(){
         app.innerHTML = app.innerHTML.replace(
           /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
           '$1<div class="row" style="margin-top:10px;">'
-          + '<button class="btn primary" onclick="exportInvoiceText()">🧾 Exporter facture (texte)</button>'
+          + '<button class="btn primary" onclick="exportInvoiceText()">💶 Exporter facture (texte)</button>'
           + '</div>'
         );
       }
