@@ -2988,7 +2988,182 @@ function exportInvoiceText(){
 
   
 
+<!-- =============================
+     CHAPITRE 10 bis : EXPORTS COMPTA (CSV)
+     - Génère un CSV prêt pour import comptable (Abby & co)
+     - 2 lignes (Prestations / Matériel) en mode "séparé"
+     - 1 ligne (Global) en mode "tout compris"
+     - Bouton injecté sur Estimatif & Totaux
+     ============================= -->
+<script>
+/* ===== Helpers locaux (namespacés pour éviter les collisions) ===== */
+function csv_prefs(){ try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; } }
+function csv_company(){ try{ return JSON.parse(localStorage.getItem('companyConfig_v1')||'null') || {}; }catch(e){ return {}; } }
+function csv_todayFR(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
+function csv_pad4(n){ return String(Math.max(1,parseInt(n||1,10))).padStart(4,'0'); }
+function csv_totalGlobal(){
+  var sum = 0;
+  for (var key in devis){
+    if(key.indexOf('__')===0) continue;
+    var s = devis[key]; var items = (s&&s.items)||[];
+    for (var i=0;i<items.length;i++){
+      var it=items[i]; sum += ((+it.prixU||0) * (+it.qty||0));
+    }
+  }
+  return sum;
+}
+/* CSV safe (séparateur ;) + décimales FR avec virgule) */
+function csv_num(n){ return (+(n||0)).toFixed(2).replace('.',','); }
+function csv_escape(s){
+  var t = String(s==null?'':s);
+  // si ; ou " ou \n → entourer de guillemets et doubler les "
+  if (/[;"\n]/.test(t)) t = '"'+t.replace(/"/g,'""')+'"';
+  return t;
+}
+/* Récupère numéro de facture sans incrémenter (comme l'export TXT actuel) */
+function csv_currentInvoiceNumber(){
+  var p = csv_prefs();
+  var prefix = p.numerotation_fact_prefix || 'FAC-';
+  var num = csv_pad4(p.numerotation_courante || 1);
+  return prefix + num;
+}
 
+/* ===== Génération CSV =====
+   Schéma colonnes (simple et compatible) :
+   Date;Numero;Type;Description;MontantHT;TVA%;TVA;MontantTTC
+*/
+function buildInvoiceCSV(matPct){
+  var prefs = csv_prefs();
+  var company = csv_company();
+
+  var date = csv_todayFR();
+  var numero = csv_currentInvoiceNumber();
+
+  var modeSepare = (prefs.facturation_mode === 'separe');
+  var tvaOn  = !!prefs.tva_applicable;
+  var tauxTVA = Math.max(0, +prefs.taux_tva || 20);
+
+  var totalHT = csv_totalGlobal();
+
+  var rows = [];
+  var header = ['Date','Numero','Type','Description','MontantHT','TVA%','TVA','MontantTTC'].join(';');
+  rows.push(header);
+
+  if(modeSepare){
+    var ratioMat = Math.min(100, Math.max(0, parseFloat(matPct==null?40:matPct))) / 100;
+    var ratioPre = 1 - ratioMat;
+
+    var htMat = totalHT * ratioMat;
+    var htPre = totalHT * ratioPre;
+
+    var tvaMat = tvaOn ? (htMat * tauxTVA/100) : 0;
+    var tvaPre = tvaOn ? (htPre * tauxTVA/100) : 0;
+
+    var ttcMat = htMat + tvaMat;
+    var ttcPre = htPre + tvaPre;
+
+    // Ligne PRESTATIONS
+    rows.push([
+      date,
+      csv_escape(numero),
+      csv_escape('Prestations'),
+      csv_escape('Main-d’œuvre, pose, câblage'),
+      csv_num(htPre),
+      csv_num(tauxTVA),
+      csv_num(tvaPre),
+      csv_num(ttcPre)
+    ].join(';'));
+
+    // Ligne MATERIEL
+    rows.push([
+      date,
+      csv_escape(numero),
+      csv_escape('Matériel'),
+      csv_escape('Fournitures électriques (tableaux, appareillage, câbles, etc.)'),
+      csv_num(htMat),
+      csv_num(tauxTVA),
+      csv_num(tvaMat),
+      csv_num(ttcMat)
+    ].join(';'));
+
+  } else {
+    // Tout compris → 1 ligne "Global"
+    var tva = tvaOn ? (totalHT * tauxTVA/100) : 0;
+    var ttc = totalHT + tva;
+
+    rows.push([
+      date,
+      csv_escape(numero),
+      csv_escape('Global'),
+      csv_escape('Fournitures + pose'),
+      csv_num(totalHT),
+      csv_num(tauxTVA),
+      csv_num(tva),
+      csv_num(ttc)
+    ].join(';'));
+  }
+
+  return rows.join('\r\n');
+}
+
+/* ===== Export helper ===== */
+function exportInvoiceCSV(){
+  var prefs = csv_prefs();
+  var matPct = null;
+
+  if(prefs.facturation_mode === 'separe'){
+    var ask = prompt('Pourcentage MATÉRIEL (0–100) ?', '40');
+    if(ask==null) return; // annulé
+    matPct = parseFloat(ask);
+    if(isNaN(matPct)) matPct = 40;
+  }
+
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var csv = buildInvoiceCSV(matPct);
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_facture.csv';
+  a.click(); URL.revokeObjectURL(url);
+  alert('✅ Facture (CSV) exportée — prête pour import comptable.');
+}
+
+/* ===== Injection du bouton dans Estimatif & Totaux ===== */
+(function injectCSVButtons(){
+  function addBtn(app){
+    if(!app) return;
+    if(app.innerHTML.indexOf('exportInvoiceCSV()')!==-1) return;
+    // essaie d'ajouter le bouton dans le bloc d’exports existant
+    app.innerHTML = app.innerHTML.replace(
+      /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
+      '$1'
+      + '<div class="row" style="margin-top:10px;">'
+      +   '<button class="btn" onclick="exportInvoiceCSV()">💶 Export FACTURE (CSV — compta)</button>'
+      + '</div>'
+    );
+  }
+  var origEst = window.pageEstimatif;
+  if(typeof origEst === 'function'){
+    window.pageEstimatif = function(){
+      origEst();
+      addBtn(document.getElementById('app'));
+    };
+  }
+  var origTot = window.pageTotaux;
+  if(typeof origTot === 'function'){
+    window.pageTotaux = function(){
+      origTot();
+      addBtn(document.getElementById('app'));
+    };
+  }
+})();
+
+/* ===== Expose (optionnel) ===== */
+Object.assign(window, {
+  exportInvoiceCSV,
+  buildInvoiceCSV
+});
+</script>
 
   
 
