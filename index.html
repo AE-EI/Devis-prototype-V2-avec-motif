@@ -3034,9 +3034,26 @@ async function exportZipFull(){
   .cfg-grid .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
   .cfg-grid .field label{ display:block; font-weight:600; margin-bottom:6px; }
   .cfg-actions{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
-  .cfg-logo{ display:flex; align-items:center; gap:10px; }
-  .cfg-logo img{ max-height:48px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:4px; }
+
   .cfg-note{ color:var(--muted); font-size:14px; }
+
+  /* Logo */
+  .cfg-logo-block{ display:grid; grid-template-columns:1fr; gap:10px; }
+  .cfg-logo-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .cfg-logo img{ max-height:64px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:4px; }
+  .dropzone{
+    border:2px dashed var(--line); border-radius:10px; padding:12px; background:#fafafa;
+    text-align:center; color:#444;
+  }
+  .dropzone.drag{ border-color:#4caf50; background:#f0fff4; }
+  .alert-ok{
+    border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
+    padding:8px 10px; border-radius:8px; font-size:14px;
+  }
+  .alert-warn{
+    border:1px solid #ffe0b2; background:#fff3e0; color:#9c6f19;
+    padding:8px 10px; border-radius:8px; font-size:14px;
+  }
 </style>
 
 <script>
@@ -3061,34 +3078,59 @@ function getCompany(){
     iban: '', bic: '', conditions_paiement: 'Virement bancaire à 30 jours.',
     mentions_legales: '',
     // Logo (dataURL)
-    logo_dataurl: ''
+    logo_dataurl: '',
+    logo_meta: { name:'', size:0, width:0, height:0, loaded_at:'' }
   });
 }
 function setCompany(obj){ writeJsonLS(KEY_COMPANY, obj||{}); }
 
 function getPrefs(){
+  // ➜ Ratio matériel supprimé (on bascule vers le catalogue)
   return readJsonLS(KEY_PREFS, {
     facturation_mode: 'tout_compris', // 'tout_compris' | 'separe'
-    ratio_materiel_defaut: 40,        // % matériel par défaut (utile tant que les fournitures ne sont pas détaillées)
     devise: '€',
     tva_applicable: false,  // pour futur « réel »
     taux_tva: 20,           // % (non utilisé tant que tva_applicable=false)
-    numerotation_prefix: 'DEV-', // pour devis
-    numerotation_fact_prefix: 'FAC-', // pour facture
+    numerotation_prefix: 'DEV-',
+    numerotation_fact_prefix: 'FAC-',
     numerotation_courante: 1
   });
 }
 function setPrefs(obj){ writeJsonLS(KEY_PREFS, obj||{}); }
 
-/* DataURL helper pour logo */
+/* Fichier → dataURL + meta (nom/taille + dimensions) */
+function fileToDataURLWithMeta(file, cb, errCb){
+  try{
+    const rd = new FileReader();
+    rd.onload = function(){
+      const dataUrl = rd.result || '';
+      const img = new Image();
+      img.onload = function(){
+        cb({
+          dataUrl,
+          meta: {
+            name: file.name || '',
+            size: file.size || 0,
+            width: img.naturalWidth||img.width||0,
+            height: img.naturalHeight||img.height||0,
+            loaded_at: new Date().toISOString()
+          }
+        });
+      };
+      img.onerror = function(){ (errCb||alert)('Impossible de lire l’image.'); };
+      img.src = dataUrl;
+    };
+    rd.onerror = function(){ (errCb||alert)('Lecture du fichier échouée.'); };
+    rd.readAsDataURL(file);
+  }catch(e){ (errCb||alert)('Sélection d’image impossible : '+e.message); }
+}
+
 function pickImageFile(cb){
   const input = document.createElement('input');
   input.type = 'file'; input.accept = 'image/*';
   input.onchange = function(){
     const f = input.files && input.files[0]; if(!f) return;
-    const rd = new FileReader();
-    rd.onload = () => cb(rd.result||''); // dataURL
-    rd.readAsDataURL(f);
+    cb(f);
   };
   input.click();
 }
@@ -3096,7 +3138,7 @@ function pickImageFile(cb){
 /* ============================================================
    §11.1 • UI — Configuration entreprise
    ============================================================ */
-function pageConfigEntreprise(){
+function pageConfigEntreprise(notice){
   const cfg = getCompany();
 
   function f(label, id, val, placeholder){
@@ -3108,15 +3150,35 @@ function pageConfigEntreprise(){
          + '<textarea id="'+id+'" rows="5" placeholder="'+(placeholder||'')+'">'+(val||'')+'</textarea></div>';
   }
 
+  const hasLogo = !!cfg.logo_dataurl;
+  const meta = cfg.logo_meta || {};
+  const metaTxt = hasLogo
+    ? ('<div class="cfg-note">Fichier: <strong>'+ (meta.name||'') +
+       '</strong> — '+(Math.round((meta.size||0)/102.4)/10)+' Ko — '+
+       (meta.width||'?')+'×'+(meta.height||'?')+' px</div>')
+    : '<div class="cfg-note">Aucun logo</div>';
+
+  const banner = notice
+    ? '<div class="alert-ok">'+notice+'</div>'
+    : '';
+
   const logoHtml =
     '<div class="field">'
       + '<label>Logo</label>'
-      + '<div class="cfg-logo">'
-        + (cfg.logo_dataurl ? ('<img id="cfg-logo-preview" src="'+cfg.logo_dataurl+'"/>') : '<div class="cfg-note">Aucun logo</div>')
-        + b('Choisir une image','cfgPickLogo()','btn')
-        + (cfg.logo_dataurl ? b('Retirer','cfgRemoveLogo()','btn') : '')
+      + '<div class="cfg-logo-block">'
+        + banner
+        + '<div class="cfg-logo-row cfg-logo">'
+            + (hasLogo ? ('<img id="cfg-logo-preview" src="'+cfg.logo_dataurl+'" alt="Logo"/>') : '')
+            + metaTxt
+        + '</div>'
+        + '<div class="cfg-logo-row">'
+            + b('Choisir une image','cfgPickLogoUI()','btn')
+            + (hasLogo ? b('Aperçu plein','cfgOpenLogoFull()','btn') : '')
+            + (hasLogo ? b('Retirer','cfgRemoveLogo()','btn') : '')
+        + '</div>'
+        + '<div id="dropzone" class="dropzone">Glissez-déposez votre logo ici (PNG/JPG recommandé)</div>'
+        + '<div class="cfg-note">Le logo sera intégré aux futurs PDF (devis/factures).</div>'
       + '</div>'
-      + '<div class="cfg-note" style="margin-top:6px;">PNG/JPG recommandé, il sera intégré dans les futurs PDF.</div>'
     + '</div>';
 
   view(
@@ -3168,15 +3230,47 @@ function pageConfigEntreprise(){
     + '</div>'
   );
 
-  // expose handlers internes sur window (pour inline onclick)
-  window.cfgPickLogo = function(){
-    pickImageFile(function(dataUrl){
-      const c = getCompany(); c.logo_dataurl = dataUrl; setCompany(c); pageConfigEntreprise();
+  // Handlers inline
+  window.cfgPickLogoUI = function(){
+    pickImageFile(function(file){
+      fileToDataURLWithMeta(file, function(res){
+        const c = getCompany();
+        c.logo_dataurl = res.dataUrl;
+        c.logo_meta = res.meta;
+        setCompany(c);
+        pageConfigEntreprise('Logo chargé ✅ ('+res.meta.width+'×'+res.meta.height+' px)');
+      });
     });
   };
   window.cfgRemoveLogo = function(){
-    const c = getCompany(); c.logo_dataurl = ''; setCompany(c); pageConfigEntreprise();
+    const c = getCompany(); c.logo_dataurl = ''; c.logo_meta = {name:'',size:0,width:0,height:0,loaded_at:''};
+    setCompany(c); pageConfigEntreprise('Logo supprimé.');
   };
+  window.cfgOpenLogoFull = function(){
+    const c = getCompany(); if(!c.logo_dataurl) return;
+    const w = window.open(); if(!w) return;
+    w.document.write('<img src="'+c.logo_dataurl+'" style="max-width:100%;height:auto" alt="Logo" />');
+  };
+
+  // Drag & drop
+  (function setupDrop(){
+    const dz = document.getElementById('dropzone');
+    if(!dz) return;
+    ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', function(e){
+      const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) || null;
+      if(!f) return;
+      if(!/^image\//i.test(f.type||'')){ alert('Merci de déposer une image (PNG/JPG).'); return; }
+      fileToDataURLWithMeta(f, function(res){
+        const c = getCompany();
+        c.logo_dataurl = res.dataUrl;
+        c.logo_meta = res.meta;
+        setCompany(c);
+        pageConfigEntreprise('Logo chargé ✅ ('+res.meta.width+'×'+res.meta.height+' px)');
+      });
+    });
+  })();
 }
 
 function saveConfigEntreprise(){
@@ -3208,10 +3302,11 @@ function saveConfigEntreprise(){
 
 /* ============================================================
    §11.2 • UI — Préférences (mode facturation, devise, TVA…)
+   (ratio matériel retiré)
    ============================================================ */
 function pagePreferences(){
   const p = getPrefs();
-  const radio = (id, name, val, cur, label) =>
+  const radio = (name, val, cur, label) =>
     '<label class="pill"><input type="radio" name="'+name+'" value="'+val+'" '+(cur===val?'checked':'')+'> '+label+'</label>';
 
   view(
@@ -3219,21 +3314,20 @@ function pagePreferences(){
       + '<div class="card">'
         + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
         + '<h2>Préférences</h2>'
-        + '<p class="cfg-note">Ces réglages influencent la présentation des futurs exports (devis/factures) et la logique de calcul lorsqu’on séparera matériel/prestations.</p>'
+        + '<p class="cfg-note">Ces réglages influencent la présentation des futurs exports (devis/factures) et la logique de TVA.</p>'
       + '</div>'
 
       + '<div class="card">'
         + '<h3>Mode de facturation</h3>'
         + '<div class="row" style="gap:8px;">'
-          + radio('pfm1','pf_fmode','tout_compris', p.facturation_mode, 'Tarifs « fournitures + pose » (tout compris)')
-          + radio('pfm2','pf_fmode','separe', p.facturation_mode, 'Séparer prestations et matériel')
+          + radio('pf_fmode','tout_compris', p.facturation_mode, 'Tarifs « fournitures + pose » (tout compris)')
+          + radio('pf_fmode','separe', p.facturation_mode, 'Séparer prestations et matériel')
         + '</div>'
-        + '<div class="cfg-grid" style="margin-top:10px;">'
-          + '<div class="field">'
-            + '<label>Ratio matériel par défaut (%)</label>'
-            + '<input id="pf_ratio" type="number" inputmode="numeric" min="0" max="100" value="'+(+p.ratio_materiel_defaut||40)+'"/>'
-            + '<div class="cfg-note">Utilisé provisoirement tant que les fournitures ne sont pas détaillées ligne par ligne.</div>'
-          + '</div>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Devise & TVA</h3>'
+        + '<div class="cfg-grid">'
           + '<div class="field">'
             + '<label>Devise</label>'
             + '<input id="pf_dev" value="'+(p.devise||'€')+'" placeholder="€"/>'
@@ -3246,6 +3340,12 @@ function pagePreferences(){
             + '<label>Taux de TVA (%)</label>'
             + '<input id="pf_tva" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="'+(+p.taux_tva||20)+'"/>'
           + '</div>'
+        + '</div>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Numérotation</h3>'
+        + '<div class="cfg-grid">'
           + '<div class="field">'
             + '<label>Préfixe numérotation devis</label>'
             + '<input id="pf_pref_dev" value="'+(p.numerotation_prefix||'DEV-')+'"/>'
@@ -3277,7 +3377,6 @@ function savePreferences(){
 
   const out = Object.assign({}, cur, {
     facturation_mode: gi('pf_fmode') || cur.facturation_mode,
-    ratio_materiel_defaut: Math.min(100, Math.max(0, parseInt(gv('pf_ratio'),10)||cur.ratio_materiel_defaut||40)),
     devise: gv('pf_dev') || cur.devise || '€',
     tva_applicable: tvay,
     taux_tva: Math.max(0, parseFloat(gv('pf_tva'))||cur.taux_tva||20),
@@ -3294,7 +3393,6 @@ function savePreferences(){
    (si présent) et expose les pages au global
    ============================================================ */
 (function injectButtonsIntoParametrage(){
-  // Si le Chap.8 a déjà défini pageTarifsAccueil, on l’enrichit.
   const orig = window.pageTarifsAccueil;
   if(typeof orig === 'function'){
     window.pageTarifsAccueil = function(){
@@ -3317,7 +3415,7 @@ function savePreferences(){
   }
 })();
 
-/* Expose au global pour pouvoir les appeler ailleurs si besoin */
+/* Expose au global */
 Object.assign(window, {
   pageConfigEntreprise,
   pagePreferences,
