@@ -3248,14 +3248,94 @@ function exportInvoiceCSVFromStored(id){
   
   
 <!-- =============================
-     CHAPITRE 11 : ESTIMATIF & EXPORTS — COMPLET (MAJ)
-     - Ajoute boutons :
-       * Sauvegarder & transformer en facture
-       * Export FACTURE (CSV — compta)
+     CHAPITRE 11 : ESTIMATIF & EXPORTS — COMPLET (v9.5 + améliorations)
+     - Groupes par pièce, tri spécial “Tableau”
+     - Pages Estimatif & Totaux
+     - Exports : .txt/.zip par groupe + COMPLET
+     - Devis (TXT) : tout compris & séparé P/M
+     - Facture CSV (compta) intégré ici
+     - Shim compat : évite l’erreur "exportText is not defined"
      ============================= -->
 <script>
-// ... (tes fonctions existantes §11.0 à §11.1 inchangées)
+// ---------- Aides locales ----------
+function _todayFR11(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'});}catch(e){return new Date().toLocaleDateString();} }
+function _fmt2(n){ return (+n||0).toFixed(2); }
 
+// ---------- Groupes pièces (reprend ta v9.5) ----------
+window.PIECE_GROUPS = window.PIECE_GROUPS || {
+  "Buanderie":"Pièces techniques","Garage":"Pièces techniques","Atelier":"Pièces techniques",
+  "Jardin":"Extérieur","Terrasse":"Extérieur","Balcon":"Extérieur","Abri de jardin":"Extérieur",
+  "Cuisine":"Cuisine",
+  "Salon":"Pièces de vie","Salle à manger":"Pièces de vie","Couloir":"Pièces de vie","Entrée":"Pièces de vie",
+  "Salle de bain":"Pièces d'eau","Salle d'eau":"Pièces d'eau","Toilettes":"Pièces d'eau",
+  "Chambre 1":"Chambres & Bureau","Chambre 2":"Chambres & Bureau","Chambre 3":"Chambres & Bureau",
+  "Bureau":"Chambres & Bureau","Bibliothèque":"Chambres & Bureau",
+  "Tableau":"Tableau & distribution","Distribution":"Tableau & distribution",
+  "Mise à la terre":"Mise à la terre","VMC":"VMC"
+};
+
+// ---------- Groupage & libellés ----------
+function groupDevis(){
+  var g = {};
+  for (var key in devis){
+    if (key.indexOf("__") === 0) continue;
+    var s = devis[key];
+    var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
+    var grp  = window.PIECE_GROUPS[base] || "Divers";
+    if (!g[grp]) g[grp] = {};
+    g[grp][key] = s;
+  }
+  return g;
+}
+function isTableauKey(key){
+  var s = devis[key] || {};
+  return ((s.__base||'').toLowerCase()==='tableau') || /^Tableau\s/i.test(key);
+}
+function pieceDisplayLabel(key){
+  var s = devis[key] || {};
+  var base = (s && s.__base) ? s.__base : key.replace(/\s*\(.*\)\s*$/,"").split(" — ")[0];
+  var label;
+  if(isTableauKey(key) && s.__customName && s.__customName.trim()){
+    label = key + ' — ' + s.__customName.trim();
+  }else{
+    if(!isTableauKey(key)){
+      label = (typeof formatPieceLabel === 'function') ? formatPieceLabel(key) : key;
+    }else{
+      label = key;
+    }
+  }
+  return label;
+}
+
+// ---------- Tri spécial pour les “Tableaux” ----------
+function sortedItemsForPiece(key, items){
+  if(!Array.isArray(items)) return [];
+  if(!isTableauKey(key)) return items.slice();
+  function score(it){
+    var d = (it && it.designation ? String(it.designation) : '').trim();
+    if (/^ID\s/i.test(d))             return 0;
+    if (/^Coupure générale/i.test(d)) return 1;
+    if (/^Disjoncteur\s/i.test(d))    return 2;
+    return 3;
+  }
+  return items.map(function(it, i){ return {it:it, i:i, s:score(it)}; })
+              .sort(function(a,b){ return (a.s - b.s) || (a.i - b.i); })
+              .map(function(x){ return x.it; });
+}
+
+// ---------- Rendu lignes ----------
+function itemLine(it){
+  var unit = it.unit || "u";
+  var poseTxt = (it.intervention === "Création" && it.pose) ? (" - " + String(it.pose).toLowerCase()) : "";
+  var left = it.intervention ? (it.intervention + " — ") : "";
+  var pu = (+it.prixU || 0).toFixed(2);
+  var q  = +it.qty || 0;
+  var total = (q * (+it.prixU || 0)).toFixed(2);
+  return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + pu + "€ | Total: " + total + "€";
+}
+function pieceSeparator(label){ return "\n---------------- " + label + " ----------------\n"; }
+
+// ---------- Pages Estimatif & Totaux ----------
 function pageEstimatif(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Estimatif détaillé</h2>';
   var totalGlobal = 0;
@@ -3264,80 +3344,514 @@ function pageEstimatif(){
   for (var grp in grouped){
     html += '<h2 style="border-top:2px solid #000; padding-top:8px;">'+grp+'</h2>';
     var groupTotal = 0;
+
     for (var key in grouped[grp]){
       var s = grouped[grp][key];
       if (!s || !s.items || !s.items.length) continue;
+
       var pieceLabel = pieceDisplayLabel(key);
       var items = sortedItemsForPiece(key, s.items);
       var sectionTotal = 0;
+
       html += '<h3 style="margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">'+pieceLabel+'</h3><ul>';
       items.forEach(function(it){
-        var q=+it.qty||0, pu=+it.prixU||0, t=q*pu;
-        sectionTotal+=t; groupTotal+=t; totalGlobal+=t;
-        var poseTxt=(it.intervention==="Création" && it.pose)?(" "+String(it.pose).toLowerCase()):"";
-        var unit=it.unit||"u"; var left=it.intervention?(it.intervention+" — "):"";
-        html+='<li>'+left+it.designation+poseTxt+' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
+        var q  = +it.qty || 0;
+        var pu = +it.prixU || 0;
+        var t  = q * pu;
+        sectionTotal += t; groupTotal += t; totalGlobal += t;
+
+        var poseTxt = (it.intervention==="Création" && it.pose) ? (" " + String(it.pose).toLowerCase()) : "";
+        var unit    = it.unit || "u";
+        var left    = it.intervention ? (it.intervention+" — ") : "";
+        html += '<li>' + left + it.designation + poseTxt + ' ('+q+' '+unit+' × '+euro(pu)+' = '+euro(t)+')</li>';
       });
-      if (s.note) html+='<li><em>Note : '+s.note+'</em></li>';
-      html+='</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
+      if (s.note) html += '<li><em>Note : '+s.note+'</em></li>';
+
+      html += '</ul><p><strong>Total '+pieceLabel+' : '+euro(sectionTotal)+'</strong></p>';
     }
-    html+='<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
+
+    html += '<p><strong>Total '+grp+' : '+euro(groupTotal)+'</strong></p><hr>';
   }
 
   html += '<h3>Total global : '+euro(totalGlobal)+'</h3>'
-       +  '<div class="row" style="margin-top:10px;">'
-       +    b("Export .txt (par groupe)","exportText()","btn")
-       +    b("Export .zip (par groupe)","exportZipGroups()","btn")
-       +    b("Export .txt (complet)","exportTextFull()","btn")
-       +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div>'
-       +  '<div class="row" style="margin-top:10px;">'
-       +    b("🧾 Export DEVIS (tout compris)","exportDevisToutComprisTXT()","btn primary")
-       +    b("🧾 Export DEVIS (séparé)","exportDevisSepareTXT()","btn")
-       +  '</div>'
-       +  '<div class="row" style="margin-top:10px;">'
-       +    b("💼 Sauvegarder ce devis & transformer en facture","transformCurrentDevisToInvoice()","btn primary")
-       +    b("💶 Export FACTURE (CSV — compta)","exportInvoiceCSV()","btn")
-       +  '</div>'
+       +  _exportsButtonsRow()
+       +  _devisButtonsRow()
+       +  _factureButtonsRow()
        +  '</div>';
+
   view(html);
 }
 
 function pageTotaux(){
   var html = '<div class="card">'+b("Retour","pageHome()","btn back")+'<h2>Totaux par groupe</h2>';
-  var totalGlobal=0; var grouped=groupDevis();
+  var totalGlobal = 0;
+  var grouped = groupDevis();
+
   for (var grp in grouped){
-    var gt=0;
+    var gt = 0;
     for (var key in grouped[grp]){
-      var s=grouped[grp][key]; if(!s||!s.items||!s.items.length) continue;
-      var items=sortedItemsForPiece(key,s.items);
-      var st=items.reduce(function(sum,it){ return sum+(((+it.prixU)||0)*((+it.qty)||0)); },0);
-      gt+=st; totalGlobal+=st;
+      var s = grouped[grp][key];
+      if (!s || !s.items || !s.items.length) continue;
+      var items = sortedItemsForPiece(key, s.items);
+      var st = items.reduce(function(sum,it){ return sum + (((+it.prixU)||0)*((+it.qty)||0)); }, 0);
+      gt += st; totalGlobal += st;
     }
-    html+='<p><strong>'+grp+'</strong> : '+euro(gt)+'</p>';
+    html += '<p><strong>'+grp+'</strong> : '+euro(gt)+'</p>';
   }
+
   html += '<hr><p><strong>Total global : '+euro(totalGlobal)+'</strong></p>'
-       +  '<div class="row" style="margin-top:10px;">'
+       +  _exportsButtonsRow()
+       +  _devisButtonsRow()
+       +  _factureButtonsRow()
+       +  '</div>';
+
+  view(html);
+}
+
+// ---------- Boutons (rangés) ----------
+function _exportsButtonsRow(){
+  return '<div class="row" style="margin-top:10px;">'
        +    b("Export .txt (par groupe)","exportText()","btn")
        +    b("Export .zip (par groupe)","exportZipGroups()","btn")
        +    b("Export .txt (complet)","exportTextFull()","btn")
        +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div>'
-       +  '<div class="row" style="margin-top:10px;">'
+       +  '</div>';
+}
+function _devisButtonsRow(){
+  return '<div class="row" style="margin-top:10px;">'
        +    b("🧾 Export DEVIS (tout compris)","exportDevisToutComprisTXT()","btn primary")
        +    b("🧾 Export DEVIS (séparé)","exportDevisSepareTXT()","btn")
-       +  '</div>'
-       +  '<div class="row" style="margin-top:10px;">'
-       +    b("💼 Sauvegarder ce devis & transformer en facture","transformCurrentDevisToInvoice()","btn primary")
-       +    b("💶 Export FACTURE (CSV — compta)","exportInvoiceCSV()","btn")
-       +  '</div>'
        +  '</div>';
-  view(html);
+}
+function _factureButtonsRow(){
+  return '<div class="row" style="margin-top:10px;">'
+       +    b("💶 Export FACTURE (CSV — compta)","exportInvoiceCSV()","btn")
+       +    (typeof exportInvoiceText==='function'
+              ? b("💶 Export FACTURE (texte)","exportInvoiceText()","btn")
+              : b("💶 Export FACTURE (texte)","_noInvoiceTextMsg()","btn"))
+       +  '</div>';
+}
+function _noInvoiceTextMsg(){ alert("Le module Facture (texte) n'est pas chargé. Colle le Chapitre 10 pour activer ce bouton."); }
+
+// ---------- Exports : TXT/ZIP par groupe ----------
+function itemLineTxt(it){
+  var unit = it.unit || "u";
+  var left = it.intervention ? (it.intervention+" — ") : "";
+  var q  = +it.qty || 0, pu = +it.prixU || 0, t = q*pu;
+  var poseTxt = (it.intervention==="Création" && it.pose) ? (' - '+String(it.pose).toLowerCase()) : '';
+  return "- " + left + it.designation + poseTxt + " | Qté: " + q + " " + unit + " | PU: " + _fmt2(pu) + "€ | Total: " + _fmt2(t) + "€";
 }
 
-// ... (tes fonctions exports par groupe & complet restent identiques)
-</script>
+function exportText(){
+  var grouped = groupDevis();
+  for (var grp in grouped){
+    var lines = ['=== '+grp+' ===\n'];
+    var groupTotal = 0;
 
+    for (var key in grouped[grp]){
+      var s = grouped[grp][key];
+      if (!s || !s.items || !s.items.length) continue;
+
+      var label = pieceDisplayLabel(key);
+      var items = sortedItemsForPiece(key, s.items);
+      var st = 0;
+      lines.push(pieceSeparator(label));
+
+      items.forEach(function(it){
+        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+        st += t; groupTotal += t;
+        lines.push(itemLineTxt(it));
+      });
+      if (s.note) lines.push('Note : '+s.note);
+      lines.push('Total '+label+' : '+_fmt2(st)+'€\n');
+    }
+
+    lines.push('Total '+grp+' : '+_fmt2(groupTotal)+'€');
+
+    var blob = new Blob([lines.join('\r\n')], {type:'text/plain;charset=utf-8'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href = url; a.download = 'devis_'+grp+'.txt'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  alert('✅ Export terminé : un fichier .txt par groupe généré.');
+}
+
+async function exportZipGroups(){
+  if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
+
+  var grouped = groupDevis();
+  var zip = new JSZip();
+  var global = 0;
+
+  for (var grp in grouped){
+    var lines = ['=== '+grp+' ===\n'];
+    var groupTotal = 0;
+
+    for (var key in grouped[grp]){
+      var s = grouped[grp][key];
+      if (!s || !s.items || !s.items.length) continue;
+
+      var label = pieceDisplayLabel(key);
+      var items = sortedItemsForPiece(key, s.items);
+      var st = 0;
+      lines.push(pieceSeparator(label));
+
+      items.forEach(function(it){
+        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+        st += t; groupTotal += t;
+        lines.push(itemLineTxt(it));
+      });
+      if (s.note) lines.push('Note : '+s.note);
+      lines.push('Total '+label+' : '+_fmt2(st)+'€\n');
+    }
+
+    lines.push('Total '+grp+' : '+_fmt2(groupTotal)+'€');
+    global += groupTotal;
+
+    zip.file('devis_'+grp+'.txt', lines.join('\r\n'));
+  }
+
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var readme = 'Récapitulatif — '+name+'\nDate: '+new Date().toLocaleString()
+             + '\n\nTotal global: '+_fmt2(global)+'€\n';
+  zip.file('README.txt', readme);
+
+  var blob = await zip.generateAsync({type:'blob'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_groupes.zip';
+  a.click(); URL.revokeObjectURL(url);
+
+  alert('✅ Export ZIP (par groupe) généré.');
+}
+
+// ---------- Exports : COMPLET ----------
+function buildFullText(){
+  var grouped = groupDevis();
+  var lines = ['=== DEVIS COMPLET ===\n'];
+  var globalTotal = 0;
+
+  for (var grp in grouped){
+    lines.push('\n## '+grp+' ##\n');
+    var groupTotal = 0;
+
+    for (var key in grouped[grp]){
+      var s = grouped[grp][key];
+      if (!s || !s.items || !s.items.length) continue;
+
+      var label = pieceDisplayLabel(key);
+      var items = sortedItemsForPiece(key, s.items);
+      var st = 0;
+      lines.push(pieceSeparator(label));
+
+      items.forEach(function(it){
+        var q = +it.qty || 0, pu = +it.prixU || 0, t = q * pu;
+        st += t; groupTotal += t; globalTotal += t;
+        lines.push(itemLineTxt(it));
+      });
+      if (s.note) lines.push('Note : '+s.note);
+      lines.push('Total '+label+' : '+_fmt2(st)+'€\n');
+    }
+
+    lines.push('Total '+grp+' : '+_fmt2(groupTotal)+'€\n');
+  }
+
+  lines.push('\n=== Total global : '+_fmt2(globalTotal)+'€ ===\n');
+  return lines.join('\r\n');
+}
+function exportTextFull(){
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var blob = new Blob([buildFullText()], {type:'text/plain;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt';
+  a.click(); URL.revokeObjectURL(url);
+  alert('✅ Export .txt complet généré.');
+}
+async function exportZipFull(){
+  if (typeof JSZip === 'undefined'){ alert('JSZip non chargé.'); return; }
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var zip  = new JSZip();
+  zip.file(name.replace(/\s+/g,'_').toLowerCase()+'_complet.txt', buildFullText());
+  zip.file('README.txt', 'Devis complet\nNom: '+name+'\nDate: '+new Date().toLocaleString()+'\n');
+
+  var blob = await zip.generateAsync({type:'blob'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_complet.zip';
+  a.click(); URL.revokeObjectURL(url);
+
+  alert('✅ Export .zip complet généré.');
+}
+
+// ---------- DEVIS (TXT) : tout compris & séparé ----------
+function _getPrefsSafe11(){ try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; } }
+function _getCompanySafe11(){ try{ return JSON.parse(localStorage.getItem('companyConfig_v1')||'null') || {}; }catch(e){ return {}; } }
+function _fmtDevTxt11(n,sym){ var s=(sym||'€').trim(); return (+(n||0)).toFixed(2)+' '+s; }
+
+function _linesByGroup_dev(){
+  var g = groupDevis();
+  var out = [];
+  for (var grp in g){
+    for (var key in g[grp]){
+      var s = g[grp][key];
+      var items = sortedItemsForPiece(key, (s&&s.items)||[]);
+      out.push({ group: grp, label: pieceDisplayLabel(key), items: items });
+    }
+  }
+  return out;
+}
+function _txtItemLine_dev(it, deviseSym){
+  var unit = it.unit || 'u';
+  var q  = +it.qty || 0;
+  var pu = +it.prixU || 0;
+  var t  = q*pu;
+  var left = it.intervention ? (it.intervention+' — ') : '';
+  var poseTxt = (it.intervention==='Création' && it.pose) ? (' - '+String(it.pose).toLowerCase()) : '';
+  return '- ' + left + (it.designation||'') + poseTxt + ' ('
+       + q+' '+unit+' × '+_fmtDevTxt11(pu, deviseSym)+' = '+_fmtDevTxt11(t, deviseSym)+')';
+}
+
+function buildDevisText_ToutCompris(){
+  var prefs   = _getPrefsSafe11();
+  var company = _getCompanySafe11();
+  var devise  = prefs.devise || '€';
+  var tvaOn   = !!prefs.tva_applicable;
+  var tauxTVA = Math.max(0, +prefs.taux_tva || 20);
+
+  var lines=[];
+  lines.push('================= DEVIS — TOUT COMPRIS =================');
+  lines.push('Date : '+_todayFR11());
+  lines.push('');
+
+  var rs = (company.raison_sociale || company.nom_commercial || '').trim();
+  if(rs){ lines.push('Émetteur : '+rs); }
+  var adr = [company.adresse, company.code_postal, company.ville].filter(Boolean).join(' ');
+  if(adr) lines.push('Adresse  : '+adr+(company.pays?(' — '+company.pays):''));
+  if(company.email) lines.push('Email    : '+company.email);
+  if(company.telephone) lines.push('Tél      : '+company.telephone);
+  if(company.siren) lines.push('SIREN    : '+company.siren);
+  if(company.tva_intracom) lines.push('TVA      : '+company.tva_intracom);
+  lines.push('========================================================');
+  lines.push('');
+
+  var blocks = _linesByGroup_dev();
+  var totalHT = 0, currentGroup=null;
+  blocks.forEach(function(block){
+    if(block.group && block.group!==currentGroup){
+      lines.push('## '+block.group+' ##');
+      currentGroup = block.group;
+    }
+    lines.push('---- '+block.label+' ----');
+    var st=0;
+    block.items.forEach(function(it){
+      lines.push(_txtItemLine_dev(it, devise));
+      st += ((+it.qty||0) * (+it.prixU||0));
+    });
+    lines.push('Total '+block.label+' : '+_fmtDevTxt11(st, devise));
+    lines.push('');
+    totalHT += st;
+  });
+
+  var tva = tvaOn ? (totalHT * tauxTVA/100) : 0;
+  lines.push('================= RÉCAPITULATIF =================');
+  lines.push('Total HT  : '+_fmtDevTxt11(totalHT, devise));
+  if(tvaOn) lines.push('TVA ('+tauxTVA+'%) : '+_fmtDevTxt11(tva, devise));
+  lines.push('Total TTC : '+_fmtDevTxt11(totalHT + tva, devise));
+  lines.push('=================================================');
+  lines.push('');
+
+  if(company.conditions_paiement) lines.push('Conditions de paiement : '+company.conditions_paiement);
+  if(company.iban) lines.push('IBAN : '+company.iban+(company.bic?(' — BIC : '+company.bic):''));
+  if(company.mentions_legales){ lines.push(''); lines.push(company.mentions_legales); }
+
+  return lines.join('\r\n');
+}
+
+function buildDevisText_Separe(matPct){
+  var prefs   = _getPrefsSafe11();
+  var company = _getCompanySafe11();
+  var devise  = prefs.devise || '€';
+  var tvaOn   = !!prefs.tva_applicable;
+  var tauxTVA = Math.max(0, +prefs.taux_tva || 20);
+
+  var matRatio   = Math.min(100, Math.max(0, parseFloat(matPct||40))) / 100;
+  var prestRatio = 1 - matRatio;
+
+  var lines=[];
+  lines.push('============ DEVIS — SÉPARÉ PRESTATIONS / MATÉRIEL ============');
+  lines.push('Date : '+_todayFR11());
+  lines.push('');
+
+  var rs = (company.raison_sociale || company.nom_commercial || '').trim();
+  if(rs){ lines.push('Émetteur : '+rs); }
+  var adr = [company.adresse, company.code_postal, company.ville].filter(Boolean).join(' ');
+  if(adr) lines.push('Adresse  : '+adr+(company.pays?(' — '+company.pays):''));
+  if(company.email) lines.push('Email    : '+company.email);
+  if(company.telephone) lines.push('Tél      : '+company.telephone);
+  if(company.siren) lines.push('SIREN    : '+company.siren);
+  if(company.tva_intracom) lines.push('TVA      : '+company.tva_intracom);
+  lines.push('===============================================================');
+  lines.push('');
+
+  var blocks = _linesByGroup_dev();
+  var totalHT = 0, currentGroup=null;
+  blocks.forEach(function(block){
+    if(block.group && block.group!==currentGroup){
+      lines.push('## '+block.group+' ##');
+      currentGroup = block.group;
+    }
+    lines.push('---- '+block.label+' ----');
+    var st=0;
+    block.items.forEach(function(it){
+      lines.push(_txtItemLine_dev(it, devise));
+      st += ((+it.qty||0) * (+it.prixU||0));
+    });
+    lines.push('Total '+block.label+' : '+_fmtDevTxt11(st, devise));
+    lines.push('');
+    totalHT += st;
+  });
+
+  var totalMatHT   = totalHT * matRatio;
+  var totalPrestHT = totalHT * prestRatio;
+
+  var tvaPrest = tvaOn ? (totalPrestHT * tauxTVA/100) : 0;
+  var tvaMat   = tvaOn ? (totalMatHT   * tauxTVA/100) : 0;
+
+  lines.push('================= RÉCAPITULATIF =================');
+  lines.push('Hypothèse séparation : Matériel = '+Math.round(matRatio*100)+'% | Prestations = '+Math.round(prestRatio*100)+'%');
+  lines.push('');
+  lines.push('--- PRESTATIONS ---');
+  lines.push('HT  : '+_fmtDevTxt11(totalPrestHT, devise));
+  if(tvaOn) lines.push('TVA : '+_fmtDevTxt11(tvaPrest, devise));
+  lines.push('');
+  lines.push('--- MATÉRIEL ---');
+  lines.push('HT  : '+_fmtDevTxt11(totalMatHT, devise));
+  if(tvaOn) lines.push('TVA : '+_fmtDevTxt11(tvaMat, devise));
+  lines.push('');
+  lines.push('Total HT  : '+_fmtDevTxt11(totalHT, devise));
+  if(tvaOn) lines.push('Total TVA : '+_fmtDevTxt11(tvaPrest + tvaMat, devise));
+  lines.push('Total TTC : '+_fmtDevTxt11(totalHT + (tvaPrest + tvaMat), devise));
+  lines.push('=================================================');
+  lines.push('');
+
+  if(company.conditions_paiement) lines.push('Conditions de paiement : '+company.conditions_paiement);
+  if(company.iban) lines.push('IBAN : '+company.iban+(company.bic?(' — BIC : '+company.bic):''));
+  if(company.mentions_legales){ lines.push(''); lines.push(company.mentions_legales); }
+
+  return lines.join('\r\n');
+}
+
+function exportDevisToutComprisTXT(){
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var blob = new Blob([buildDevisText_ToutCompris()], {type:'text/plain;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_devis_tout_compris.txt';
+  a.click(); URL.revokeObjectURL(url);
+  alert('✅ Devis (tout compris) exporté.');
+}
+function exportDevisSepareTXT(){
+  var pct = prompt('Pourcentage MATÉRIEL (0–100) ?', '40');
+  if(pct==null) return; // annulé
+  var name = (devis.__name || 'Devis').trim() || 'Devis';
+  var blob = new Blob([buildDevisText_Separe(pct)], {type:'text/plain;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_devis_separe.txt';
+  a.click(); URL.revokeObjectURL(url);
+  alert('✅ Devis (séparé) exporté.');
+}
+
+// ---------- FACTURE CSV (compta) intégré ----------
+function _csv_prefs(){ try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; } }
+function _csv_sumDevisGlobal(){
+  var sum = 0;
+  for (var key in devis){
+    if(key.indexOf('__')===0) continue;
+    var s = devis[key]; var items = (s&&s.items)||[];
+    for (var i=0;i<items.length;i++){
+      var it=items[i]; sum += ((+it.prixU||0) * (+it.qty||0));
+    }
+  }
+  return sum;
+}
+function _csv_effectiveTVA(){
+  var prefs = _csv_prefs();
+  var appOn  = !!prefs.tva_applicable;
+  var appT   = Math.max(0, +prefs.taux_tva || 20);
+  var localOn  = (devis && typeof devis.__tva_applicable !== 'undefined') ? !!devis.__tva_applicable : null;
+  var localT   = (devis && typeof devis.__taux_tva !== 'undefined') ? Math.max(0, +devis.__taux_tva || 0) : null;
+  var useOn = (localOn===null ? appOn : localOn);
+  var useT  = (localT===null  ? appT  : localT);
+  return { tva_on: useOn, taux: useT };
+}
+function buildInvoiceCSVString(matPct){
+  var name    = (devis && devis.__name ? String(devis.__name).trim() : 'Devis');
+  var totalHT = _csv_sumDevisGlobal();
+  var effTVA  = _csv_effectiveTVA();
+  var tvaOn   = !!effTVA.tva_on;
+  var tauxTVA = Math.max(0, +effTVA.taux || 20);
+
+  var matRatio = Math.min(100, Math.max(0, parseFloat(matPct||40))) / 100;
+  var prestRatio = 1 - matRatio;
+
+  var totalMatHT   = totalHT * matRatio;
+  var totalPrestHT = totalHT * prestRatio;
+
+  function fmt(n){ return (+(n||0)).toFixed(2).replace('.', ','); }
+  function esc(s){ s=String(s==null?'':s); return (s.indexOf(';')>=0||s.indexOf('"')>=0||s.indexOf('\n')>=0) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+
+  var date  = _todayFR11();
+  var unit  = 'lot';
+  var qty   = 1;
+
+  var cols = ['Date','Libellé','Quantité','Unité','PU HT','Montant HT','TVA %','Catégorie'];
+  var lines = [ cols.join(';') ];
+
+  lines.push([esc(date), esc('Prestations — '+name), esc(qty), esc(unit), fmt(totalPrestHT), fmt(totalPrestHT), esc(tvaOn?tauxTVA:0), esc('Prestations')].join(';'));
+  lines.push([esc(date), esc('Matériel — '+name),    esc(qty), esc(unit), fmt(totalMatHT),   fmt(totalMatHT),   esc(tvaOn?tauxTVA:0), esc('Matériel')].join(';'));
+
+  return lines.join('\r\n');
+}
+function exportInvoiceCSV(){
+  var ask = prompt('Pourcentage MATÉRIEL (0–100) ?', '40');
+  if (ask == null) return;
+  var csv = buildInvoiceCSVString(ask);
+  var name = (devis && devis.__name ? String(devis.__name).trim() : 'Devis') || 'Devis';
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url;
+  a.download = name.replace(/\s+/g,'_').toLowerCase()+'_facture.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ CSV (facture) exporté : 2 lignes (Prestations / Matériel).');
+}
+
+// ---------- SHIM COMPAT : éviter "exportText is not defined" si un vieux bouton existe ailleurs ----------
+if (typeof window.exportText !== 'function')   window.exportText   = exportText;
+if (typeof window.exportZipGroups !== 'function') window.exportZipGroups = exportZipGroups;
+if (typeof window.exportTextFull !== 'function')  window.exportTextFull  = exportTextFull;
+if (typeof window.exportZipFull !== 'function')   window.exportZipFull   = exportZipFull;
+if (typeof window.exportDevisToutComprisTXT !== 'function') window.exportDevisToutComprisTXT = exportDevisToutComprisTXT;
+if (typeof window.exportDevisSepareTXT !== 'function')      window.exportDevisSepareTXT      = exportDevisSepareTXT;
+if (typeof window.exportInvoiceCSV !== 'function')          window.exportInvoiceCSV          = exportInvoiceCSV;
+
+// ---------- Expose (pour Chap.14 & menu principal) ----------
+Object.assign(window, {
+  pageEstimatif,
+  pageTotaux,
+  exportText,
+  exportZipGroups,
+  exportTextFull,
+  exportZipFull,
+  exportDevisToutComprisTXT,
+  exportDevisSepareTXT,
+  exportInvoiceCSV
+});
+</script>
 
 
 
