@@ -4350,8 +4350,6 @@ Object.assign(window, {
 
 
 
-  
-
 
 
 
@@ -4365,7 +4363,11 @@ Object.assign(window, {
 
 <!-- =============================
      CHAPITRE 12 : CONFIG ENTREPRISE & PRÉFÉRENCES
-     (Autonome, non intrusif — ajoute 2 pages et 1 bouton dans le Chap.8)
+     Index :
+       12.0 • Clés & helpers de stockage (localStorage)
+       12.1 • UI — Configuration entreprise (coordonnées, assurances, logo)
+       12.2 • UI — Préférences (facturation, devise, TVA, numérotation)
+       12.3 • Expose (window)
      ============================= -->
 
 <style>
@@ -4374,9 +4376,7 @@ Object.assign(window, {
   .cfg-grid .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
   .cfg-grid .field label{ display:block; font-weight:600; margin-bottom:6px; }
   .cfg-actions{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
-
   .cfg-note{ color:var(--muted); font-size:14px; }
-
   /* Logo */
   .cfg-logo-block{ display:grid; grid-template-columns:1fr; gap:10px; }
   .cfg-logo-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -4390,22 +4390,19 @@ Object.assign(window, {
     border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
     padding:8px 10px; border-radius:8px; font-size:14px;
   }
-  .alert-warn{
-    border:1px solid #ffe0b2; background:#fff3e0; color:#9c6f19;
-    padding:8px 10px; border-radius:8px; font-size:14px;
-  }
 </style>
 
 <script>
-/* ============================================================
-   §11.0 • Stockage & helpers (localStorage)
-   ============================================================ */
-const KEY_COMPANY   = 'companyConfig_v1';
-const KEY_PREFS     = 'appPrefs_v1';
+/* ================================
+   12.0 • Stockage & helpers
+   ================================ */
+const KEY_COMPANY = 'companyConfig_v1';
+const KEY_PREFS   = 'appPrefs_v1';
 
 function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
 function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
+/* — Config entreprise — */
 function getCompany(){
   return readJsonLS(KEY_COMPANY, {
     // Identité
@@ -4424,13 +4421,13 @@ function getCompany(){
 }
 function setCompany(obj){ writeJsonLS(KEY_COMPANY, obj||{}); }
 
+/* — Préférences — */
 function getPrefs(){
-  // ➜ Ratio matériel supprimé (on bascule vers le catalogue)
   return readJsonLS(KEY_PREFS, {
     facturation_mode: 'tout_compris', // 'tout_compris' | 'separe'
     devise: '€',
-    tva_applicable: false,  // pour futur « réel »
-    taux_tva: 20,           // % (non utilisé tant que tva_applicable=false)
+    tva_applicable: false,  // si vrai : application du taux ci-dessous
+    taux_tva: 20,           // %
     numerotation_prefix: 'DEV-',
     numerotation_fact_prefix: 'FAC-',
     numerotation_courante: 1
@@ -4464,20 +4461,16 @@ function fileToDataURLWithMeta(file, cb, errCb){
     rd.readAsDataURL(file);
   }catch(e){ (errCb||alert)('Sélection d’image impossible : '+e.message); }
 }
-
 function pickImageFile(cb){
   const input = document.createElement('input');
   input.type = 'file'; input.accept = 'image/*';
-  input.onchange = function(){
-    const f = input.files && input.files[0]; if(!f) return;
-    cb(f);
-  };
+  input.onchange = function(){ const f=input.files&&input.files[0]; if(f) cb(f); };
   input.click();
 }
 
-/* ============================================================
-   §11.1 • UI — Configuration entreprise
-   ============================================================ */
+/* ============================================
+   12.1 • UI — Configuration entreprise
+   ============================================ */
 function pageConfigEntreprise(notice){
   const cfg = getCompany();
 
@@ -4498,9 +4491,7 @@ function pageConfigEntreprise(notice){
        (meta.width||'?')+'×'+(meta.height||'?')+' px</div>')
     : '<div class="cfg-note">Aucun logo</div>';
 
-  const banner = notice
-    ? '<div class="alert-ok">'+notice+'</div>'
-    : '';
+  const banner = notice ? '<div class="alert-ok">'+notice+'</div>' : '';
 
   const logoHtml =
     '<div class="field">'
@@ -4517,16 +4508,16 @@ function pageConfigEntreprise(notice){
             + (hasLogo ? b('Retirer','cfgRemoveLogo()','btn') : '')
         + '</div>'
         + '<div id="dropzone" class="dropzone">Glissez-déposez votre logo ici (PNG/JPG recommandé)</div>'
-        + '<div class="cfg-note">Le logo sera intégré aux futurs PDF (devis/factures).</div>'
+        + '<div class="cfg-note">Le logo sera exploitable par les exports PDF si vous les ajoutez plus tard.</div>'
       + '</div>'
     + '</div>';
 
   view(
     '<div class="cfg-wrap">'
-    +  '<div class="card">'
-        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+      + '<div class="card">'
+        + b('Retour','pageMain()','btn back')
         + '<h2>Configuration entreprise</h2>'
-        + '<p class="cfg-note">Ces informations seront utilisées pour les futurs export PDF (devis/factures) et rappels légaux.</p>'
+        + '<p class="cfg-note">Renseignez vos coordonnées, assurances et mentions légales. Ces informations sont réutilisées dans les exports (devis/factures texte, CSV, etc.).</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -4566,6 +4557,7 @@ function pageConfigEntreprise(notice){
 
       + '<div class="cfg-actions">'
         + b('💾 Enregistrer','saveConfigEntreprise()','btn primary')
+        + b('⬅️ Accueil','pageMain()','btn')
       + '</div>'
     + '</div>'
   );
@@ -4640,10 +4632,9 @@ function saveConfigEntreprise(){
   alert('✅ Configuration entreprise enregistrée.');
 }
 
-/* ============================================================
-   §11.2 • UI — Préférences (mode facturation, devise, TVA…)
-   (ratio matériel retiré)
-   ============================================================ */
+/* ============================================
+   12.2 • UI — Préférences générales
+   ============================================ */
 function pagePreferences(){
   const p = getPrefs();
   const radio = (name, val, cur, label) =>
@@ -4652,9 +4643,9 @@ function pagePreferences(){
   view(
     '<div class="cfg-wrap">'
       + '<div class="card">'
-        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
-        + '<h2>Préférences</h2>'
-        + '<p class="cfg-note">Ces réglages influencent la présentation des futurs exports (devis/factures) et la logique de TVA.</p>'
+        + b('Retour','pageMain()','btn back')
+        + '<h2>Préférences générales</h2>'
+        + '<p class="cfg-note">Ces réglages influencent la présentation des exports (devis/factures) et la logique de TVA.</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -4681,6 +4672,7 @@ function pagePreferences(){
             + '<input id="pf_tva" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="'+(+p.taux_tva||20)+'"/>'
           + '</div>'
         + '</div>'
+        + '<p class="cfg-note">Le devis peut surcharger la TVA (ex : chantier à 10%). Les exports utilisent d’abord la TVA du document courant.</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -4697,13 +4689,14 @@ function pagePreferences(){
           + '<div class="field">'
             + '<label>Compteur courant</label>'
             + '<input id="pf_counter" type="number" inputmode="numeric" min="1" value="'+(+p.numerotation_courante||1)+'"/>'
-            + '<div class="cfg-note">Servira pour générer DEV-0001, FAC-0001, etc.</div>'
+            + '<div class="cfg-note">Servira pour générer DEV-0001, FAC-0001, etc. (incrément à l’export).</div>'
           + '</div>'
         + '</div>'
       + '</div>'
 
       + '<div class="cfg-actions">'
         + b('💾 Enregistrer','savePreferences()','btn primary')
+        + b('⬅️ Accueil','pageMain()','btn')
       + '</div>'
     + '</div>'
   );
@@ -4728,42 +4721,18 @@ function savePreferences(){
   alert('✅ Préférences enregistrées.');
 }
 
-/* ============================================================
-   §11.3 • Intégration douce : ajoute 2 boutons au Chapitre 8
-   (si présent) et expose les pages au global
-   ============================================================ */
-(function injectButtonsIntoParametrage(){
-  const orig = window.pageTarifsAccueil;
-  if(typeof orig === 'function'){
-    window.pageTarifsAccueil = function(){
-      orig();
-      const app = document.getElementById('app');
-      if(!app) return;
-      const btn1 = 'Configuration entreprise';
-      const btn2 = 'Préférences';
-      if(app.innerHTML.indexOf(btn1)===-1 || app.innerHTML.indexOf(btn2)===-1){
-        app.innerHTML = app.innerHTML.replace(
-          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
-          '$1'
-          + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
-          +   '<button class="btn" onclick="pageConfigEntreprise()">'+btn1+'</button>'
-          +   '<button class="btn" onclick="pagePreferences()">'+btn2+'</button>'
-          + '</div></div>'
-        );
-      }
-    };
-  }
-})();
-
-/* Expose au global */
+/* =========================
+   12.3 • Expose (window)
+   ========================= */
 Object.assign(window, {
-  pageConfigEntreprise,
-  pagePreferences,
-  saveConfigEntreprise,
-  savePreferences
+  // accès lecture/écriture
+  getCompany, setCompany, getPrefs, setPrefs,
+  // pages
+  pageConfigEntreprise, pagePreferences,
+  // actions
+  saveConfigEntreprise, savePreferences
 });
 </script>
-
 
 
 
