@@ -2815,40 +2815,61 @@ Object.assign(window,{
 
 
 <!-- =============================
-     CHAPITRE 10 : FACTURATION (export .txt)
-     - Corrige le bug de numérotation (incrément APRÈS download)
-     - Utilise la TVA "effective" (devis local > prefs globales)
-     - Bouton injecté sur Estimatif & Totaux
+     CHAPITRE 10 : FACTURATION — TXT • CSV • GESTION
+     Index :
+       10.0 • Helpers communs (prefs, société, totaux, TVA effective, utilitaires)
+       10.1 • FACTURE TXT (tout compris / séparé) + export (.txt)
+       10.2 • FACTURE CSV (compta, 2 lignes) + export (.csv)
+       10.3 • GESTION DES FACTURES (transformer devis → facture, liste, actions)
+       10.4 • Exports depuis les factures (TXT/CSV)
+       10.5 • Injections UI (Estimatif, Totaux, Menu principal)
      ============================= -->
 <script>
+/* ============================
+   10.0 • Helpers communs
+   ============================ */
+// Préférences / société
 function _getPrefsSafe(){ try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; } }
 function _getCompanySafe(){ try{ return JSON.parse(localStorage.getItem('companyConfig_v1')||'null') || {}; }catch(e){ return {}; } }
+
+// Formats / dates
 function _fmtEuro(n, sym){ var s=(sym||'€').trim(); return (+(n||0)).toFixed(2)+' '+s; }
 function _todayFR(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
 
+// Profondeur copie (sans référence)
+var _clone = window._clone || function(x){ return JSON.parse(JSON.stringify(x)); };
+
+// Total devis courant (HT)
 function _totalGlobalDevis(){
   var sum=0;
   for(var key in devis){
     if(key.indexOf('__')===0) continue;
     var s=devis[key]; var items=(s&&s.items)||[];
-    for(var i=0;i<items.length;i++){ var it=items[i]; sum += ((+it.prixU||0) * (+it.qty||0)); }
+    for(var i=0;i<items.length;i++){
+      var it=items[i];
+      sum += ((+it.prixU||0) * (+it.qty||0));
+    }
   }
   return sum;
 }
 
-/* === TVA EFFECTIVE (devis local > prefs) === */
-function _effectiveTVA(){
+// TVA “effective” : devis local > prefs globales
+function _effectiveTVA_from(objLikeDevis){
   var prefs=_getPrefsSafe();
-  var on  = (devis && typeof devis.__tva_applicable!=='undefined') ? !!devis.__tva_applicable : !!prefs.tva_applicable;
-  var tx  = (devis && typeof devis.__taux_tva!=='undefined') ? Math.max(0,+devis.__taux_tva||0) : Math.max(0,+prefs.taux_tva||20);
+  var on  = (objLikeDevis && typeof objLikeDevis.__tva_applicable!=='undefined') ? !!objLikeDevis.__tva_applicable : !!prefs.tva_applicable;
+  var tx  = (objLikeDevis && typeof objLikeDevis.__taux_tva!=='undefined') ? Math.max(0,+objLikeDevis.__taux_tva||0) : Math.max(0,+prefs.taux_tva||20);
   return { on:on, taux:tx };
 }
 
+/* =========================================
+   10.1 • FACTURE TXT + export (.txt)
+   ========================================= */
 function buildInvoiceText(){
   var prefs=_getPrefsSafe(), company=_getCompanySafe(), devise=prefs.devise||'€';
   var modeSepare = (prefs.facturation_mode==='separe');
   var totalHT    = _totalGlobalDevis();
 
+  // Répartition “séparé”
   var ratioMat=0, ratioPrest=1;
   if(modeSepare){
     var ask = prompt('Facture séparée : % MATÉRIEL ?', '40');
@@ -2859,12 +2880,14 @@ function buildInvoiceText(){
   var totalMatHT   = modeSepare ? (totalHT * ratioMat)   : 0;
   var totalPrestHT = modeSepare ? (totalHT * ratioPrest) : totalHT;
 
-  var eff = _effectiveTVA();
+  // TVA effective
+  var eff = _effectiveTVA_from(devis);
   var tvaOn   = !!eff.on;
   var tauxTVA = Math.max(0, +eff.taux||20);
   var tvaPrest = tvaOn ? (totalPrestHT * tauxTVA/100) : 0;
   var tvaMat   = tvaOn ? (totalMatHT   * tauxTVA/100) : 0;
 
+  // Corps
   var out=[];
   out.push('================= FACTURE (brouillon) =================');
   out.push('Date : '+_todayFR());
@@ -2874,6 +2897,7 @@ function buildInvoiceText(){
   out.push('');
 
   out.push('Émetteur :');
+  var company = _getCompanySafe();
   var rs=(company.raison_sociale||company.nom_commercial||'').trim(); if(rs) out.push('  '+rs);
   var adr=[company.adresse,company.code_postal,company.ville].filter(Boolean).join(' '); if(adr) out.push('  '+adr);
   if(company.pays) out.push('  '+company.pays);
@@ -2888,10 +2912,12 @@ function buildInvoiceText(){
     out.push('   Montant HT : '+_fmtEuro(totalPrestHT, devise));
     if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(tvaPrest, devise));
     out.push('   Montant TTC : '+_fmtEuro(totalPrestHT + tvaPrest, devise)); out.push('');
+
     out.push('2) Vente de matériel');
     out.push('   Montant HT : '+_fmtEuro(totalMatHT, devise));
     if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(tvaMat, devise));
     out.push('   Montant TTC : '+_fmtEuro(totalMatHT + tvaMat, devise)); out.push('');
+
     out.push('[Info] Répartition appliquée : Matériel = '+Math.round(ratioMat*100)+'% | Prestations = '+Math.round(ratioPrest*100)+'%'); out.push('');
   } else {
     out.push('1) Fournitures + pose (tout compris)');
@@ -2908,25 +2934,28 @@ function buildInvoiceText(){
   if(tvaOn) out.push('TVA       : '+_fmtEuro(tvaGlobal, devise));
   out.push('Total TTC : '+_fmtEuro(htGlobal + tvaGlobal, devise));
   out.push('================================================='); out.push('');
+
   if(company.conditions_paiement) out.push('Conditions de paiement : '+company.conditions_paiement);
   if(company.iban) out.push('IBAN : '+company.iban+(company.bic?(' — BIC : '+company.bic):''));
   if(company.rc_pro) out.push('RC Pro : '+company.rc_pro);
   if(company.decennale) out.push('Décennale : '+company.decennale);
   if(company.assureur) out.push('Assureur : '+company.assureur);
   if(company.mentions_legales){ out.push(''); out.push(company.mentions_legales); }
+
   return out.join('\r\n');
 }
 
-/* ==== Export .txt • incrément APRÈS download (bug corrigé) ==== */
 function exportInvoiceText(){
   var prefs=_getPrefsSafe();
   var name=(devis.__name||'Devis').trim()||'Devis';
+
+  // Génère & télécharge
   var blob=new Blob([buildInvoiceText()],{type:'text/plain;charset=utf-8'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a'); a.href=url; a.download=name.replace(/\s+/g,'_').toLowerCase()+'_facture.txt';
   a.click(); URL.revokeObjectURL(url);
 
-  // -> incrément ICI (après tentative de download)
+  // ✅ Incrémente APRÈS tentative de download (bug corrigé)
   try{
     var cur=Math.max(1, parseInt(prefs.numerotation_courante||1,10));
     prefs.numerotation_courante = cur + 1;
@@ -2935,60 +2964,20 @@ function exportInvoiceText(){
   alert('✅ Facture (texte) exportée.');
 }
 
-/* ==== Injection bouton dans Estimatif & Totaux ==== */
-(function patchButtons(){
-  function addButton(){
-    var app=document.getElementById('app'); if(!app) return;
-    if(app.innerHTML.indexOf('exportInvoiceText()')!==-1) return;
-    var anchor = app.querySelector('.row button[onclick*="exportZipFull"]')?.closest('.row') || app.querySelector('.row:last-of-type');
-    var wrap=document.createElement('div'); wrap.className='row'; wrap.style.marginTop='10px';
-    wrap.innerHTML='<button class="btn primary" onclick="exportInvoiceText()">💶 Exporter facture (texte)</button>';
-    (anchor?anchor.parentNode:app).appendChild(wrap);
-  }
-  var oE=window.pageEstimatif, oT=window.pageTotaux;
-  if(typeof oE==='function'){ window.pageEstimatif=function(){ oE(); addButton(); }; }
-  if(typeof oT==='function'){ window.pageTotaux=function(){ oT(); addButton(); }; }
-})();
-</script>
-
-  
-
-
-
-
-
-
-  
-
-  
-
-  
-
-<!-- =============================
-     CHAPITRE 10 bis : EXPORTS — FACTURE CSV (compta)
-     - CSV 2 lignes (Prestations / Matériel)
-     - TVA effective (devis > prefs)
-     - Bouton injecté robuste (Estimatif & Totaux)
-     ============================= -->
-<script>
-function _csv_prefs(){ try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; } }
+/* =========================================
+   10.2 • FACTURE CSV (2 lignes compta)
+   ========================================= */
 function _csv_sumDevisGlobal(){
   if(typeof _totalGlobalDevis==='function') return _totalGlobalDevis();
   var sum=0; for(var k in devis){ if(k.indexOf('__')===0) continue; var s=devis[k], items=(s&&s.items)||[]; items.forEach(it=> sum+=((+it.prixU||0)*(+it.qty||0))); }
   return sum;
 }
-function _csv_todayFR(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
-function _csv_effectiveTVA(){
-  var prefs=_csv_prefs();
-  var on  = (devis && typeof devis.__tva_applicable!=='undefined') ? !!devis.__tva_applicable : !!prefs.tva_applicable;
-  var tx  = (devis && typeof devis.__taux_tva!=='undefined') ? Math.max(0,+devis.__taux_tva||0) : Math.max(0,+prefs.taux_tva||20);
-  return { tva_on:on, taux:tx };
-}
+function _csv_todayFR(){ return _todayFR(); }
 
 function buildInvoiceCSVString(matPct){
   var name=(devis && devis.__name ? String(devis.__name).trim() : 'Devis');
   var totalHT=_csv_sumDevisGlobal();
-  var eff=_csv_effectiveTVA(); var tvaOn=!!eff.tva_on; var tauxTVA=Math.max(0,+eff.taux||20);
+  var eff=_effectiveTVA_from(devis); var tvaOn=!!eff.on; var tauxTVA=Math.max(0,+eff.taux||20);
 
   var matRatio=Math.min(100,Math.max(0,parseFloat(matPct||40)))/100, prestRatio=1-matRatio;
   var totalMatHT=totalHT*matRatio, totalPrestHT=totalHT*prestRatio;
@@ -2999,8 +2988,12 @@ function buildInvoiceCSVString(matPct){
   var date=_csv_todayFR(), unit='lot', qty=1;
   var lines=[ ['Date','Libellé','Quantité','Unité','PU HT','Montant HT','TVA %','Catégorie'].join(';') ];
 
-  lines.push([ esc(date), esc('Prestations — '+name), esc(qty), esc(unit), fmt(totalPrestHT), fmt(totalPrestHT), esc(tvaOn?tauxTVA:0), esc('Prestations') ].join(';'));
-  lines.push([ esc(date), esc('Matériel — '+name),   esc(qty), esc(unit), fmt(totalMatHT),   fmt(totalMatHT),   esc(tvaOn?tauxTVA:0), esc('Matériel')   ].join(';'));
+  // Ligne PRESTATIONS
+  lines.push([ esc(date), esc('Prestations — '+name), esc(qty), esc(unit),
+               fmt(totalPrestHT), fmt(totalPrestHT), esc(tvaOn?tauxTVA:0), esc('Prestations') ].join(';'));
+  // Ligne MATÉRIEL
+  lines.push([ esc(date), esc('Matériel — '+name),   esc(qty), esc(unit),
+               fmt(totalMatHT),   fmt(totalMatHT),   esc(tvaOn?tauxTVA:0), esc('Matériel')   ].join(';'));
 
   return lines.join('\r\n');
 }
@@ -3016,64 +3009,33 @@ function exportInvoiceCSV(){
   alert('✅ CSV (facture) exporté : 2 lignes (Prestations / Matériel).');
 }
 
-/* ==== Bouton CSV très robuste ==== */
-(function injectCSVButtons(){
-  function addBtn(){
-    var app=document.getElementById('app'); if(!app) return;
-    if(app.innerHTML.includes('exportInvoiceCSV()')) return;
-    var exportZone= app.querySelector('.row button[onclick*="exportZipFull"]')?.closest('.row')
-                  || app.querySelector('.row button[onclick*="exportTextFull"]')?.closest('.row')
-                  || app.querySelector('.row:last-of-type');
-    var btn=document.createElement('button'); btn.className='btn'; btn.innerHTML='💶 Export FACTURE (CSV — compta)'; btn.onclick=exportInvoiceCSV;
-    var wrap = document.createElement('div'); wrap.className='row'; wrap.style.marginTop='10px'; wrap.appendChild(btn);
-    (exportZone?exportZone.parentNode:app).appendChild(wrap);
-  }
-  var oE=window.pageEstimatif, oT=window.pageTotaux;
-  if(typeof oE==='function'){ window.pageEstimatif=function(){ oE(); addBtn(); }; }
-  if(typeof oT==='function'){ window.pageTotaux=function(){ oT(); addBtn(); }; }
-})();
-</script>
-  
-
-
-
-
-
-
-
-<!-- =============================
-     CHAPITRE 10bis : GESTION DES FACTURES
-     - Transformer le devis courant en facture (snapshot)
-     - Lister / ouvrir / dupliquer / supprimer les factures
-     - Export TXT (tout compris / séparé) & CSV
-     ============================= -->
-<script>
+/* ==========================================================
+   10.3 • GESTION DES FACTURES (store local)
+   ========================================================== */
 const KEY_INVOICES='invoices_v1';
 
-/* --- Store helpers --- */
 function _readInvoices(){ try{ return JSON.parse(localStorage.getItem(KEY_INVOICES)||'null')||[]; }catch(e){ return []; } }
 function _writeInvoices(arr){ try{ localStorage.setItem(KEY_INVOICES, JSON.stringify(arr||[])); }catch(e){} }
-function _clone(x){ return JSON.parse(JSON.stringify(x)); }
-function _newId(){ return 'fac_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+function _newInvId(){ return 'fac_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
 
-/* --- Transformer le devis courant en facture --- */
+// Transformer le devis courant en facture (snapshot)
 function transformCurrentDevisToInvoice(){
   if(!window.devis){ alert('Aucun devis courant.'); return; }
   var snapshot=_clone(devis);
   var prefs=_getPrefsSafe();
   var inv={
-    __id:_newId(),
+    __id:_newInvId(),
     created_at:new Date().toISOString(),
-    mode: prefs.facturation_mode || 'tout_compris',  // valeur par défaut
+    mode: prefs.facturation_mode || 'tout_compris',
     name: (snapshot.__name || 'Devis').trim() || 'Devis',
-    snapshot: snapshot  // on garde la copie pour pouvoir ré-ouvrir / éditer
+    snapshot: snapshot
   };
   var list=_readInvoices(); list.unshift(inv); _writeInvoices(list);
   alert('✅ Devis sauvegardé et transformé en facture.');
   pageFacturesAccueil();
 }
 
-/* --- Lister & actions --- */
+// Liste & actions
 function pageFacturesAccueil(){
   var list=_readInvoices();
   var html='<div class="card">'
@@ -3097,8 +3059,8 @@ function pageFacturesAccueil(){
         +'<td>'+ (inv.mode==='separe'?'Séparé':'Tout compris') +'</td>'
         +'<td>'
           + b('Ouvrir','openInvoice("'+inv.__id+'")','btn')
-          + b('TXT tout compris','exportInvoiceFromStored("'+inv.__id+'","tc")','btn')
-          + b('TXT séparé','exportInvoiceFromStored("'+inv.__id+'","sep")','btn')
+          + b('TXT (tout compris)','exportInvoiceFromStored("'+inv.__id+'","tc")','btn')
+          + b('TXT (séparé)','exportInvoiceFromStored("'+inv.__id+'","sep")','btn')
           + b('CSV (2 lignes)','exportInvoiceCSVFromStored("'+inv.__id+'")','btn')
           + b('Dupliquer','duplicateInvoice("'+inv.__id+'")','btn')
           + b('Supprimer','deleteInvoice("'+inv.__id+'")','btn')
@@ -3110,7 +3072,7 @@ function pageFacturesAccueil(){
 
   view(html);
 
-  // expose handlers
+  // handlers in-page
   window.openInvoice=function(id){
     var list=_readInvoices(); var inv=list.find(x=>x.__id===id); if(!inv){ alert('Introuvable.'); return; }
     devis=_clone(inv.snapshot||{}); saveLocal();
@@ -3124,31 +3086,27 @@ function pageFacturesAccueil(){
   };
   window.duplicateInvoice=function(id){
     var list=_readInvoices(); var inv=list.find(x=>x.__id===id); if(!inv) return;
-    var copy=_clone(inv); copy.__id=_newId(); copy.created_at=new Date().toISOString(); list.unshift(copy); _writeInvoices(list);
+    var copy=_clone(inv); copy.__id=_newInvId(); copy.created_at=new Date().toISOString();
+    list.unshift(copy); _writeInvoices(list);
     pageFacturesAccueil();
   };
 }
 
-/* --- Exports depuis le store (TXT / CSV) --- */
-function _effectiveTVA_fromSnapshot(snap){
-  var prefs=_getPrefsSafe();
-  var on  = (snap && typeof snap.__tva_applicable!=='undefined') ? !!snap.__tva_applicable : !!prefs.tva_applicable;
-  var tx  = (snap && typeof snap.__taux_tva!=='undefined') ? Math.max(0,+snap.__taux_tva||0) : Math.max(0,+prefs.taux_tva||20);
-  return { on:on, taux:tx };
-}
+/* ==========================================================
+   10.4 • Exports depuis les factures (TXT / CSV)
+   ========================================================== */
 function _sumSnapshotHT(snap){
   var sum=0; for(var k in snap){ if(k.indexOf('__')===0) continue; var s=snap[k], items=(s&&s.items)||[]; items.forEach(it=> sum += ((+it.prixU||0)*(+it.qty||0))); }
   return sum;
 }
+
 function _buildInvoiceTextFromSnapshot(snap, sepPctOrNull){
   var prefs=_getPrefsSafe(), company=_getCompanySafe(), devise=prefs.devise||'€';
-  var totalHT=_sumSnapshotHT(snap), eff=_effectiveTVA_fromSnapshot(snap), tvaOn=!!eff.on, tauxTVA=Math.max(0,+eff.taux||20);
+  var totalHT=_sumSnapshotHT(snap), eff=_effectiveTVA_from(snap), tvaOn=!!eff.on, tauxTVA=Math.max(0,+eff.taux||20);
 
   var sep=(sepPctOrNull!=null);
   var ratioMat=0, ratioPrest=1;
-  if(sep){
-    ratioMat=Math.min(100,Math.max(0,parseFloat(sepPctOrNull)||40))/100; ratioPrest=1-ratioMat;
-  }
+  if(sep){ ratioMat=Math.min(100,Math.max(0,parseFloat(sepPctOrNull)||40))/100; ratioPrest=1-ratioMat; }
   var totalMatHT=sep?(totalHT*ratioMat):0, totalPrestHT=sep?(totalHT*ratioPrest):totalHT;
   var tvaPrest=tvaOn?(totalPrestHT*tauxTVA/100):0, tvaMat=tvaOn?(totalMatHT*tauxTVA/100):0;
 
@@ -3169,6 +3127,7 @@ function _buildInvoiceTextFromSnapshot(snap, sepPctOrNull){
     out.push('1) Prestations de services');
     out.push('   HT : '+_fmtEuro(totalPrestHT, devise)); if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(tvaPrest, devise));
     out.push('   TTC : '+_fmtEuro(totalPrestHT+tvaPrest, devise)); out.push('');
+
     out.push('2) Vente de matériel');
     out.push('   HT : '+_fmtEuro(totalMatHT, devise)); if(tvaOn) out.push('   TVA ('+tauxTVA+'%) : '+_fmtEuro(tvaMat, devise));
     out.push('   TTC : '+_fmtEuro(totalMatHT+tvaMat, devise)); out.push('');
@@ -3184,6 +3143,7 @@ function _buildInvoiceTextFromSnapshot(snap, sepPctOrNull){
   out.push('Total TTC : '+_fmtEuro(ht+tva, devise)); out.push('=================================================');
   return out.join('\r\n');
 }
+
 function exportInvoiceFromStored(id, mode){
   var inv=_readInvoices().find(x=>x.__id===id); if(!inv) return;
   var sep=null; if(mode==='sep'){ var ask=prompt('Pourcentage MATÉRIEL (0–100) ?','40'); if(ask==null) return; sep=ask; }
@@ -3193,27 +3153,72 @@ function exportInvoiceFromStored(id, mode){
   var a=document.createElement('a'); a.href=url; a.download=(inv.name||'facture').replace(/\s+/g,'_').toLowerCase() + (mode==='sep'?'_sep':'_tc') + '.txt';
   a.click(); URL.revokeObjectURL(url);
 }
+
 function exportInvoiceCSVFromStored(id){
   var inv=_readInvoices().find(x=>x.__id===id); if(!inv) return;
   var ask=prompt('Pourcentage MATÉRIEL (0–100) ?','40'); if(ask==null) return;
-  // Re-emploie le moteur CSV du chapitre 11b en posant "devis" à la volée
+
+  // Ré-emploie le moteur CSV en posant "devis" à la volée
   var cur=window.devis; window.devis=_clone(inv.snapshot);
   try{
     var csv=buildInvoiceCSVString(ask);
-    var blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob);
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
     var a=document.createElement('a'); a.href=url; a.download=(inv.name||'facture').replace(/\s+/g,'_').toLowerCase()+'_facture.csv';
     a.click(); URL.revokeObjectURL(url);
   }finally{ window.devis=cur; }
 }
 
-/* --- Injection dans le menu principal : "Mes factures" --- */
+/* ==========================================================
+   10.5 • Injections UI (Estimatif, Totaux, Menu principal)
+   ========================================================== */
+// Bouton TXT + CSV sur Estimatif & Totaux
+(function injectInvoiceButtons(){
+  function addButtons(){
+    var app=document.getElementById('app'); if(!app) return;
+
+    // Eviter doublons
+    var hasTXT = app.innerHTML.indexOf('exportInvoiceText()')!==-1;
+    var hasCSV = app.innerHTML.indexOf('exportInvoiceCSV()')!==-1;
+
+    // On cible une zone d'exports déjà existante
+    var exportZone =
+      app.querySelector('.row button[onclick*="exportZipFull"]')?.closest('.row') ||
+      app.querySelector('.row button[onclick*="exportTextFull"]')?.closest('.row') ||
+      app.querySelector('.row:last-of-type');
+
+    // Wrapper
+    var wrap=document.createElement('div'); wrap.className='row'; wrap.style.marginTop='10px';
+
+    if(!hasTXT){
+      var btnTxt=document.createElement('button'); btnTxt.className='btn primary';
+      btnTxt.innerHTML='💶 Exporter facture (texte)';
+      btnTxt.onclick=exportInvoiceText;
+      wrap.appendChild(btnTxt);
+    }
+    if(!hasCSV){
+      var btnCsv=document.createElement('button'); btnCsv.className='btn';
+      btnCsv.innerHTML='💶 Export FACTURE (CSV — compta)';
+      btnCsv.onclick=exportInvoiceCSV;
+      wrap.appendChild(btnCsv);
+    }
+    if(wrap.children.length) (exportZone?exportZone.parentNode:app).appendChild(wrap);
+  }
+
+  var oE=window.pageEstimatif, oT=window.pageTotaux;
+  if(typeof oE==='function'){ window.pageEstimatif=function(){ oE(); addButtons(); }; }
+  if(typeof oT==='function'){ window.pageTotaux=function(){ oT(); addButtons(); }; }
+})();
+
+// Entrée “Mes factures” dans le menu principal
 (function injectMesFacturesMenu(){
   var old=window.pageHome;
   window.pageHome=function(){
     if(typeof old==='function') old();
     var app=document.getElementById('app'); if(!app) return;
     if(app.innerHTML.indexOf('pageFacturesAccueil()')!==-1) return;
-    // Ajoute après "Devis sauvegardés" si présent, sinon en fin du premier bloc
+
+    // Ajoute après “Devis sauvegardés” si présent, sinon à la fin du 1er bloc
     var html=app.innerHTML;
     var re = /(<button[^>]+onclick="[^"]*pageSavedDevis\(\)[^"]*"[^>]*>[\s\S]*?<\/button>)/i;
     if(re.test(html)){
@@ -3224,7 +3229,6 @@ function exportInvoiceCSVFromStored(id){
   };
 })();
 </script>
-
 
 
 
