@@ -1752,27 +1752,38 @@ function ventAddEntretien(key){
   
   
 <!-- =============================
-     CHAPITRE 8 : PARAMÉTRAGE DES TARIFS
+     CHAPITRE 8 : CATALOGUE DES TARIFS & COEFFICIENTS (2025)
      Index :
        8.0 • Styles + Helpers + Overrides (load/save/merge)
-       8.1 • Accueil paramétrage
-       8.2 • Prises (tarifs par intervention)
-       8.3 • Éclairage — Luminaires
-       8.4 • Éclairage — Commandes (intitulés en “appareillage”)
-       8.5 • Circuit spécialisé (base + coefficients de section)
-       8.6 • Coefficients de pose (communs)
+       8.1 • Accueil du catalogue
+       8.2 • PRISES — gestion des types + tarifs (CRUD léger)
+       8.3 • ÉCLAIRAGE / LUMINAIRES — gestion des types + tarifs
+       8.4 • ÉCLAIRAGE / COMMANDES — gestion des types + tarifs
+       8.5 • CIRCUIT SPÉCIALISÉ — gestion des types + tarifs + coeff. section
+       8.6 • COEFFICIENTS DE POSE — communs
+       8.7 • Personnalisation avancée (JSON, ajout-only)
      ============================= -->
 
 <!-- 8.0 • Styles + Helpers + Overrides -->
 <style>
-  /* Mise en page plus lisible sur le chapitre Paramétrage */
-  .tarif-wrap .card.tarif-card{ margin-bottom:24px; }               /* espace entre blocs */
+  /* Mise en page lisible pour le catalogue */
+  .tarif-wrap .card.tarif-card{ margin-bottom:24px; }
   .tarif-wrap h2, .tarif-wrap h3{ margin:8px 0 10px; }
-  .tarif-wrap label{ display:block; margin-top:14px; font-weight:600; }
+  .tarif-wrap label{ display:block; margin-top:10px; font-weight:600; }
   .tarif-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
   .tarif-grid .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
   .tarif-grid .field small{ color:var(--muted); display:block; margin-top:6px; }
   .tarif-actions{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* Éditeurs de types (tables) */
+  .table-mini{ width:100%; border-collapse:collapse; font-size:14px; }
+  .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
+  .table-mini th{ background:#fafafa; }
+  .row.gap8{ gap:8px; flex-wrap:wrap; }
+  .muted{ color:var(--muted); }
+  .pill.small{ padding:6px 10px; font-size:14px; }
+  .type-head{ display:flex; align-items:center; justify-content:space-between; }
+  .tip{ font-size:13px; color:#555; }
 </style>
 
 <script>
@@ -1796,7 +1807,7 @@ function loadTarifsOverrides(){
     var raw = localStorage.getItem('tarifsOverrides');
     if(!raw) return;
     var ov = JSON.parse(raw||'{}')||{};
-    // Fusion avec les objets globaux du Chapitre 3
+    // Fusion avec les objets globaux (déjà définis au Chapitre 3)
     if(ov.TARIFS_BASE) deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
     if(ov.COEFF_POSE) deepMergeTarifs(COEFF_POSE, ov.COEFF_POSE);
     if(ov.COEFF_SECTIONS_CS) deepMergeTarifs(COEFF_SECTIONS_CS, ov.COEFF_SECTIONS_CS);
@@ -1816,203 +1827,363 @@ loadTarifsOverrides();
 
 // ========== Helpers UI ==========
 function _tfVal(id){ var el=document.getElementById(id); return parseFloat(el && el.value || '0')||0; }
+function _strVal(id){ var el=document.getElementById(id); return (el && el.value || '').trim(); }
 function _setVal(id, v){ var el=document.getElementById(id); if(el) el.value = (v!=null?v:''); }
 function _numInput(id, val){ return '<input id="'+id+'" type="number" inputmode="decimal" step="1" min="0" value="'+(val||0)+'" />'; }
+function _escape(s){ return String(s||'').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]); }
+function _ensureObj(o){ return (o && typeof o==='object') ? o : {}; }
+function _ensureTB(){ window.TARIFS_BASE = _ensureObj(window.TARIFS_BASE); TARIFS_BASE.eclairage = _ensureObj(TARIFS_BASE.eclairage); }
+
+// Ajoute le nom dans les listes de désignations de l’app (si dispo)
+function _addToDesignations(catKey, name){
+  if(!name) return;
+  if(typeof window.DESIGNATIONS_PAR_CATEGORIE!=='object') return;
+  var arr = window.DESIGNATIONS_PAR_CATEGORIE[catKey] || (window.DESIGNATIONS_PAR_CATEGORIE[catKey]=[]);
+  if(arr.indexOf(name)===-1) arr.push(name);
+}
 </script>
 
-<!-- 8.1 • Accueil paramétrage -->
+<!-- 8.1 • Accueil du catalogue -->
 <script>
 function pageTarifsAccueil(){
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
-      + b('Retour','pageMain()','btn back')
-      + '<h2>Paramétrage des tarifs</h2>'
-      + '<p class="muted">Ajuste ici les tarifs unitaires et coefficients utilisés dans les calculs.</p>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('Prises','pageTarifsPrises()','btn primary')
-        + b('Éclairage — Luminaires','pageTarifsEclLuminaires()','btn')
-        + b('Éclairage — Commandes','pageTarifsEclCommandes()','btn')
-        + b('Circuit spécialisé','pageTarifsCS()','btn')
-        + b('Coefficients de pose','pageTarifsCoeffsPose()','btn')
+      + b('Retour','pageHome()','btn back')
+      + '<h2>Catalogue des tarifs & coefficients</h2>'
+      + '<p class="muted">Gère ici tes types (ajout/suppression) et les tarifs par intervention. Ajuste aussi les coefficients communs.</p>'
+      + '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap;">'
+        + b('⚡ Prises','pageTarifsPrises()','btn primary')
+        + b('💡 Éclairage — Luminaires','pageTarifsEclLuminaires()','btn')
+        + b('🕹️ Éclairage — Commandes','pageTarifsEclCommandes()','btn')
+        + b('🔌 Circuit spécialisé','pageTarifsCS()','btn')
+        + b('📐 Coefficients de pose','pageTarifsCoeffsPose()','btn')
+        + b('🧩 Personnalisation avancée (JSON)','pageTarifsPersoJSON()','btn ghost')
       + '</div>'
+      + '<p class="tip" style="margin-top:8px;">Astuce : “Ajouter un type” est intégré directement dans chaque section (plus besoin du Chapitre 13).</p>'
     + '</div>'
     + '</div>'
   );
 }
 </script>
 
-<!-- 8.2 • Prises -->
+<!-- 8.2 • PRISES — types + tarifs -->
 <script>
+// Libellés d'intervention (appareillage)
+var KEYS_APP = [
+  'Création',
+  'Remplacement appareillage',
+  'Recâblage avec remplacement appareillage',
+  'Recâblage sans remplacement appareillage'
+];
+
 function pageTarifsPrises(){
-  var base = (TARIFS_BASE && TARIFS_BASE.prises) ? TARIFS_BASE.prises : {};
+  _ensureTB();
+  var base = TARIFS_BASE.prises = _ensureObj(TARIFS_BASE.prises);
+
+  // Table des types existants
+  function table(){
+    var names = Object.keys(base);
+    if(!names.length) return '<div class="muted">Aucun type pour le moment.</div>';
+    var head = '<tr><th style="min-width:180px;">Type</th>'+KEYS_APP.map(k=>'<th>'+_escape(k)+'</th>').join('')+'<th>Actions</th></tr>';
+    var rows = names.map(function(n,i){
+      var t = _ensureObj(base[n]);
+      var inputs = KEYS_APP.map(function(k,idx){
+        var id = 'p_'+i+'_'+idx;
+        return '<td>'+_numInput(id, t[k])+'</td>';
+      }).join('');
+      return '<tr>'
+            + '<td>'+_escape(n)+'</td>'
+            + inputs
+            + '<td>'+b('💾','saveRowPris('+i+')','btn')+' '+b('🗑️','delRowPris("'+_escape(n)+'")','btn')+'</td>'
+          + '</tr>';
+    }).join('');
+    return '<table class="table-mini"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+  }
+
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
       + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Prises — tarifs par intervention</h2>'
-      + '<div class="tarif-grid">'
-        + '<div class="field"><label>Création</label>'+_numInput('pris_cre', base['Création'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('pris_rem_app', base['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('pris_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('pris_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-      + '</div>'
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsPrises()','btn primary')
+      + '<h2>⚡ Prises — types & tarifs</h2>'
+      + table()
+      + '<div class="card" style="margin-top:14px;">'
+        + '<h3>Ajouter un type (Prises)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="pris_add_name" placeholder="ex : Prise 2P+T IP55" />'
+          + b('Ajouter','addRowPris()','btn')
+        + '</div>'
+        + '<p class="tip">Les types ajoutés apparaissent aussi dans les menus de saisie.</p>'
       + '</div>'
     + '</div>'
     + '</div>'
   );
-}
-function saveTarifsPrises(){
-  var ov = {
-    TARIFS_BASE: {
-      prises: {
-        'Création': _tfVal('pris_cre'),
-        'Remplacement appareillage': _tfVal('pris_rem_app'),
-        'Recâblage avec remplacement appareillage': _tfVal('pris_rec_avec'),
-        'Recâblage sans remplacement appareillage': _tfVal('pris_rec_sans')
-      }
-    }
+
+  // Handlers
+  window.saveRowPris = function(idx){
+    var names = Object.keys(base); var name = names[idx]; if(!name) return;
+    var t = base[name] || (base[name]={});
+    KEYS_APP.forEach(function(k, i){
+      var id = 'p_'+idx+'_'+i;
+      t[k] = _tfVal(id);
+    });
+    var ov = { TARIFS_BASE:{ prises:{} } }; ov.TARIFS_BASE.prises[name]=t;
+    deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+    saveTarifsOverrides(ov);
   };
-  // Appliquer en mémoire + sauver
-  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
-  saveTarifsOverrides(ov);
+  window.delRowPris = function(name){
+    if(!confirm('Supprimer le type "'+name+'" ?')) return;
+    delete TARIFS_BASE.prises[name];
+    var cur = JSON.parse(localStorage.getItem('tarifsOverrides')||'{}')||{};
+    if(cur.TARIFS_BASE && cur.TARIFS_BASE.prises) delete cur.TARIFS_BASE.prises[name];
+    localStorage.setItem('tarifsOverrides', JSON.stringify(cur));
+    alert('✅ Supprimé.');
+    pageTarifsPrises();
+  };
+  window.addRowPris = function(){
+    var name = _strVal('pris_add_name'); if(!name) return;
+    if(!TARIFS_BASE.prises[name]) TARIFS_BASE.prises[name]={};
+    // Ajoute aux désignations de l’app
+    _addToDesignations('Prises', name);
+    // Persiste
+    var ov = { TARIFS_BASE:{ prises:{} } }; ov.TARIFS_BASE.prises[name]=TARIFS_BASE.prises[name];
+    saveTarifsOverrides(ov);
+    pageTarifsPrises();
+  };
 }
 </script>
 
-<!-- 8.3 • Éclairage — Luminaires -->
+<!-- 8.3 • ÉCLAIRAGE — Luminaires -->
 <script>
+var KEYS_LUM = [
+  'Création',
+  'Remplacement luminaire',
+  'Recâblage avec remplacement luminaire',
+  'Recâblage sans remplacement luminaire'
+];
+
 function pageTarifsEclLuminaires(){
-  var e = (TARIFS_BASE && TARIFS_BASE.eclairage) ? TARIFS_BASE.eclairage : {};
-  var PDC = e['Point de centre'] || {};
-  var APP = e['Applique'] || {};
+  _ensureTB();
+  var e = TARIFS_BASE.eclairage;
+  // garantir quelques clés fréquentes si absentes
+  e['Point de centre'] = _ensureObj(e['Point de centre']);
+  e['Applique'] = _ensureObj(e['Applique']);
+
+  function listNames(){
+    // Filtre : seules les entrées qui utilisent les libellés “luminaire”
+    return Object.keys(e).filter(function(k){
+      var t = _ensureObj(e[k]);
+      // Heuristique : si au moins 1 des clés LUM est présente ou vide
+      return KEYS_LUM.some(function(lbl){ return t.hasOwnProperty(lbl); });
+    });
+  }
+
+  function table(){
+    var names = listNames();
+    if(!names.length) return '<div class="muted">Aucun type pour le moment.</div>';
+    var head = '<tr><th style="min-width:180px;">Type</th>'+KEYS_LUM.map(k=>'<th>'+_escape(k)+'</th>').join('')+'<th>Actions</th></tr>';
+    var rows = names.map(function(n,i){
+      var t = _ensureObj(e[n]);
+      var inputs = KEYS_LUM.map(function(k,idx){
+        var id = 'lum_'+i+'_'+idx;
+        return '<td>'+_numInput(id, t[k])+'</td>';
+      }).join('');
+      return '<tr>'
+            + '<td>'+_escape(n)+'</td>'
+            + inputs
+            + '<td>'+b('💾','saveRowLum('+i+')','btn')+' '+b('🗑️','delRowLum("'+_escape(n)+'")','btn')+'</td>'
+          + '</tr>';
+    }).join('');
+    return '<table class="table-mini"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+  }
+
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
       + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Éclairage — Luminaires</h2>'
-      + '<h3>Point de centre</h3>'
-      + '<div class="tarif-grid">'
-        + '<div class="field"><label>Création</label>'+_numInput('lum_pdc_cre', PDC['Création'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_pdc_rem_lum', PDC['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_pdc_rec_avec', PDC['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_pdc_rec_sans', PDC['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
-      + '</div>'
-
-      + '<h3 style="margin-top:18px;">Applique</h3>'
-      + '<div class="tarif-grid">'
-        + '<div class="field"><label>Création</label>'+_numInput('lum_app_cre', APP['Création'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_app_rem_lum', APP['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_app_rec_avec', APP['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_app_rec_sans', APP['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
-      + '</div>'
-
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsEclLuminaires()','btn primary')
+      + '<h2>💡 Éclairage — Luminaires</h2>'
+      + table()
+      + '<div class="card" style="margin-top:14px;">'
+        + '<h3>Ajouter un type (Luminaires)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="lum_add_name" placeholder="ex : Réglette LED, Suspension déco…" />'
+          + b('Ajouter','addRowLum()','btn')
+        + '</div>'
+        + '<p class="tip">Les libellés d’intervention sont en “luminaire”.</p>'
       + '</div>'
     + '</div>'
     + '</div>'
   );
-}
-function saveTarifsEclLuminaires(){
-  var ov = {
-    TARIFS_BASE: {
-      eclairage: {
-        'Point de centre': {
-          'Création': _tfVal('lum_pdc_cre'),
-          'Remplacement luminaire': _tfVal('lum_pdc_rem_lum'),
-          'Recâblage avec remplacement luminaire': _tfVal('lum_pdc_rec_avec'),
-          'Recâblage sans remplacement luminaire': _tfVal('lum_pdc_rec_sans')
-        },
-        'Applique': {
-          'Création': _tfVal('lum_app_cre'),
-          'Remplacement luminaire': _tfVal('lum_app_rem_lum'),
-          'Recâblage avec remplacement luminaire': _tfVal('lum_app_rec_avec'),
-          'Recâblage sans remplacement luminaire': _tfVal('lum_app_rec_sans')
-        }
-      }
-    }
+
+  // Handlers
+  window.saveRowLum = function(idx){
+    var names = listNames(); var name = names[idx]; if(!name) return;
+    var t = e[name] || (e[name]={});
+    KEYS_LUM.forEach(function(k, i){
+      var id = 'lum_'+idx+'_'+i; t[k] = _tfVal(id);
+    });
+    var ov = { TARIFS_BASE:{ eclairage:{} } };
+    ov.TARIFS_BASE.eclairage[name] = t;
+    deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+    saveTarifsOverrides(ov);
   };
-  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
-  saveTarifsOverrides(ov);
+  window.delRowLum = function(name){
+    if(!confirm('Supprimer le type "'+name+'" ?')) return;
+    delete TARIFS_BASE.eclairage[name];
+    var cur = JSON.parse(localStorage.getItem('tarifsOverrides')||'{}')||{};
+    if(cur.TARIFS_BASE && cur.TARIFS_BASE.eclairage) delete cur.TARIFS_BASE.eclairage[name];
+    localStorage.setItem('tarifsOverrides', JSON.stringify(cur));
+    alert('✅ Supprimé.');
+    pageTarifsEclLuminaires();
+  };
+  window.addRowLum = function(){
+    var name = _strVal('lum_add_name'); if(!name) return;
+    if(!TARIFS_BASE.eclairage[name]) TARIFS_BASE.eclairage[name]={};
+    // init structure LUM si vide
+    KEYS_LUM.forEach(function(k){ if(!(k in TARIFS_BASE.eclairage[name])) TARIFS_BASE.eclairage[name][k]=0; });
+    _addToDesignations('Éclairage/Luminaires', name);
+    var ov = { TARIFS_BASE:{ eclairage:{} } }; ov.TARIFS_BASE.eclairage[name]=TARIFS_BASE.eclairage[name];
+    saveTarifsOverrides(ov);
+    pageTarifsEclLuminaires();
+  };
 }
 </script>
 
-<!-- 8.4 • Éclairage — Commandes (intitulés en “appareillage”) -->
+<!-- 8.4 • ÉCLAIRAGE — Commandes -->
 <script>
 function pageTarifsEclCommandes(){
-  var e = (TARIFS_BASE && TARIFS_BASE.eclairage) ? TARIFS_BASE.eclairage : {};
-  var IS = e['Interrupteur simple'] || {};
-  var ID = e['Interrupteur double'] || {};
+  _ensureTB();
+  var e = TARIFS_BASE.eclairage;
+  // garantir quelques clés fréquentes si absentes
+  e['Interrupteur simple'] = _ensureObj(e['Interrupteur simple']);
+  e['Interrupteur double'] = _ensureObj(e['Interrupteur double']);
+
+  function listNames(){
+    // Entrées dont les libellés correspondent au “appareillage”
+    return Object.keys(e).filter(function(k){
+      var t = _ensureObj(e[k]);
+      return KEYS_APP.some(function(lbl){ return t.hasOwnProperty(lbl); });
+    });
+  }
+
+  function table(){
+    var names = listNames();
+    if(!names.length) return '<div class="muted">Aucun type pour le moment.</div>';
+    var head = '<tr><th style="min-width:180px;">Type</th>'+KEYS_APP.map(k=>'<th>'+_escape(k)+'</th>').join('')+'<th>Actions</th></tr>';
+    var rows = names.map(function(n,i){
+      var t = _ensureObj(e[n]);
+      var inputs = KEYS_APP.map(function(k,idx){
+        var id = 'cmd_'+i+'_'+idx;
+        return '<td>'+_numInput(id, t[k])+'</td>';
+      }).join('');
+      return '<tr>'
+            + '<td>'+_escape(n)+'</td>'
+            + inputs
+            + '<td>'+b('💾','saveRowCmd('+i+')','btn')+' '+b('🗑️','delRowCmd("'+_escape(n)+'")','btn')+'</td>'
+          + '</tr>';
+    }).join('');
+    return '<table class="table-mini"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+  }
+
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
       + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Éclairage — Commandes</h2>'
-      + '<h3>Interrupteur simple</h3>'
-      + '<div class="tarif-grid">'
-        + '<div class="field"><label>Création</label>'+_numInput('cmd_is_cre', IS['Création'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cmd_is_rem_app', IS['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cmd_is_rec_avec', IS['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cmd_is_rec_sans', IS['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-      + '</div>'
-
-      + '<h3 style="margin-top:18px;">Interrupteur double</h3>'
-      + '<div class="tarif-grid">'
-        + '<div class="field"><label>Création</label>'+_numInput('cmd_id_cre', ID['Création'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cmd_id_rem_app', ID['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cmd_id_rec_avec', ID['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cmd_id_rec_sans', ID['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-      + '</div>'
-
-      + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsEclCommandes()','btn primary')
+      + '<h2>🕹️ Éclairage — Commandes</h2>'
+      + table()
+      + '<div class="card" style="margin-top:14px;">'
+        + '<h3>Ajouter un type (Commandes)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="cmd_add_name" placeholder="ex : Variateur rotatif, Va-et-vient…" />'
+          + b('Ajouter','addRowCmd()','btn')
+        + '</div>'
+        + '<p class="tip">Les libellés d’intervention sont en “appareillage”.</p>'
       + '</div>'
     + '</div>'
     + '</div>'
   );
-}
-function saveTarifsEclCommandes(){
-  var ov = {
-    TARIFS_BASE: {
-      eclairage: {
-        'Interrupteur simple': {
-          'Création': _tfVal('cmd_is_cre'),
-          'Remplacement appareillage': _tfVal('cmd_is_rem_app'),
-          'Recâblage avec remplacement appareillage': _tfVal('cmd_is_rec_avec'),
-          'Recâblage sans remplacement appareillage': _tfVal('cmd_is_rec_sans')
-        },
-        'Interrupteur double': {
-          'Création': _tfVal('cmd_id_cre'),
-          'Remplacement appareillage': _tfVal('cmd_id_rem_app'),
-          'Recâblage avec remplacement appareillage': _tfVal('cmd_id_rec_avec'),
-          'Recâblage sans remplacement appareillage': _tfVal('cmd_id_rec_sans')
-        }
-      }
-    }
+
+  // Handlers
+  window.saveRowCmd = function(idx){
+    var names = listNames(); var name = names[idx]; if(!name) return;
+    var t = e[name] || (e[name]={});
+    KEYS_APP.forEach(function(k, i){
+      var id = 'cmd_'+idx+'_'+i; t[k] = _tfVal(id);
+    });
+    var ov = { TARIFS_BASE:{ eclairage:{} } };
+    ov.TARIFS_BASE.eclairage[name] = t;
+    deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+    saveTarifsOverrides(ov);
   };
-  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
-  saveTarifsOverrides(ov);
+  window.delRowCmd = function(name){
+    if(!confirm('Supprimer le type "'+name+'" ?')) return;
+    delete TARIFS_BASE.eclairage[name];
+    var cur = JSON.parse(localStorage.getItem('tarifsOverrides')||'{}')||{};
+    if(cur.TARIFS_BASE && cur.TARIFS_BASE.eclairage) delete cur.TARIFS_BASE.eclairage[name];
+    localStorage.setItem('tarifsOverrides', JSON.stringify(cur));
+    alert('✅ Supprimé.');
+    pageTarifsEclCommandes();
+  };
+  window.addRowCmd = function(){
+    var name = _strVal('cmd_add_name'); if(!name) return;
+    if(!TARIFS_BASE.eclairage[name]) TARIFS_BASE.eclairage[name]={};
+    KEYS_APP.forEach(function(k){ if(!(k in TARIFS_BASE.eclairage[name])) TARIFS_BASE.eclairage[name][k]=0; });
+    _addToDesignations('Éclairage/Commandes', name);
+    var ov = { TARIFS_BASE:{ eclairage:{} } }; ov.TARIFS_BASE.eclairage[name]=TARIFS_BASE.eclairage[name];
+    saveTarifsOverrides(ov);
+    pageTarifsEclCommandes();
+  };
 }
 </script>
 
-<!-- 8.5 • Circuit spécialisé (base + coefficients de section) -->
+<!-- 8.5 • CIRCUIT SPÉCIALISÉ — types + base + coeff de section -->
 <script>
 function pageTarifsCS(){
-  var base = (TARIFS_BASE && TARIFS_BASE.circuit_specialise_base) ? TARIFS_BASE.circuit_specialise_base : {};
+  _ensureTB();
+  TARIFS_BASE.circuit_specialise_base = _ensureObj(TARIFS_BASE.circuit_specialise_base);
+  TARIFS_BASE.circuit_specialise      = _ensureObj(TARIFS_BASE.circuit_specialise);
+  window.COEFF_SECTIONS_CS = _ensureObj(window.COEFF_SECTIONS_CS);
+
+  var base = TARIFS_BASE.circuit_specialise_base;
+
+  function tableTypes(){
+    var names = Object.keys(TARIFS_BASE.circuit_specialise);
+    if(!names.length) return '<div class="muted">Aucun type (CS) pour le moment.</div>';
+    var head = '<tr><th style="min-width:180px;">Type (CS)</th>'+KEYS_APP.map(k=>'<th>'+_escape(k)+'</th>').join('')+'<th>Actions</th></tr>';
+    var rows = names.map(function(n,i){
+      var t = _ensureObj(TARIFS_BASE.circuit_specialise[n]);
+      var inputs = KEYS_APP.map(function(k,idx){
+        var id = 'csrow_'+i+'_'+idx;
+        return '<td>'+_numInput(id, t[k])+'</td>';
+      }).join('');
+      return '<tr>'
+            + '<td>'+_escape(n)+'</td>'
+            + inputs
+            + '<td>'+b('💾','saveRowCS('+i+')','btn')+' '+b('🗑️','delRowCS("'+_escape(n)+'")','btn')+'</td>'
+          + '</tr>';
+    }).join('');
+    return '<table class="table-mini"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>';
+  }
+
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
       + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Circuit spécialisé — base & coefficients</h2>'
+      + '<h2>🔌 Circuit spécialisé — types, base & coefficients</h2>'
 
-      + '<h3>Tarifs base (par intervention)</h3>'
+      + '<h3>Types de circuit spécialisé (tarifs par intervention)</h3>'
+      + tableTypes()
+      + '<div class="row gap8" style="margin-top:8px;">'
+        + '<input id="cs_add_name" placeholder="ex : Four, Cumulus, Plaque de cuisson…"/>'
+        + b('Ajouter','addRowCS()','btn')
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Tarifs base (par intervention)</h3>'
       + '<div class="tarif-grid">'
-        + '<div class="field"><label>Création</label>'+_numInput('cs_cre', base['Création'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cs_rem_app', base['Remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cs_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
-        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cs_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Création</label>'+_numInput('cs_cre', base['Création'])+'<small>Tarif de base</small></div>'
+        + '<div class="field"><label>Remplacement appareillage</label>'+_numInput('cs_rem_app', base['Remplacement appareillage'])+'<small>Tarif de base</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement appareillage</label>'+_numInput('cs_rec_avec', base['Recâblage avec remplacement appareillage'])+'<small>Tarif de base</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement appareillage</label>'+_numInput('cs_rec_sans', base['Recâblage sans remplacement appareillage'])+'<small>Tarif de base</small></div>'
       + '</div>'
 
       + '<h3 style="margin-top:18px;">Coefficients de section</h3>'
@@ -2024,43 +2195,75 @@ function pageTarifsCS(){
       + '</div>'
 
       + '<div class="tarif-actions">'
-        + b('💾 Enregistrer','saveTarifsCS()','btn primary')
+        + b('💾 Enregistrer tout','saveTarifsCS()','btn primary')
       + '</div>'
     + '</div>'
     + '</div>'
   );
-}
-function saveTarifsCS(){
-  var ov = {
-    TARIFS_BASE: {
-      circuit_specialise_base: {
-        'Création': _tfVal('cs_cre'),
-        'Remplacement appareillage': _tfVal('cs_rem_app'),
-        'Recâblage avec remplacement appareillage': _tfVal('cs_rec_avec'),
-        'Recâblage sans remplacement appareillage': _tfVal('cs_rec_sans')
-      }
-    },
-    COEFF_SECTIONS_CS: {
-      '0,75 mm²': _tfVal('cs_coef_075'),
-      '1,5 mm²':  _tfVal('cs_coef_15'),
-      '2,5 mm²':  _tfVal('cs_coef_25'),
-      '6 mm²':    _tfVal('cs_coef_6')
-    }
+
+  // Handlers types
+  window.saveRowCS = function(idx){
+    var names = Object.keys(TARIFS_BASE.circuit_specialise); var name = names[idx]; if(!name) return;
+    var t = TARIFS_BASE.circuit_specialise[name] || (TARIFS_BASE.circuit_specialise[name]={});
+    KEYS_APP.forEach(function(k, i){ var id='csrow_'+idx+'_'+i; t[k]=_tfVal(id); });
+    var ov = { TARIFS_BASE:{ circuit_specialise:{} } };
+    ov.TARIFS_BASE.circuit_specialise[name]=t;
+    deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+    saveTarifsOverrides(ov);
   };
-  deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
-  deepMergeTarifs(COEFF_SECTIONS_CS, ov.COEFF_SECTIONS_CS);
-  saveTarifsOverrides(ov);
+  window.delRowCS = function(name){
+    if(!confirm('Supprimer le type "'+name+'" ?')) return;
+    delete TARIFS_BASE.circuit_specialise[name];
+    var cur = JSON.parse(localStorage.getItem('tarifsOverrides')||'{}')||{};
+    if(cur.TARIFS_BASE && cur.TARIFS_BASE.circuit_specialise) delete cur.TARIFS_BASE.circuit_specialise[name];
+    localStorage.setItem('tarifsOverrides', JSON.stringify(cur));
+    alert('✅ Supprimé.');
+    pageTarifsCS();
+  };
+  window.addRowCS = function(){
+    var name = _strVal('cs_add_name'); if(!name) return;
+    if(!TARIFS_BASE.circuit_specialise[name]) TARIFS_BASE.circuit_specialise[name]={};
+    KEYS_APP.forEach(function(k){ if(!(k in TARIFS_BASE.circuit_specialise[name])) TARIFS_BASE.circuit_specialise[name][k]=0; });
+    _addToDesignations('Circuit spécialisé', name);
+    var ov = { TARIFS_BASE:{ circuit_specialise:{} } }; ov.TARIFS_BASE.circuit_specialise[name]=TARIFS_BASE.circuit_specialise[name];
+    saveTarifsOverrides(ov);
+    pageTarifsCS();
+  };
+
+  // Handler "Enregistrer tout" (base + coefficients section)
+  window.saveTarifsCS = function(){
+    var ov = {
+      TARIFS_BASE: {
+        circuit_specialise_base: {
+          'Création': _tfVal('cs_cre'),
+          'Remplacement appareillage': _tfVal('cs_rem_app'),
+          'Recâblage avec remplacement appareillage': _tfVal('cs_rec_avec'),
+          'Recâblage sans remplacement appareillage': _tfVal('cs_rec_sans')
+        }
+      },
+      COEFF_SECTIONS_CS: {
+        '0,75 mm²': _tfVal('cs_coef_075'),
+        '1,5 mm²':  _tfVal('cs_coef_15'),
+        '2,5 mm²':  _tfVal('cs_coef_25'),
+        '6 mm²':    _tfVal('cs_coef_6')
+      }
+    };
+    deepMergeTarifs(TARIFS_BASE, ov.TARIFS_BASE);
+    deepMergeTarifs(COEFF_SECTIONS_CS, ov.COEFF_SECTIONS_CS);
+    saveTarifsOverrides(ov);
+  };
 }
 </script>
 
-<!-- 8.6 • Coefficients de pose (communs) -->
+<!-- 8.6 • COEFFICIENTS DE POSE — communs -->
 <script>
 function pageTarifsCoeffsPose(){
+  window.COEFF_POSE = _ensureObj(window.COEFF_POSE);
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
       + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Coefficients de pose</h2>'
+      + '<h2>📐 Coefficients de pose (communs)</h2>'
       + '<div class="tarif-grid">'
         + '<div class="field"><label>Placo</label>'+_numInput('cp_placo', COEFF_POSE['Placo'])+'<small>Coefficient</small></div>'
         + '<div class="field"><label>Encastré maçonnerie</label>'+_numInput('cp_maco', COEFF_POSE['Encastré maçonnerie'])+'<small>Coefficient</small></div>'
@@ -2092,21 +2295,7 @@ function saveTarifsCoeffsPose(){
 }
 </script>
 
-<!-- Expose minimal (si tu veux appeler depuis le menu principal) -->
-<script>
-Object.assign(window, {
-  pageTarifsAccueil,
-  pageTarifsPrises,
-  pageTarifsEclLuminaires,
-  pageTarifsEclCommandes,
-  pageTarifsCS,
-  pageTarifsCoeffsPose
-});
-</script>
-
-  <!-- =============================
-     8.7 • Personnalisation avancée (JSON, ajout-only)
-     ============================= -->
+<!-- 8.7 • Personnalisation avancée (JSON, ajout-only) -->
 <script>
 // ---------- Stockage ----------
 const CUSTOM_SCHEMA_KEY = 'tarifsCustomSchema';
@@ -2121,13 +2310,10 @@ function mergeObjectAddOnly(base, add){
   Object.keys(add).forEach(k=>{
     const v = add[k];
     if(base[k] == null){
-      // clé nouvelle → on ajoute telle quelle
       base[k] = Array.isArray(v) ? v.slice() : (typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v);
     }else{
-      // clé existante → on N'ÉCRASE PAS, on complète seulement
       if(Array.isArray(base[k]) && Array.isArray(v)) addUniqueToArray(base[k], v);
       else if(typeof base[k]==='object' && typeof v==='object') mergeObjectAddOnly(base[k], v);
-      // sinon (nombre/string déjà défini) → on ne touche pas
     }
   });
 }
@@ -2153,13 +2339,12 @@ function applyCustomSchema(){
   }
 
   // 3) Tarifs pour les NOUVELLES désignations d’éclairage (on n’écrase pas les existantes)
-  //    Format attendu :
-  //    { "TARIFS_BASE": { "eclairage": { "Ma nouvelle désignation": { "Création": 120, ... } } } }
   if(custom.TARIFS_BASE && custom.TARIFS_BASE.eclairage){
     const src = custom.TARIFS_BASE.eclairage;
+    TARIFS_BASE.eclairage = _ensureObj(TARIFS_BASE.eclairage);
     Object.keys(src).forEach(desig=>{
-      if(!TARIFS_BASE.eclairage[desig]) TARIFS_BASE.eclairage[desig] = {}; // nouvelle désignation permise
-      mergeObjectAddOnly(TARIFS_BASE.eclairage[desig], src[desig]);        // ajoute interventions sans écraser celles déjà présentes
+      if(!TARIFS_BASE.eclairage[desig]) TARIFS_BASE.eclairage[desig] = {};
+      mergeObjectAddOnly(TARIFS_BASE.eclairage[desig], src[desig]);
     });
   }
 
@@ -2172,15 +2357,14 @@ applyCustomSchema();
 
 // ---------- UI ----------
 function pageTarifsPersoJSON(){
-  // modèle minimal affiché si aucun JSON encore enregistré
   const example = JSON.stringify({
-    "CATEGORIES": ["Domotique"],                // ajouté au menu Catégorie
-    "POSES": ["Goulotte design"],               // ajouté aux types de pose
-    "SECTIONS_CABLE": ["10 mm²"],               // ajouté aux choix de section
+    "CATEGORIES": ["Domotique"],
+    "POSES": ["Goulotte design"],
+    "SECTIONS_CABLE": ["10 mm²"],
     "DESIGNATIONS_PAR_CATEGORIE": {
       "Éclairage/Luminaires": ["Rail LED", "Suspension déco"],
       "Éclairage/Commandes": ["Variateur rotatif"],
-      "Circuit spécialisé": ["Pompe de relevage"]  // libellé suggéré lors de la saisie CS
+      "Circuit spécialisé": ["Pompe de relevage"]
     },
     "TARIFS_BASE": {
       "eclairage": {
@@ -2234,7 +2418,6 @@ function saveTarifsPersoJSON(){
     alert('❌ JSON invalide : '+e.message);
     return;
   }
-  // garde-fous simples : seules ces racines sont acceptées
   const allowed = ['CATEGORIES','POSES','SECTIONS_CABLE','DESIGNATIONS_PAR_CATEGORIE','TARIFS_BASE','COEFF_POSE','COEFF_SECTIONS_CS'];
   const ok = Object.keys(obj).every(k=>allowed.indexOf(k)>=0);
   if(!ok){ alert('❌ Clés non autorisées au niveau racine. Racines valides : '+allowed.join(', ')); return; }
@@ -2247,7 +2430,6 @@ function saveTarifsPersoJSON(){
 function resetTarifsPersoJSON(){
   if(!confirm('Réinitialiser toutes les personnalisations JSON ?')) return;
   localStorage.removeItem(CUSTOM_SCHEMA_KEY);
-  // recharger les listes runtime (on repart sur le tronc)
   location.reload();
 }
 
@@ -2279,29 +2461,19 @@ function importTarifsPersoJSON(){
   };
   input.click();
 }
+</script>
 
-// ---------- Hook : ajoute le bouton dans l'accueil Chap. 8 ----------
-(function patchTarifsAccueilButton(){
-  // on monkey-patche la fonction existante pour insérer le bouton si pas déjà présent
-  const _orig = window.pageTarifsAccueil;
-  if(typeof _orig === 'function'){
-    window.pageTarifsAccueil = function(){
-      // construire la vue standard puis la modifier en y ajoutant le bouton
-      _orig();
-      const app = document.getElementById('app');
-      if(!app) return;
-      const btnLabel = 'Personnalisation avancée (JSON)';
-      if(app.innerHTML.indexOf(btnLabel) === -1){
-        app.innerHTML = app.innerHTML.replace(
-          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
-          '$1<div class="card tarif-card"><div class="row" style="gap:8px;">'
-          + '<button class="btn ghost" onclick="pageTarifsPersoJSON()">'+btnLabel+'</button>'
-          + '</div></div>'
-        );
-      }
-    };
-  }
-})();
+<!-- Expose minimal -->
+<script>
+Object.assign(window, {
+  pageTarifsAccueil,
+  pageTarifsPrises,
+  pageTarifsEclLuminaires,
+  pageTarifsEclCommandes,
+  pageTarifsCS,
+  pageTarifsCoeffsPose,
+  pageTarifsPersoJSON
+});
 </script>
 
 
