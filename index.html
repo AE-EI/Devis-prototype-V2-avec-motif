@@ -67,106 +67,79 @@
 
 
 
+
+
+
+
   
-  <!-- =============================
-     CHAPITRE 2 : ÉTAT & HELPERS
-     Index :
-       §2.1 • Gestion erreurs globales
-       §2.2 • État global & contexte courant
-       §2.3 • Identifiants & helpers DOM/UI
-       §2.4 • Libellés de pièces (build/format)
-       §2.5 • Persistance locale (save/load)
+  
+<!-- =============================
+     CHAPITRE 2 : MENU PRINCIPAL (version 2025 révisée)
+     - Séparation claire entre :
+         1. Configuration entreprise
+         2. Catalogue des tarifs et coefficients
+         3. Création et gestion des devis
+         4. Gestion des factures
      ============================= -->
+
 <script>
-// §2.1 • Gestion erreurs globales
-window.addEventListener('error', function (e) {
-  var el = document.getElementById('app');
-  if (el) {
-    el.innerHTML =
-      '<div class="card"><h2>Erreur JS</h2><pre>'
-      + (e.message || 'Erreur inconnue')
-      + '\n' + (e.filename || '') + ':' + (e.lineno || 0) + ':' + (e.colno || 0)
-      + '</pre></div>';
-  }
-});
+function pageHome(){
+  view(
+    '<div class="card">'
+      + '<h1>MiniDevis — Accueil</h1>'
+      + '<p class="muted">Application de chiffrage rapide pour artisans électriciens.</p>'
+    + '</div>'
 
-// §2.2 • État global & contexte courant
-var devis = {}; // contiendra aussi __id, __name, __tabCounter
-var ctx   = { piece:null, category:null, intervention:null, pose:null, designation:null };
+    /* 1 — Configuration entreprise */
+    + '<div class="card">'
+      + '<h2>Configuration entreprise</h2>'
+      + '<p class="muted" style="margin-top:6px;">Identité, TVA, devis/factures, numérotation…</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('⚙️ Configuration entreprise','pageConfigEntreprise()','btn')
+        + b('🧭 Préférences générales','pagePreferences()','btn')
+      + '</div>'
+    + '</div>'
 
-// §2.3 • Identifiants & helpers DOM/UI
-function genId(){ return 'dv_' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
-function ensureId(){ if(!devis.__id) devis.__id = genId(); }
-function $app(){ return document.getElementById('app'); }
-function b(label, fn, cls){
-  cls = cls || 'btn';
-  return '<button class="'+cls+'" onclick=\''+fn+'\'>'+label+'</button>';
-}
-function euro(n){ return (+(n||0)).toFixed(2) + ' €'; }
-function view(html, noFooter){
-  if(!noFooter){
-    html += '<div class="row" style="margin-top:16px; gap:12px;">'
-          + b('⬅️ Accueil','confirmBackHome()','btn back')
-          + b('💾 Sauvegarder devis','saveCurrentDevis()','btn primary')
-          + '</div>';
-  }
-  $app().innerHTML = html;
-}
-function confirmBackHome(){
-  var hasData = Object.keys(devis)
-    .filter(function(k){ return k.indexOf('__') !== 0; })
-    .some(function(k){
-      var s = devis[k]||{};
-      return (s.items && s.items.length>0) || (s.note && s.note.trim().length>0);
-    });
+    /* 2 — Catalogue des tarifs et coefficients */
+    + '<div class="card">'
+      + '<h2>Catalogue des tarifs et coefficients</h2>'
+      + '<p class="muted" style="margin-top:6px;">Tarifs unitaires, coefficients de pose, et personnalisations.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('💰 Ouvrir le catalogue','pageTarifsAccueil()','btn primary')
+        + b('📂 Personnalisation avancée (JSON)','pageTarifsPersoJSON()','btn')
+      + '</div>'
+    + '</div>'
 
-  if(!hasData || confirm('Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.')){
-    if (typeof pageMain === 'function') pageMain();
-    else $app().innerHTML = '<div class="card"><h2>Accueil</h2><p class="muted">Le chapitre Menu (4) n\'est pas encore chargé.</p></div>';
-  }
-}
+    /* 3 — Gestion des devis */
+    + '<div class="card">'
+      + '<h2>Devis</h2>'
+      + '<p class="muted" style="margin-top:6px;">Création, consultation et export des devis clients.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('🧾 Nouveau devis','pageMain()','btn primary')
+        + b('💾 Devis sauvegardés','pageSavedDevis()','btn')
+      + '</div>'
+    + '</div>'
 
-// §2.4 • Libellés de pièces (build/format)
-function buildPieceLabel(base, qualif, etage){
-  var lbl = base || '';
-  if(qualif && qualif.trim()) lbl += ' ('+qualif.trim()+')';
-  if(etage && etage.trim())   lbl += ' — '+etage.trim();
-  return lbl;
-}
-function nextFreeKey(label){
-  if(!devis[label]) return label;
-  var n=2; while(devis[label+' ('+n+')']) n++;
-  return label+' ('+n+')';
-}
-function createOrGetPiece(base, qualif, etage){
-  var wanted = buildPieceLabel(base,qualif,etage);
-  var key    = nextFreeKey(wanted);
-  if(!devis[key]) devis[key] = { __base:base, qualificatif:qualif||'', etage:etage||'', items:[], note:'' };
-  saveLocal();
-  return key;
-}
-function formatPieceLabel(key){
-  var s = devis[key]; if(!s) return key;
-  var base = s.__base || key;
-  return buildPieceLabel(base, s.qualificatif, s.etage);
-}
-
-// §2.5 • Persistance locale (save/load)
-function ensureSection(key){
-  if(!devis[key]) devis[key] = { items:[], note:'', qualificatif:'', etage:'' };
-}
-function saveLocal(){
-  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
-}
-function loadLocal(){
-  try { devis = JSON.parse(localStorage.getItem('devis') || '{}') || {}; }
-  catch(e){ devis = {}; }
-  ensureId();
+    /* 4 — Gestion des factures */
+    + '<div class="card">'
+      + '<h2>Factures</h2>'
+      + '<p class="muted" style="margin-top:6px;">Transformer un devis en facture et gérer les exports comptables.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('💶 Mes factures','pageFacturesAccueil()','btn')
+      + '</div>'
+    + '</div>'
+  );
 }
 </script>
 
 
 
+
+
+
+
+
+  
 
   
 <!-- =============================
