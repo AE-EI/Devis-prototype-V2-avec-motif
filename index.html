@@ -189,6 +189,7 @@ function loadLocal(){
 
 
 
+  
 
   
 
@@ -384,12 +385,434 @@ function getPrix(designation, intervention){
 
 
 
+<!-- =============================
+     CHAPITRE 3.2 : CŒUR — STOCKAGE & ROUTAGE UNIFIÉS (v3)
+     Sommaire :
+       §3.2.0 • Clés, schémas & helpers
+       §3.2.1 • Devis courant : init / save / auto-save / reset
+       §3.2.2 • Devis sauvegardés : CRUD + import/export + migration
+       §3.2.3 • Factures (snapshots) : CRUD + transformation depuis un devis
+     Dépendances souples :
+       - view(html) & b(label, onclick, className) pour l’UI
+       - pageHome() pour revenir à l’éditeur après création/ouverture
+       - Chapitre 10 (si présent) fournit les exports avancés ; sinon fallback TXT minimal (Partie 2)
+     ============================= -->
 
+<!-- §3.2.0 • Clés, schémas & helpers -->
+<script>
+const KEY_CURRENT_DEVIS = 'devis_current_v3';
+const KEY_SAVED_DEVIS   = 'saved_devis_v3';
+const KEY_INVOICES      = 'invoices_v1';
+const KEY_AUTOSAVE_OPTS = 'autosave_opts_v1';
 
+function _lsGet(k, def){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? def; }catch(e){ return def; } }
+function _lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ alert('Stockage indisponible : '+e.message); } }
+function _clone(x){ return JSON.parse(JSON.stringify(x)); }
+function _newId(prefix){ return (prefix||'id_') + Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
+function _nowISO(){ return new Date().toISOString(); }
+function _fmtBytes(n){ if(!n) return '0 o'; var u=['o','Ko','Mo','Go']; var i=Math.min(3, Math.floor(Math.log(n)/Math.log(1024))); return (n/Math.pow(1024,i)).toFixed(1)+' '+u[i]; }
 
+// Fallbacks UI (si non définis)
+if(typeof window.b !== 'function'){
+  window.b = function(label, onclick, cls){ return '<button class="'+(cls||'btn')+'" onclick="'+onclick+'">'+label+'</button>'; };
+}
+if(typeof window.view !== 'function'){
+  window.view = function(html){ var el=document.getElementById('app')||document.body; el.innerHTML = '<div class="card">'+html+'</div>'; };
+}
 
+// Modèle de devis vide (métadonnées min)
+function _blankDevis(meta){
+  return Object.assign({
+    __id: _newId('dv_'),
+    __name: (meta && meta.title) || 'Nouveau devis',
+    __created_at: _nowISO(),
+    __updated_at: _nowISO(),
+    __mode: (meta && meta.mode) || 'devis', // 'devis' | 'facture' (info)
+    __client: (meta && meta.client) || '',
+    __chantier: (meta && meta.site) || '',
+    __tva_applicable: true,
+    __taux_tva: (meta && +meta.tva)||20
+  }, {});
+}
+</script>
 
+<!-- §3.2.1 • Devis courant : init / save / auto-save / reset -->
+<script>
+window.devis = window.devis || _blankDevis();
+let _autosaveTimer = null;
+
+function loadLocal(){
+  var cur = _lsGet(KEY_CURRENT_DEVIS, null);
+  if(!cur){ cur = _blankDevis(); _lsSet(KEY_CURRENT_DEVIS, cur); }
+  window.devis = cur;
+  return cur;
+}
+function saveLocal(){
+  if(!window.devis) return;
+  window.devis.__updated_at = _nowISO();
+  _lsSet(KEY_CURRENT_DEVIS, window.devis);
+}
+function resetCurrent(meta){
+  window.devis = _blankDevis(meta||{});
+  saveLocal();
+}
+function startAutoSave(everyMs){
+  try{ if(_autosaveTimer) clearInterval(_autosaveTimer); }catch(e){}
+  var opts = _lsGet(KEY_AUTOSAVE_OPTS, { enabled:true, period:10000 });
+  var period = +everyMs || +opts.period || 10000;
+  if(opts.enabled!==false){
+    _autosaveTimer = setInterval(function(){ try{ saveLocal(); }catch(e){} }, period);
+  }
+}
+function setAutoSave(on, periodMs){
+  var opts = _lsGet(KEY_AUTOSAVE_OPTS, { enabled:true, period:10000 });
+  if(typeof on==='boolean') opts.enabled = on;
+  if(periodMs) opts.period = Math.max(2000, +periodMs||10000);
+  _lsSet(KEY_AUTOSAVE_OPTS, opts);
+  startAutoSave();
+}
+</script>
+
+<!-- §3.2.2 • Devis sauvegardés : CRUD + import/export + migration -->
+<script>
+function _listDevis(){ return _lsGet(KEY_SAVED_DEVIS, []); }
+function _writeDevis(arr){ _lsSet(KEY_SAVED_DEVIS, arr||[]); }
+
+function listSavedDevis(){ return _listDevis(); }
+
+function saveCurrentAs(name, mode){
+  var cur = _clone(window.devis || _blankDevis());
+  if(name) cur.__name = String(name).trim() || cur.__name;
+  if(mode) cur.__mode = mode;
+  if(!cur.__id) cur.__id = _newId('dv_');
+  cur.__updated_at = _nowISO();
+
+  var list = _listDevis();
+  var idx = list.findIndex(d=>d.__id===cur.__id);
+  if(idx>=0) list[idx] = cur; else list.unshift(cur);
+  _writeDevis(list);
+  alert('✅ Document sauvegardé.');
+  return cur.__id;
+}
+
+function saveCurrentAsNew(newName){
+  var cur = _clone(window.devis || {});
+  cur.__id = _newId('dv_');
+  if(newName) cur.__name = String(newName).trim() || cur.__name;
+  cur.__updated_at = _nowISO();
+  var list = _listDevis(); list.unshift(cur); _writeDevis(list);
+  alert('✅ Nouvelle version créée.');
+  return cur.__id;
+}
+
+function loadDevis(id){
+  var list = _listDevis();
+  var found = list.find(d=>d.__id===id);
+  if(!found){ alert('Devis introuvable.'); return; }
+  window.devis = _clone(found);
+  saveLocal();
+  if(typeof pageHome==='function') pageHome();
+  else view('<div class="card"><h2>Devis chargé</h2><pre>'+found.__name+'</pre></div>');
+}
+
+function deleteDevis(id){
+  if(!confirm('Supprimer ce devis ?')) return;
+  _writeDevis(_listDevis().filter(d=>d.__id!==id));
+  if(typeof pageSavedDevis==='function') pageSavedDevis(); else alert('Supprimé.');
+}
+
+function renameDevis(id, newName){
+  var list=_listDevis(); var d=list.find(x=>x.__id===id); if(!d) return;
+  d.__name = (newName||'').trim() || d.__name;
+  d.__updated_at=_nowISO();
+  _writeDevis(list);
+}
+
+function duplicateDevis(id){
+  var list=_listDevis(); var d=list.find(x=>x.__id===id); if(!d) return;
+  var cp=_clone(d); cp.__id=_newId('dv_'); cp.__name=cp.__name+' (copie)'; cp.__updated_at=_nowISO();
+  list.unshift(cp); _writeDevis(list);
+}
+
+function exportSavedDevis(){
+  var raw = JSON.stringify(_listDevis(), null, 2);
+  var blob = new Blob([raw], {type:'application/json;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href=url; a.download='saved_devis.json'; a.click(); URL.revokeObjectURL(url);
+}
+
+function importSavedDevisUI(){
+  var input=document.createElement('input'); input.type='file'; input.accept='application/json';
+  input.onchange=function(){
+    var f=input.files && input.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var arr=JSON.parse(rd.result||'[]'); if(!Array.isArray(arr)) throw new Error('Format inattendu.');
+        var map = {}; _listDevis().forEach(d=> map[d.__id]=d);
+        arr.forEach(d=>{ if(d && d.__id) map[d.__id]=d; });
+        _writeDevis(Object.values(map).sort(function(a,b){ return (b.__updated_at||'').localeCompare(a.__updated_at||''); }));
+        alert('✅ Import terminé.');
+        if(typeof pageSavedDevis==='function') pageSavedDevis();
+      }catch(e){ alert('❌ Import impossible : '+e.message); }
+    };
+    rd.readAsText(f,'utf-8');
+  };
+  input.click();
+}
+
+// Migration simple depuis ancienne clé (exemple)
+(function migrateOld(){
+  try{
+    var old = _lsGet('saved_devis_v2', null);
+    if(old && Array.isArray(old) && !_lsGet(KEY_SAVED_DEVIS, null)){
+      _writeDevis(old.map(function(d){
+        d.__id = d.__id || _newId('dv_');
+        d.__updated_at = d.__updated_at || _nowISO();
+        return d;
+      }));
+      localStorage.removeItem('saved_devis_v2');
+    }
+  }catch(e){}
+})();
+
+// Vérif quota (approx)
+function checkStorageQuota(){
+  try{
+    var total=0;
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i); var v=localStorage.getItem(k)||''; total += k.length + v.length;
+    }
+    alert('Espace localStorage estimé : '+_fmtBytes(total));
+  }catch(e){ alert('Quota inconnu : '+e.message); }
+}
+</script>
+
+<!-- §3.2.3 • Factures (snapshots) : CRUD + transformation -->
+<script>
+function _listInvoices(){ return _lsGet(KEY_INVOICES, []); }
+function _writeInvoices(arr){ _lsSet(KEY_INVOICES, arr||[]); }
+
+function listInvoices(){ return _listInvoices(); }
+
+function saveInvoiceSnapshot(fromDevis, mode){
+  var snap = _clone(fromDevis||window.devis||_blankDevis());
+  var inv = {
+    __id: _newId('fac_'),
+    created_at: _nowISO(),
+    mode: mode || 'tout_compris',
+    name: (snap.__name || 'Facture'),
+    snapshot: snap
+  };
+  var list=_listInvoices(); list.unshift(inv); _writeInvoices(list);
+  return inv.__id;
+}
+
+function deleteInvoice(id){
+  if(!confirm('Supprimer cette facture ?')) return;
+  _writeInvoices(_listInvoices().filter(x=>x.__id!==id));
+  if(typeof pageFacturesAccueil==='function') pageFacturesAccueil();
+}
+
+function renameInvoice(id, newName){
+  var list=_listInvoices(); var it=list.find(x=>x.__id===id); if(!it) return;
+  it.name=(newName||'').trim()||it.name; _writeInvoices(list);
+}
+
+function duplicateInvoice(id){
+  var list=_listInvoices(); var it=list.find(x=>x.__id===id); if(!it) return;
+  var cp=_clone(it); cp.__id=_newId('fac_'); cp.name=cp.name+' (copie)'; cp.created_at=_nowISO();
+  list.unshift(cp); _writeInvoices(list);
+}
+
+// Transformation : charger un devis en mode "facture" pour édition puis export
+function transformDevisToInvoiceEdit(id){
+  var list=_listDevis(); var d=list.find(x=>x.__id===id);
+  if(!d){ alert('Devis introuvable.'); return; }
+  var edited=_clone(d); edited.__mode='facture';
+  window.devis = edited; saveLocal();
+  if(typeof pageHome==='function') pageHome();
+  else view('<div class="card"><h2>Facture (édition)</h2><p>Le devis est chargé en mode facture.</p></div>');
+}
+</script>
   
+  <!-- =============================
+     CHAPITRE 3.2 (suite) : Pages + Exports fallback + Expose
+     Sommaire (suite) :
+       §3.2.4 • Pages : créer un devis / une facture (formulaire court)
+       §3.2.5 • Pages : Mes devis / Mes factures (listes + actions)
+       §3.2.6 • Fallback export TXT & Expose (window)
+     ============================= -->
+
+<!-- §3.2.4 • Pages : créer un devis / une facture -->
+<script>
+function _renderCreateForm(kind){
+  var title = (kind==='facture') ? 'Créer une nouvelle facture' : 'Créer un nouveau devis';
+  var hint  = (kind==='facture') ? 'Tu pourras éditer puis exporter.' : 'Tu seras redirigé vers l’éditeur.';
+  var tvaSel = [
+    {v:20, label:'20 %'}, {v:10, label:'10 %'}, {v:5.5, label:'5,5 %'}
+  ].map(o=>'<option value="'+o.v+'">'+o.label+'</option>').join('');
+  view(
+    '<div class="card">'
+      + (typeof pageMain==='function' ? b('Retour','pageMain()','btn back') : '')
+      + '<h2>'+title+'</h2>'
+      + '<label>Nom du client</label><input id="c_client" placeholder="Ex : Martin SARL" />'
+      + '<label style="margin-top:8px;">Lieu du chantier</label><input id="c_site" placeholder="Ex : 12 rue des Lilas, Lyon" />'
+      + '<label style="margin-top:8px;">Taux de TVA</label><select id="c_tva">'+tvaSel+'</select>'
+      + '<div class="row" style="margin-top:12px;">'
+        + b('Continuer','_createDocConfirm(\''+kind+'\')','btn primary')
+      + '</div>'
+      + '<p class="muted" style="margin-top:8px;">'+hint+'</p>'
+    + '</div>'
+  );
+}
+function _createDocConfirm(kind){
+  var client=(document.getElementById('c_client').value||'').trim();
+  var site  =(document.getElementById('c_site').value||'').trim();
+  var tva   = parseFloat(document.getElementById('c_tva').value)||20;
+
+  resetCurrent({ title:(kind==='facture'?'Facture — ':'Devis — ')+ (client||'Sans nom'),
+                 client, site, tva, mode:(kind==='facture'?'facture':'devis') });
+  saveLocal();
+  // on sauvegarde une première version dans la liste
+  saveCurrentAs(window.devis.__name, window.devis.__mode);
+  if(typeof pageHome==='function') pageHome(); else view('<div class="card"><h2>Éditeur</h2></div>');
+}
+
+function pageCreateDevis(){ _renderCreateForm('devis'); }
+function pageCreateFacture(){ _renderCreateForm('facture'); }
+</script>
+
+<!-- §3.2.5 • Pages : Mes devis / Mes factures -->
+<script>
+function _safePromptRename(defaultName){
+  var n = prompt('Nouveau nom :', defaultName||''); if(n==null) return null;
+  return n.trim();
+}
+
+function pageSavedDevis(){
+  var arr = listSavedDevis();
+  var html = '<div class="card">'
+    + (typeof pageMain==='function' ? b('Accueil','pageMain()','btn back') : '')
+    + '<h2>Mes devis sauvegardés</h2>'
+    + '<div class="row" style="gap:8px;margin:8px 0;">'
+      + b('Exporter (JSON)','exportSavedDevis()','btn')
+      + b('Importer (JSON)','importSavedDevisUI()','btn')
+    + '</div>'
+    + (arr.length? '<table class="table-mini" style="width:100%"><thead><tr>'
+      +'<th>Nom</th><th>Client</th><th>Chantier</th><th>MàJ</th><th>Actions</th></tr></thead><tbody>' : '<p class="muted">Aucun devis sauvegardé.</p>');
+
+  arr.forEach(function(d){
+    var when = new Date(d.__updated_at||d.__created_at||Date.now()).toLocaleString('fr-FR');
+    html += '<tr>'
+      + '<td><strong>'+ (d.__name||'Devis') +'</strong></td>'
+      + '<td>'+ (d.__client||'—') +'</td>'
+      + '<td>'+ (d.__chantier||'—') +'</td>'
+      + '<td><small>'+ when +'</small></td>'
+      + '<td>'
+        + b('Ouvrir','loadDevis("'+d.__id+'")','btn')
+        + b('Renommer','(function(){var n=_safePromptRename("'+(d.__name||'Devis').replace(/"/g,'&quot;')+'"); if(n!==null){ renameDevis("'+d.__id+'", n); pageSavedDevis(); }})()','btn')
+        + b('Dupliquer','(function(){ duplicateDevis("'+d.__id+'"); pageSavedDevis(); })()','btn')
+        + b('Transformer en facture (éditer)','transformDevisToInvoiceEdit("'+d.__id+'")','btn')
+        + b('Supprimer','(function(){ deleteDevis("'+d.__id+'"); })()','btn')
+      + '</td>'
+    + '</tr>';
+  });
+
+  if(arr.length) html += '</tbody></table>';
+  html += '</div>';
+  view(html);
+}
+
+function _fallbackInvoiceText(snap){
+  var name=snap.__name||'Facture';
+  var tvaOn = !!snap.__tva_applicable, taux = Math.max(0,+snap.__taux_tva||20);
+  var totalHT=0;
+  for(var k in snap){ if(k.indexOf('__')===0) continue; var s=snap[k]; var items=(s&&s.items)||[]; items.forEach(it=> totalHT += ((+it.prixU||0)*(+it.qty||0))); }
+  var tva = tvaOn ? totalHT*taux/100 : 0;
+  var out = [];
+  out.push('FACTURE — '+name);
+  out.push('Date : '+new Date().toLocaleDateString('fr-FR'));
+  out.push('Total HT : '+totalHT.toFixed(2)+' €');
+  if(tvaOn) out.push('TVA ('+taux+'%) : '+tva.toFixed(2)+' €');
+  out.push('Total TTC : '+(totalHT+tva).toFixed(2)+' €');
+  return out.join('\r\n');
+}
+
+function exportInvoiceSnapshotTXT(id, mode){
+  // si Chap.10 fournit exportInvoiceFromStored, on l’utilise
+  if(typeof window.exportInvoiceFromStored==='function'){ return window.exportInvoiceFromStored(id, mode==='sep'?'sep':'tc'); }
+  // sinon fallback : retrouver l’item et sortir un TXT simple
+  var inv=listInvoices().find(x=>x.__id===id); if(!inv){ alert('Introuvable.'); return; }
+  var txt=_fallbackInvoiceText(inv.snapshot||{});
+  var a=document.createElement('a'); var url=URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'}));
+  a.href=url; a.download=(inv.name||'facture')+'.txt'; a.click(); URL.revokeObjectURL(url);
+}
+
+function pageFacturesAccueil(){
+  var arr = listInvoices();
+  var html = '<div class="card">'
+    + (typeof pageMain==='function' ? b('Accueil','pageMain()','btn back') : '')
+    + '<h2>Mes factures</h2>';
+
+  if(!arr.length){
+    html += '<p class="muted">Aucune facture enregistrée pour le moment.</p>'
+          + '<div class="row" style="gap:8px;margin-top:8px;">'
+          +   b('Créer une facture','pageCreateFacture()','btn primary')
+          + '</div>';
+    html += '</div>'; view(html); return;
+  }
+
+  html += '<table class="table-mini" style="width:100%"><thead><tr>'
+      +'<th>Nom</th><th>Créée le</th><th>Mode</th><th>Actions</th></tr></thead><tbody>';
+
+  arr.forEach(function(inv){
+    var d=new Date(inv.created_at).toLocaleString('fr-FR');
+    html+='<tr>'
+      +'<td><strong>'+ (inv.name||'Facture') +'</strong></td>'
+      +'<td><small>'+ d +'</small></td>'
+      +'<td>'+ (inv.mode==='separe'?'Séparé':'Tout compris') +'</td>'
+      +'<td>'
+        + b('Ouvrir (éditer)','(function(){ window.devis=_clone('+JSON.stringify(inv).replace(/"/g,'&quot;')+'.snapshot); saveLocal(); if(typeof pageHome===\'function\'){ pageHome(); } })()','btn')
+        + b('TXT (tout compris)','exportInvoiceSnapshotTXT("'+inv.__id+'","tc")','btn')
+        + b('TXT (séparé)','exportInvoiceSnapshotTXT("'+inv.__id+'","sep")','btn')
+        + (typeof window.exportInvoiceCSVFromStored==='function'
+            ? b('CSV (2 lignes)','exportInvoiceCSVFromStored("'+inv.__id+'")','btn')
+            : '')
+        + b('Renommer','(function(){ var n=_safePromptRename("'+(inv.name||'Facture').replace(/"/g,'&quot;')+'"); if(n!==null){ renameInvoice("'+inv.__id+'", n); pageFacturesAccueil(); } })()','btn')
+        + b('Dupliquer','(function(){ duplicateInvoice("'+inv.__id+'"); pageFacturesAccueil(); })()','btn')
+        + b('Supprimer','(function(){ deleteInvoice("'+inv.__id+'"); })()','btn')
+      +'</td>'
+    +'</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  view(html);
+}
+</script>
+
+<!-- §3.2.6 • Expose (window) -->
+<script>
+Object.assign(window, {
+  // Devis courant
+  loadLocal, saveLocal, resetCurrent,
+  startAutoSave, setAutoSave,
+
+  // Devis list
+  listSavedDevis, saveCurrentAs, saveCurrentAsNew,
+  loadDevis, deleteDevis, renameDevis, duplicateDevis,
+  exportSavedDevis, importSavedDevisUI, checkStorageQuota,
+
+  // Factures
+  listInvoices, saveInvoiceSnapshot, deleteInvoice,
+  renameInvoice, duplicateInvoice, transformDevisToInvoiceEdit,
+  exportInvoiceSnapshotTXT,
+
+  // Pages
+  pageCreateDevis, pageCreateFacture,
+  pageSavedDevis, pageFacturesAccueil
+});
+</script>
 
   
 
