@@ -397,549 +397,142 @@ function getPrix(designation, intervention){
 
   
 <!-- =============================
-     CHAPITRE 4 : COEUR APP, MENU PRINCIPAL & SAUVEGARDE
-     Index :
-       4.0 • Styles & helpers UI
-       4.1 • Stockage (courant + bibliothèque) & auto-sauvegarde
-       4.2 • Navigation : en-tête (retour) + pied (retour accueil)
-       4.3 • Menu principal « Instant Devis »
-              - Créer un nouveau devis (form)
-              - Créer une nouvelle facture (form → facture immédiate)
-              - Transformer un devis en facture (sélecteur)
-              - Mes devis sauvegardés
-              - Mes factures sauvegardées
-              - Configuration & paramètres
-              - Catalogue prestations / matériel & tarifs
-       4.4 • Écrans « Nouveau devis / Nouvelle facture »
-       4.5 • Accueil du document (zone de travail) + boutons Générer devis/facture
-       4.6 • Bibliothèques : listes devis/factures (ouvrir, renommer, remplacer, dupliquer, supprimer)
-       4.7 • Stubs sécurisés (chap. 8/9/10/12/13 absents)
-       4.8 • Démarrage init()
+     CHAPITRE 4 : MENU PRINCIPAL (pageMain)
+     - Interface d’accueil de l’application “Instant Devis”
+     - Gère la création de devis, factures, et l’accès aux catalogues et paramètres
+     - Corrige le bug “pageMain non défini”
      ============================= -->
-
-<style>
-  :root{ --line:#e5e7eb; --muted:#6b7280; --bg:#f8fafc; }
-  body{ background:var(--bg); }
-  .wrap{ max-width:980px; margin:18px auto; }
-  .card{ border:1px solid var(--line); border-radius:10px; padding:14px; background:#fff; margin-bottom:16px; }
-  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .btn{ padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:#f7f7f7; cursor:pointer; }
-  .btn.primary{ background:#2563eb; color:#fff; border-color:#1d4ed8; }
-  .btn.ghost{ background:#fff; }
-  .btn.back{ background:#f3f4f6; }
-  .muted{ color:var(--muted); }
-  .headerbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-  .title{ font-size:22px; margin:0; }
-  .footerbar{ display:flex; justify-content:flex-end; margin-top:18px; }
-  input[type="text"], input[type="number"], select, textarea{
-    border:1px solid var(--line); border-radius:8px; padding:8px; width:100%;
-  }
-  .grid2{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
-  .grid3{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
-  .section-title{ margin:0 0 8px; }
-  .table-mini{ width:100%; border-collapse:collapse; }
-  .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; }
-  .table-mini th{ background:#fafafa; }
-  .pill{ display:inline-block; padding:6px 8px; border:1px solid var(--line); border-radius:999px; }
-</style>
-
 <script>
-// =============================
-// §4.0 • Helpers UI minimaux
-// =============================
-function view(html){ var app=document.getElementById('app'); if(app) app.innerHTML=html; }
-function b(txt, on, cls){ return '<button class="btn '+(cls||'')+'" onclick="'+on+'">'+txt+'</button>'; }
-function euro(n){ return (+(n||0)).toFixed(2)+'€'; }
-function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]); }
-function todayFR(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
-function nowISO(){ return new Date().toISOString(); }
-function uid(){ return 'id_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+/* ======== Sommaire ========
+   4.1 • Styles & helpers
+   4.2 • Fonctions de navigation
+   4.3 • Page principale (pageMain)
+   4.4 • Accès rapides & sécurité
+   4.5 • Expose (window)
+=========================== */
 
-// =============================
-// §4.1 • Stockage & autosave
-// =============================
-const KEY_CURR       = 'instantdevis_current_v1';
-const KEY_DEVIS_LIST = 'savedDevis_v1';
-const KEY_FACT_LIST  = 'savedInvoices_v1';
+/* 4.1 • Styles de base */
+(function(){
+  var css = `
+    .card { border:1px solid var(--line); border-radius:12px; background:#fff; padding:14px; margin-bottom:16px; }
+    .title { font-size:22px; font-weight:700; margin-bottom:10px; }
+    .section-title { font-size:18px; font-weight:600; margin:12px 0 6px; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; }
+    .muted { color:var(--muted,#666); font-size:14px; }
+    .btn { border:none; border-radius:8px; background:#eee; padding:8px 14px; cursor:pointer; font-size:15px; }
+    .btn.primary { background:#0a84ff; color:#fff; }
+    .btn.back { background:#ccc; }
+  `;
+  var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
+})();
 
-let devis = window.devis || {
-  __id: null,
-  __name: '',
-  __type: 'devis',       // 'devis' | 'facture'
-  __tva_applicable: true,
-  __taux_tva: 20,
-  __client: '',
-  __chantier: '',
-  __created_at: '',
-  __updated_at: '',
-  // sections de pièces / tableaux viendront s'ajouter ici (clé -> {items:[]})
-};
-
-function readLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-function writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
-
-function loadLocal(){
-  const cur = readLS(KEY_CURR, null);
-  if(cur && typeof cur==='object'){ devis = cur; }
+/* 4.2 • Fonctions de navigation */
+function goHomeConfirm(){
+  if (confirm("Revenir à l’accueil ? Les données non sauvegardées seront perdues.")) pageMain();
 }
-function saveLocal(){
-  devis.__updated_at = nowISO();
-  writeLS(KEY_CURR, devis);
-}
+function goAccueil(){ pageMain(); }
 
-function getSavedDevis(){ return readLS(KEY_DEVIS_LIST, []); }
-function setSavedDevis(list){ writeLS(KEY_DEVIS_LIST, list||[]); }
-function getSavedFactures(){ return readLS(KEY_FACT_LIST, []); }
-function setSavedFactures(list){ writeLS(KEY_FACT_LIST, list||[]); }
-
-let _autosaveTimer = null;
-const AUTO_SAVE_MS = 10000;
-function startAutosave(){
-  stopAutosave();
-  _autosaveTimer = setInterval(function(){
-    if(devis && devis.__id) saveLocal();
-  }, AUTO_SAVE_MS);
-}
-function stopAutosave(){ if(_autosaveTimer){ clearInterval(_autosaveTimer); _autosaveTimer=null; } }
-
-// =============================
-// §4.2 • Navigation — header/footer
-// =============================
-function headerBar(showBack, backFn){
-  return '<div class="headerbar">'
-    + (showBack ? b('⬅️ Retour', backFn||'pageMain()', 'btn back') : '<span></span>')
-    + '<h1 class="title">Instant Devis</h1>'
-    + '<span></span>'
-  + '</div>';
-}
-function footerBar(showHome){
-  return showHome ? ('<div class="footerbar">'
-    + b('🏠 Retour à l’accueil','confirmBackHome()','btn')
-    + '</div>') : '';
-}
-function confirmBackHome(){
-  // Si autosave actif, retour direct (aucun risque de perte)
-  if(_autosaveTimer){ pageMain(); return; }
-  if(!devis || !devis.__id){ pageMain(); return; }
-  const ok = confirm('Revenir à l’accueil ?\nLes modifications non sauvegardées pourraient être perdues.');
-  if(ok) pageMain();
-}
-
-// =============================
-// §4.3 • MENU PRINCIPAL
-// =============================
+/* 4.3 • Page principale */
 function pageMain(){
-  stopAutosave(); // au menu, on stoppe l’auto-save
   view(
-    '<div class="wrap">'
-    + headerBar(false)
-    + '<div class="card"><h2>Créer un nouveau document</h2>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('📝 Créer un nouveau devis','pageNewDevis()','btn primary')
-        + b('💶 Créer une nouvelle facture','pageNewFacture()','btn')
-        + b('🔁 Transformer un devis en facture','pageSelectDevisToInvoice()','btn')
-      + '</div>'
-    + '</div>'
-
-    + '<div class="card"><h2>Documents sauvegardés</h2>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('📁 Mes devis sauvegardés','pageSavedDevis()','btn')
-        + b('📂 Mes factures sauvegardées','pageSavedFactures()','btn')
-      + '</div>'
-    + '</div>'
-
-    + '<div class="card"><h2>Configuration & paramètres</h2>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('🏢 Configuration entreprise','pageConfigEntreprise ? pageConfigEntreprise() : stubConfigEntreprise()','btn')
-        + b('⚙️ Préférences générales','pagePreferences ? pagePreferences() : stubPreferences()','btn')
-      + '</div>'
-    + '</div>'
-
-    + '<div class="card"><h2>Catalogue prestations/matériel & tarifs de pose</h2>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('📚 Configurer le catalogue prestations','pageCataloguePrestations()','btn')
-        + b('💸 Configurer les tarifs & coefficients','pageTarifsCoeffsAccueil()','btn')
-        + b('🏷️ Configuration catalogue matériel','pageCatalogueMateriel()','btn')
-      + '</div>'
-      + '<p class="muted" style="margin-top:6px">Tout changement ici se répercute sur l’application (menus, tarifs, estimatif, devis et factures).</p>'
-    + '</div>'
-
-    + '</div>'
-  );
-}
-
-// =============================
-// §4.4 • Écrans NOUVEAU devis / facture
-// =============================
-function _newDocForm(type){
-  // type: 'devis' | 'facture'
-  const title = (type==='facture') ? 'Créer une nouvelle facture' : 'Créer un nouveau devis';
-  view(
-    '<div class="wrap">'
-    + headerBar(true,'pageMain()')
-    + '<div class="card">'
-      + '<h2>'+title+'</h2>'
-      + '<div class="grid2" style="margin-top:10px;">'
-        + '<div><label>Nom du client</label><input id="f_client" type="text" placeholder="Ex: Martin SARL"/></div>'
-        + '<div><label>Lieu du chantier</label><input id="f_chantier" type="text" placeholder="Adresse, ville"/></div>'
-        + '<div><label>TVA applicable</label>'
-          + '<select id="f_tva">'
-            + '<option value="20">20 %</option>'
-            + '<option value="10">10 %</option>'
-            + '<option value="5.5">5,5 %</option>'
-            + '<option value="0">0 % (exonéré)</option>'
-          + '</select>'
-        + '</div>'
-      + '</div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b('Continuer','submitNewDoc("'+type+'")','btn primary')
-      + '</div>'
-      + '<p class="muted" style="margin-top:8px;">Le document sera enregistré automatiquement et l’auto-sauvegarde sera activée.</p>'
-    + '</div>'
-    + footerBar(true)
-    + '</div>'
-  );
-}
-function pageNewDevis(){ _newDocForm('devis'); }
-function pageNewFacture(){ _newDocForm('facture'); }
-
-function submitNewDoc(type){
-  function gv(id){ var el=document.getElementById(id); return (el && el.value||'').trim(); }
-  const client   = gv('f_client');
-  const chantier = gv('f_chantier');
-  const tvaVal   = parseFloat(gv('f_tva')||'20');
-  const nameBase = (client?client:'Sans nom') + ' — ' + todayFR();
-  devis = {
-    __id: uid(),
-    __name: (type==='facture'?'Facture ':'Devis ') + nameBase,
-    __type: type, // 'devis' | 'facture'
-    __tva_applicable: tvaVal>0,
-    __taux_tva: tvaVal>0 ? tvaVal : 0,
-    __client: client,
-    __chantier: chantier,
-    __created_at: nowISO(),
-    __updated_at: nowISO()
-  };
-  saveLocal();
-  // Si c’est une création de facture, on enregistre aussi dans la bibliothèque factures d’entrée de jeu
-  if(type==='facture'){
-    const list = getSavedFactures();
-    list.unshift({ __id: devis.__id, __name: devis.__name, snapshot: devis, created_at: nowISO(), updated_at: nowISO() });
-    setSavedFactures(list);
-  }else{
-    // Devis : on l’enregistre aussi immédiatement (= version 1)
-    const list = getSavedDevis();
-    list.unshift({ __id: devis.__id, __name: devis.__name, snapshot: devis, created_at: nowISO(), updated_at: nowISO() });
-    setSavedDevis(list);
-  }
-  pageAccueilDoc();
-  startAutosave(); // autosave activée une fois dans le document
-}
-
-// =============================
-// §4.5 • Accueil du document (zone de travail)
-// =============================
-function pageAccueilDoc(){
-  if(!devis || !devis.__id){ pageMain(); return; }
-  startAutosave();
-
-  // libellés
-  const isFact = devis.__type==='facture';
-  const genBtnLabel = isFact ? '🧾 Générer la facture' : '🧾 Générer le devis';
-
-  view(
-    '<div class="wrap">'
-    + headerBar(true,'pageMain()')
-    + '<div class="card">'
-      + '<h2>'+escapeHtml(devis.__name)+'</h2>'
-      + '<p class="muted">Client : <strong>'+escapeHtml(devis.__client||'—')+'</strong> • Chantier : <strong>'+escapeHtml(devis.__chantier||'—')+'</strong> • TVA : <strong>'+(devis.__tva_applicable?(devis.__taux_tva+'%'):'0%')+'</strong></p>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('➕ Ajouter une pièce','goVent ? pageHome() : stubAddPiece()','btn')  // si chapitres pièce/vent déjà présents
-        + b('🧰 Créer un tableau','pageTabCreate ? pageTabCreate() : stubCreateTableau()','btn')
-        + b('🛠️ Modifier un tableau','pageTabModsAccueil ? pageTabModsAccueil() : stubModsTableau()','btn')
-        + b('🌬️ Ventilation','pageVentAccueil ? pageVentAccueil() : stubVent()','btn')
+    '<div class="card">'
+      + '<div class="title">Instant Devis</div>'
+      + '<div class="section-title">Créer un nouveau document</div>'
+      + '<div class="row">'
+        + b("Créer un nouveau devis","pageNewDevis()","btn primary")
+        + b("Créer une nouvelle facture","pageNewFacture()","btn")
+        + b("Transformer un devis en facture","pageTransformDevisFacture()","btn")
       + '</div>'
     + '</div>'
 
     + '<div class="card">'
-      + '<h3 class="section-title">Estimatif détaillé</h3>'
-      + '<div class="row" style="gap:6px;">'
-        + b('📄 Ouvrir l’estimatif','pageEstimatif ? pageEstimatif() : stubEstimatif()','btn')
-        + b('Σ Totaux par groupe','pageTotaux ? pageTotaux() : stubTotaux()','btn')
-      + '</div>'
-      + '<div class="row" style="gap:6px; margin-top:8px;">'
-        + b(genBtnLabel, 'exportGenerateDialog()', 'btn primary')
-        + b('💾 Enregistrer','saveCurrentDoc()','btn')
+      + '<div class="section-title">Documents sauvegardés</div>'
+      + '<div class="row">'
+        + b("Mes devis sauvegardés","pageSavedDevis()","btn")
+        + b("Mes factures sauvegardées","pageFacturesAccueil()","btn")
       + '</div>'
     + '</div>'
 
-    + footerBar(true)
+    + '<div class="card">'
+      + '<div class="section-title">Configuration et paramètres</div>'
+      + '<div class="row">'
+        + b("Configuration entreprise","pageCompanyConfig()","btn")
+        + b("Préférences générales","pagePrefsGenerales()","btn")
+      + '</div>'
+    + '</div>'
+
+    + '<div class="card">'
+      + '<div class="section-title">Catalogue prestations / matériel et tarifs</div>'
+      + '<div class="row">'
+        + b("Configuration catalogue prestations","pageCataloguePrestations()","btn primary")
+        + b("Tarifs et coefficients","pageTarifsEtCoeffs()","btn")
+        + b("Catalogue matériel","pageCatalogueMateriel()","btn")
+      + '</div>'
+    + '</div>'
+
+    + '<div class="card muted">'
+      + '<p>Version 3.0 — Tous droits réservés © Alba Elec</p>'
     + '</div>'
   );
 }
 
-// Générer devis/facture → ouvre les exports (chap.10) si disponibles
-function exportGenerateDialog(){
-  if(typeof exportDevisToutComprisTXT==='function' || typeof exportInvoiceText==='function'){
-    // Si les chapitres d’export sont présents, on renvoie vers l’estimatif où se trouvent les boutons d’export
-    alert('Choisis le type d’export dans l’écran « Estimatif détaillé ».');
-    if(typeof pageEstimatif==='function'){ pageEstimatif(); }
-    return;
-  }
-  alert('Fonctions d’export non encore chargées (chapitre 10).');
+/* 4.4 • Pages de redirection (stubs sécurisés)
+   Ces fonctions existent même si leurs chapitres ne sont pas encore chargés. */
+function pageNewDevis(){
+  if(typeof window.pageCreateDevis === 'function') return pageCreateDevis();
+  alert("⚠️ Fonction création devis non encore chargée (chapitre devis manquant).");
 }
-
-// Sauvegarde manuelle avec choix : remplacer ou nouvelle version
-function saveCurrentDoc(){
-  if(!devis || !devis.__id){ alert('Aucun document en cours.'); return; }
-  saveLocal();
-
-  const isFact = devis.__type==='facture';
-  const list = isFact ? getSavedFactures() : getSavedDevis();
-  const idx = list.findIndex(x=>x.__id===devis.__id);
-
-  const choice = prompt('Tape "N" pour nouvelle version, "R" pour remplacer (par défaut : N)', 'N');
-  const asNew = !choice || /^n/i.test(choice);
-
-  if(asNew){
-    // duplique avec nouvel __id + nouveau nom si souhaité
-    const newName = prompt('Nom de la nouvelle version :', devis.__name + ' (v2)');
-    const copy = JSON.parse(JSON.stringify(devis));
-    copy.__id = uid();
-    if(newName && newName.trim()) copy.__name = newName.trim();
-    copy.__created_at = nowISO(); copy.__updated_at = nowISO();
-    if(isFact){
-      const L = getSavedFactures(); L.unshift({ __id: copy.__id, __name: copy.__name, snapshot: copy, created_at: nowISO(), updated_at: nowISO() }); setSavedFactures(L);
-    }else{
-      const L = getSavedDevis(); L.unshift({ __id: copy.__id, __name: copy.__name, snapshot: copy, created_at: nowISO(), updated_at: nowISO() }); setSavedDevis(L);
-    }
-    devis = copy;
-    saveLocal();
-    alert('Nouvelle version enregistrée.');
-  }else{
-    // remplacement en place
-    const snap = JSON.parse(JSON.stringify(devis));
-    if(idx>=0){
-      list[idx].__name = snap.__name;
-      list[idx].snapshot = snap;
-      list[idx].updated_at = nowISO();
-    }else{
-      list.unshift({ __id: snap.__id, __name: snap.__name, snapshot: snap, created_at: nowISO(), updated_at: nowISO() });
-    }
-    if(isFact) setSavedFactures(list); else setSavedDevis(list);
-    alert('Document remplacé.');
-  }
+function pageNewFacture(){
+  if(typeof window.pageCreateFacture === 'function') return pageCreateFacture();
+  alert("⚠️ Fonction création facture non encore chargée (chapitre facture manquant).");
 }
-
-// =============================
-// §4.6 • Bibliothèques : Devis / Factures
-// =============================
+function pageTransformDevisFacture(){
+  if(typeof window.pageTransformDevisFacture === 'function') return pageTransformDevisFacture();
+  alert("⚠️ Fonction de transformation non encore chargée (chapitre facturation manquant).");
+}
 function pageSavedDevis(){
-  stopAutosave();
-  const list = getSavedDevis();
-  let html = '<div class="wrap">'
-    + headerBar(true,'pageMain()')
-    + '<div class="card"><h2>Mes devis sauvegardés</h2>';
-
-  if(!list.length){
-    html += '<p class="muted">Aucun devis sauvegardé pour le moment.</p>';
-  }else{
-    html += '<table class="table-mini"><thead><tr><th>Nom</th><th>Créé le</th><th>Actions</th></tr></thead><tbody>';
-    list.forEach(rec=>{
-      const d = new Date(rec.created_at||rec.updated_at||Date.now()).toLocaleString('fr-FR');
-      html += '<tr>'
-        + '<td>'+escapeHtml(rec.__name||'Devis')+'</td>'
-        + '<td>'+d+'</td>'
-        + '<td>'
-          + b('Ouvrir','openSavedDevis("'+rec.__id+'")','btn')
-          + b('Renommer','renameSavedDevis("'+rec.__id+'")','btn')
-          + b('Dupliquer','duplicateSavedDevis("'+rec.__id+'")','btn')
-          + b('Supprimer','deleteSavedDevis("'+rec.__id+'")','btn')
-        + '</td>'
-        + '</tr>';
-    });
-    html += '</tbody></table>';
-  }
-  html += '</div>'+footerBar(true)+'</div>';
-  view(html);
-
-  // handlers
-  window.openSavedDevis = function(id){
-    const list = getSavedDevis();
-    const rec = list.find(x=>x.__id===id); if(!rec){ alert('Introuvable'); return; }
-    devis = JSON.parse(JSON.stringify(rec.snapshot||{}));
-    saveLocal();
-    pageAccueilDoc();
-  };
-  window.renameSavedDevis = function(id){
-    const list = getSavedDevis(); const rec = list.find(x=>x.__id===id); if(!rec) return;
-    const nv = prompt('Nouveau nom :', rec.__name||'Devis'); if(!nv) return;
-    rec.__name = nv.trim(); rec.updated_at = nowISO(); setSavedDevis(list); pageSavedDevis();
-  };
-  window.duplicateSavedDevis = function(id){
-    const list = getSavedDevis(); const rec = list.find(x=>x.__id===id); if(!rec) return;
-    const copy = JSON.parse(JSON.stringify(rec));
-    copy.__id = uid(); copy.__name = (rec.__name||'Devis')+' (copie)'; copy.created_at = nowISO(); copy.updated_at = nowISO();
-    setSavedDevis([copy, ...list]); pageSavedDevis();
-  };
-  window.deleteSavedDevis = function(id){
-    if(!confirm('Supprimer ce devis ?')) return;
-    const list = getSavedDevis().filter(x=>x.__id!==id); setSavedDevis(list); pageSavedDevis();
-  };
+  if(typeof window.pageSavedDevisAccueil === 'function') return pageSavedDevisAccueil();
+  alert("⚠️ La page des devis sauvegardés n’est pas encore chargée.");
 }
-
-function pageSavedFactures(){
-  stopAutosave();
-  const list = getSavedFactures();
-  let html = '<div class="wrap">'
-    + headerBar(true,'pageMain()')
-    + '<div class="card"><h2>Mes factures sauvegardées</h2>';
-
-  if(!list.length){
-    html += '<p class="muted">Aucune facture sauvegardée pour le moment.</p>';
-  }else{
-    html += '<table class="table-mini"><thead><tr><th>Nom</th><th>Créée le</th><th>Actions</th></tr></thead><tbody>';
-    list.forEach(rec=>{
-      const d = new Date(rec.created_at||rec.updated_at||Date.now()).toLocaleString('fr-FR');
-      html += '<tr>'
-        + '<td>'+escapeHtml(rec.__name||'Facture')+'</td>'
-        + '<td>'+d+'</td>'
-        + '<td>'
-          + b('Ouvrir','openSavedFacture("'+rec.__id+'")','btn')
-          + b('Renommer','renameSavedFacture("'+rec.__id+'")','btn')
-          + b('Dupliquer','duplicateSavedFacture("'+rec.__id+'")','btn')
-          + b('Supprimer','deleteSavedFacture("'+rec.__id+'")','btn')
-        + '</td>'
-        + '</tr>';
-    });
-    html += '</tbody></table>';
-  }
-  html += '</div>'+footerBar(true)+'</div>';
-  view(html);
-
-  // handlers
-  window.openSavedFacture = function(id){
-    const list = getSavedFactures();
-    const rec = list.find(x=>x.__id===id); if(!rec){ alert('Introuvable'); return; }
-    devis = JSON.parse(JSON.stringify(rec.snapshot||{}));
-    devis.__type = 'facture';
-    saveLocal();
-    pageAccueilDoc();
-  };
-  window.renameSavedFacture = function(id){
-    const list = getSavedFactures(); const rec = list.find(x=>x.__id===id); if(!rec) return;
-    const nv = prompt('Nouveau nom :', rec.__name||'Facture'); if(!nv) return;
-    rec.__name = nv.trim(); rec.updated_at = nowISO(); setSavedFactures(list); pageSavedFactures();
-  };
-  window.duplicateSavedFacture = function(id){
-    const list = getSavedFactures(); const rec = list.find(x=>x.__id===id); if(!rec) return;
-    const copy = JSON.parse(JSON.stringify(rec));
-    copy.__id = uid(); copy.__name = (rec.__name||'Facture')+' (copie)'; copy.created_at = nowISO(); copy.updated_at = nowISO();
-    setSavedFactures([copy, ...list]); pageSavedFactures();
-  };
-  window.deleteSavedFacture = function(id){
-    if(!confirm('Supprimer cette facture ?')) return;
-    const list = getSavedFactures().filter(x=>x.__id!==id); setSavedFactures(list); pageSavedFactures();
-  };
+function pageFacturesAccueil(){
+  if(typeof window.pageFacturesAccueil === 'function') return window.pageFacturesAccueil();
+  alert("⚠️ La page des factures sauvegardées n’est pas encore chargée.");
 }
-
-// Transformer un devis en facture : sélection dans la liste des devis
-function pageSelectDevisToInvoice(){
-  stopAutosave();
-  const list = getSavedDevis();
-  let html = '<div class="wrap">'
-    + headerBar(true,'pageMain()')
-    + '<div class="card"><h2>Transformer un devis en facture</h2>';
-
-  if(!list.length){
-    html += '<p class="muted">Aucun devis sauvegardé. Crée d’abord un devis.</p>';
-  }else{
-    html += '<table class="table-mini"><thead><tr><th>Nom du devis</th><th>Créé le</th><th>Action</th></tr></thead><tbody>';
-    list.forEach(rec=>{
-      const d = new Date(rec.created_at||rec.updated_at||Date.now()).toLocaleString('fr-FR');
-      html += '<tr>'
-        + '<td>'+escapeHtml(rec.__name||'Devis')+'</td>'
-        + '<td>'+d+'</td>'
-        + '<td>'+b('Transformer','transformThisDevis("'+rec.__id+'")','btn primary')+'</td>'
-        + '</tr>';
-    });
-    html += '</tbody></table>';
-  }
-  html += '</div>'+footerBar(true)+'</div>';
-  view(html);
-
-  window.transformThisDevis = function(id){
-    const list = getSavedDevis(); const rec = list.find(x=>x.__id===id); if(!rec){ alert('Introuvable'); return; }
-    // Charger le devis puis basculer en facture
-    devis = JSON.parse(JSON.stringify(rec.snapshot||{}));
-    devis.__type = 'facture';
-    devis.__name = (devis.__name||'Devis').replace(/^Devis\b/i,'Facture');
-    saveLocal();
-    pageAccueilDoc();
-    startAutosave();
-  };
+function pageCompanyConfig(){
+  if(typeof window.pageCompanyConfig === 'function') return window.pageCompanyConfig();
+  alert("⚙️ Configuration entreprise : chapitre non encore chargé.");
 }
-
-// =============================
-// §4.7 • STUBS sécurisés (si chapitres absents)
-// =============================
-function stubConfigEntreprise(){ alert('La page "Configuration entreprise" (chap. 12) n’est pas encore chargée.'); }
-function stubPreferences(){ alert('La page "Préférences générales" (chap. 12) n’est pas encore chargée.'); }
-function stubAddPiece(){ alert('Les écrans de saisie des pièces ne sont pas encore chargés (chap. 5/6/7/9/11).'); }
-function stubCreateTableau(){ alert('Les écrans Tableau ne sont pas encore chargés (chap. 6/9).'); }
-function stubModsTableau(){ alert('Les écrans Modifications de tableau ne sont pas encore chargés (chap. 9).'); }
-function stubVent(){ alert('La section Ventilation n’est pas encore chargée (chap. 7).'); }
-function stubEstimatif(){ alert('Les exports/estimatif (chap. 11) ne sont pas encore chargés.'); }
-function stubTotaux(){ alert('Les exports/estimatif (chap. 11) ne sont pas encore chargés.'); }
-
-// Liens menu vers Chapitre 8/13 — stubs d’accueil
+function pagePrefsGenerales(){
+  if(typeof window.pagePrefsGenerales === 'function') return window.pagePrefsGenerales();
+  alert("⚙️ Préférences générales : chapitre non encore chargé.");
+}
 function pageCataloguePrestations(){
-  if(typeof pageCatalogue==='function'){ pageCatalogue(); return; }
-  alert('Le Catalogue Prestations (chap. 13) n’est pas encore chargé.\nTu pourras y ajouter des types et tarifs.');
+  if(typeof window.pageCataloguePrestations === 'function') return window.pageCataloguePrestations();
+  alert("📦 Catalogue prestations : module non chargé.");
 }
-function pageTarifsCoeffsAccueil(){
-  if(typeof pageTarifsAccueil==='function'){ pageTarifsAccueil(); return; }
-  alert('La page "Tarifs & coefficients" (chap. 8) n’est pas encore chargée.');
+function pageTarifsEtCoeffs(){
+  if(typeof window.pageTarifsEtCoeffs === 'function') return window.pageTarifsEtCoeffs();
+  alert("📊 Tarifs & coefficients : module non chargé.");
 }
 function pageCatalogueMateriel(){
-  // futur : marques/gammes par famille (appareillage/coffrets etc.)
-  alert('La configuration du catalogue matériel sera disponible dès que le chapitre dédié sera collé.');
+  if(typeof window.pageCatalogueMateriel === 'function') return window.pageCatalogueMateriel();
+  alert("🔧 Catalogue matériel : module non chargé.");
 }
 
-// =============================
-// §4.8 • Démarrage init()
-// =============================
-function init(){
-  try{
-    loadLocal();
-    pageMain();
-  }catch(err){
-    var el = document.getElementById('app');
-    if(el){
-      el.innerHTML = '<div class="card"><h2>Erreur init()</h2><pre>'
-        + ((err && err.stack) || String(err)) + '</pre></div>';
-    }
-  }
-}
-
-// Expose global minimal
-Object.assign(window,{
+/* 4.5 • Expose (window) */
+Object.assign(window, {
   pageMain,
-  pageNewDevis, pageNewFacture, submitNewDoc,
-  pageAccueilDoc, exportGenerateDialog, saveCurrentDoc,
-  pageSavedDevis, pageSavedFactures,
-  pageSelectDevisToInvoice,
-  confirmBackHome,
-  init
+  goHomeConfirm,
+  goAccueil
 });
 
-// Lancement auto si #app présent
-document.addEventListener('DOMContentLoaded', function(){
-  var app = document.getElementById('app');
-  if(app){ init(); }
-});
+// Auto-lancement à l’ouverture si aucune autre vue n’est affichée
+if(document.readyState==='complete'){
+  setTimeout(()=>{ if(document.getElementById('app')?.innerHTML.trim()===''){ pageMain(); } },200);
+}else{
+  window.addEventListener('load',()=>{ if(document.getElementById('app')?.innerHTML.trim()===''){ pageMain(); } });
+}
 </script>
-
 
 
 
