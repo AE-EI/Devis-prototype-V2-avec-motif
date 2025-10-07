@@ -971,6 +971,324 @@ function editPieceNote(){
 
 
 
+  
+
+  <!-- =============================
+     CHAPITRE 5 bis : CRÉATION DEVIS/FACTURE, TRANSFORMATION & BOUTONS “GÉNÉRER”
+     Index :
+       §6.0 • Helpers (LS, dates, TVA, autosave)
+       §6.1 • Formulaire “Nouveau devis” (client, lieu, TVA)
+       §6.2 • Formulaire “Nouvelle facture” (client, lieu, TVA)
+       §6.3 • Transformer un devis sauvegardé en facture
+       §6.4 • Injection des boutons “Générer devis / facture” dans l’Accueil (Chap.5)
+       §6.5 • Expose (window)
+     ============================= -->
+<script>
+/* ============================
+   §6.0 • Helpers
+   ============================ */
+const KEY_SAVED_DEVIS_A = 'savedDevis_v2'; // formats précédents possibles
+const KEY_SAVED_DEVIS_B = 'savedDevis';    // fallback si l’appli existante l’utilise
+
+function _lsRead(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _lsWrite(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+function _todayFR6(){
+  try{ return new Date().toLocaleDateString('fr-FR', {year:'numeric',month:'2-digit',day:'2-digit'}); }
+  catch(e){ return new Date().toLocaleDateString(); }
+}
+function _round2(n){ return Math.round((+n||0)*100)/100; }
+
+function _parseTVAChoice(val){
+  // val ∈ {'20','10','5.5','0'} → {on:boolean,taux:number}
+  var t = String(val||'20').replace(',','.');
+  var taux = Math.max(0, parseFloat(t) || 20);
+  return { on: taux>0, taux: taux };
+}
+
+// Sauvegarde locale de l'état courant (si saveLocal n’existe pas déjà)
+function saveLocalSafe(){
+  if(typeof saveLocal === 'function'){ try{ saveLocal(); }catch(e){}; return; }
+  try{ localStorage.setItem('devis_current', JSON.stringify(window.devis||{})); }catch(e){}
+}
+function loadLocalSafe(){
+  if(typeof loadLocal === 'function'){ try{ loadLocal(); return; }catch(e){}; }
+  try{ window.devis = JSON.parse(localStorage.getItem('devis_current')||'{}') || {}; }catch(e){ window.devis={}; }
+}
+
+// Autosave toutes les 10 s (si un devis/facture est en cours)
+let _autosaveTimer6 = null;
+function startAutoSave6(){
+  stopAutoSave6();
+  _autosaveTimer6 = setInterval(function(){
+    if(window.devis && Object.keys(window.devis).length){
+      saveLocalSafe();
+    }
+  }, 10000);
+}
+function stopAutoSave6(){ if(_autosaveTimer6){ clearInterval(_autosaveTimer6); _autosaveTimer6=null; } }
+
+/* Modèle “squelette” de document */
+function _newDocSkeleton(kind, meta){
+  // kind: 'devis' | 'facture'
+  var tva = _parseTVAChoice(meta.tva || '20');
+  return {
+    __id: 'doc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),
+    __kind: kind, // indicatif, non bloquant
+    __created_at: new Date().toISOString(),
+    __name: (meta.title||'Document').trim(),
+    __client: (meta.client||'').trim(),
+    __lieu: (meta.lieu||'').trim(),
+    __tva_applicable: !!tva.on,
+    __taux_tva: _round2(tva.taux),
+    // Contenu “pièces / tableaux”
+    // Chaque clé (hors __*) représente une pièce avec {items:[]...}
+  };
+}
+
+/* ============================
+   §6.1 • Nouveau devis
+   ============================ */
+function pageCreateDevis(){
+  var tvaOpts = [
+    {v:'20',  l:'20 %'},
+    {v:'10',  l:'10 %'},
+    {v:'5.5', l:'5,5 %'},
+    {v:'0',   l:'TVA non applicable'}
+  ].map(o=>'<option value="'+o.v+'">'+o.l+'</option>').join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageMain()','btn back')
+      + '<h2>Nouveau devis</h2>'
+      + '<label>Nom du client</label>'
+      + '<input id="nd-client" placeholder="ex : M. et Mme Dupont" />'
+      + '<label style="margin-top:10px;">Lieu du chantier</label>'
+      + '<input id="nd-lieu" placeholder="ex : 12 rue des Fleurs, 75000 Paris" />'
+      + '<label style="margin-top:10px;">TVA applicable</label>'
+      + '<select id="nd-tva">'+tvaOpts+'</select>'
+      + '<label style="margin-top:10px;">Titre du devis</label>'
+      + '<input id="nd-title" placeholder="ex : Devis Dupont — Rénovation T3" />'
+      + '<div class="row" style="margin-top:12px;">'
+        + b('Continuer','createDevisConfirm()','btn primary')
+        + b('Retour à l’accueil','pageMain()','btn')
+      + '</div>'
+    + '</div>'
+  );
+}
+function createDevisConfirm(){
+  var meta = {
+    client: (document.getElementById('nd-client').value||'').trim(),
+    lieu:   (document.getElementById('nd-lieu').value||'').trim(),
+    tva:    (document.getElementById('nd-tva').value||'20'),
+    title:  (document.getElementById('nd-title').value||'Devis').trim() || 'Devis'
+  };
+  window.devis = _newDocSkeleton('devis', meta);
+  // Nom de la première section “Divers” par défaut
+  devis['Divers'] = { __base:'Divers', items:[] };
+
+  saveLocalSafe();
+  startAutoSave6();
+
+  // On enchaîne vers l’accueil (Chap.5) pour ajouter des pièces & lignes
+  if(typeof pageHome === 'function') pageHome(); else alert('Devis créé — charge la page d’accueil pour continuer.');
+}
+
+/* ============================
+   §6.2 • Nouvelle facture
+   ============================ */
+function pageCreateFacture(){
+  var tvaOpts = [
+    {v:'20',  l:'20 %'},
+    {v:'10',  l:'10 %'},
+    {v:'5.5', l:'5,5 %'},
+    {v:'0',   l:'TVA non applicable'}
+  ].map(o=>'<option value="'+o.v+'">'+o.l+'</option>').join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageMain()','btn back')
+      + '<h2>Nouvelle facture</h2>'
+      + '<label>Nom du client</label>'
+      + '<input id="nf-client" placeholder="ex : M. et Mme Dupont" />'
+      + '<label style="margin-top:10px;">Lieu du chantier</label>'
+      + '<input id="nf-lieu" placeholder="ex : 12 rue des Fleurs, 75000 Paris" />'
+      + '<label style="margin-top:10px;">TVA applicable</label>'
+      + '<select id="nf-tva">'+tvaOpts+'</select>'
+      + '<label style="margin-top:10px;">Titre de la facture</label>'
+      + '<input id="nf-title" placeholder="ex : Facture Dupont — Rénovation T3" />'
+      + '<div class="row" style="margin-top:12px;">'
+        + b('Continuer','createFactureConfirm()','btn primary')
+        + b('Retour à l’accueil','pageMain()','btn')
+      + '</div>'
+    + '</div>'
+  );
+}
+function createFactureConfirm(){
+  var meta = {
+    client: (document.getElementById('nf-client').value||'').trim(),
+    lieu:   (document.getElementById('nf-lieu').value||'').trim(),
+    tva:    (document.getElementById('nf-tva').value||'20'),
+    title:  (document.getElementById('nf-title').value||'Facture').trim() || 'Facture'
+  };
+  window.devis = _newDocSkeleton('facture', meta);
+  devis['Divers'] = { __base:'Divers', items:[] };
+
+  saveLocalSafe();
+  startAutoSave6();
+
+  if(typeof pageHome === 'function') pageHome(); else alert('Facture créée — charge la page d’accueil pour ajouter des lignes.');
+}
+
+/* ============================
+   §6.3 • Transformer un devis sauvegardé en facture
+   ============================ */
+function _readSavedDevisList6(){
+  // Essaie plusieurs formats connus
+  var a = _lsRead(KEY_SAVED_DEVIS_A, null);
+  if(Array.isArray(a) && a.length) return a;
+
+  var b = _lsRead(KEY_SAVED_DEVIS_B, null);
+  if(Array.isArray(b) && b.length) return b;
+
+  // Fallback : aucun
+  return [];
+}
+
+function pageTransformDevisFacture(){
+  var list = _readSavedDevisList6();
+  if(!list.length){
+    view(
+      '<div class="card">'
+        + b('Retour','pageMain()','btn back')
+        + '<h2>Transformer un devis en facture</h2>'
+        + '<p class="muted">Aucun devis sauvegardé n’a été trouvé.</p>'
+        + '<div class="row" style="margin-top:10px;">'
+          + b('Aller à “Mes devis sauvegardés”','(typeof pageSavedDevis==="function"?pageSavedDevis():pageMain())','btn')
+          + b('Retour à l’accueil','pageMain()','btn')
+        + '</div>'
+      + '</div>'
+    );
+    return;
+  }
+  var rows = list.map(function(entry, idx){
+    // On essaie d’attraper un titre; différents formats possibles
+    var title = entry.__name || entry.name || (entry.devis && entry.devis.__name) || ('Devis #'+(idx+1));
+    var created = entry.__created_at || entry.created_at || '';
+    var dateTxt = created ? new Date(created).toLocaleString('fr-FR') : '';
+    return '<tr>'
+      + '<td>'+title+'</td>'
+      + '<td>'+dateTxt+'</td>'
+      + '<td>'+ b('Transformer','transformThisSaved('+idx+')','btn primary') +'</td>'
+    + '</tr>';
+  }).join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageMain()','btn back')
+      + '<h2>Transformer un devis en facture</h2>'
+      + '<div class="muted" style="margin-bottom:6px;">Sélectionne un devis à reprendre : tu pourras modifier les lignes avant d’exporter la facture.</div>'
+      + '<table class="table-mini" style="width:100%;border-collapse:collapse;">'
+        + '<thead><tr><th>Titre</th><th>Créé le</th><th>Action</th></tr></thead>'
+        + '<tbody>'+rows+'</tbody>'
+      + '</table>'
+      + '<div class="row" style="margin-top:10px;">'
+        + b('Retour à l’accueil','pageMain()','btn')
+      + '</div>'
+    + '</div>'
+  );
+
+  window.transformThisSaved = function(idx){
+    var list = _readSavedDevisList6();
+    var entry = list[idx]; if(!entry){ alert('Introuvable.'); return; }
+    // Plusieurs structures possibles : {devis:{...}} ou {...} directement
+    var payload = entry.devis || entry.data || entry;
+    // On force le mode “facture”
+    payload.__kind = 'facture';
+    payload.__created_at = new Date().toISOString();
+    window.devis = JSON.parse(JSON.stringify(payload||{}));
+    saveLocalSafe();
+    startAutoSave6();
+    if(typeof pageHome === 'function') pageHome();
+  };
+}
+
+/* ============================
+   §6.4 • Injection boutons “Générer …” dans l’Accueil (Chapitre 5)
+   ============================ */
+(function injectGenerateButtonsIntoAccueil(){
+  var orig = window.pageHome;
+  if(typeof orig !== 'function') return; // Chap.5 non chargé encore; ce patch sera sans effet (ok)
+
+  window.pageHome = function(){
+    orig();
+
+    var app = document.getElementById('app'); if(!app) return;
+
+    // Évite doublons
+    if(app.innerHTML.indexOf('exportDevisToutComprisTXT')!==-1 && app.innerHTML.indexOf('exportInvoiceText')!==-1){
+      // Probablement déjà injecté
+    }
+
+    // Trouve une zone d’actions sous l’estimatif (sinon on ajoute en bas)
+    var container = app.querySelector('.row:last-of-type') || app;
+
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.style.marginTop = '10px';
+    row.innerHTML =
+      '<button class="btn" onclick="genDevisUI()">🧾 Générer le devis</button>'
+    + '<button class="btn" onclick="genFactureUI()">💶 Générer la facture</button>';
+    container.parentNode ? container.parentNode.appendChild(row) : app.appendChild(row);
+
+    // Expose handlers (robustes aux chapitres manquants)
+    window.genDevisUI = function(){
+      // Propose les exports dispo (TXT tout compris / TXT séparé)
+      var hasTC = (typeof exportDevisToutComprisTXT === 'function');
+      var hasSP = (typeof exportDevisSepareTXT === 'function');
+      if(!hasTC && !hasSP){ alert('Exports devis non disponibles dans cette version.'); return; }
+      var choice = prompt('Exporter le devis :\n1 = TXT (tout compris)\n2 = TXT (séparé Prestations / Matériel)\nAnnuler pour quitter','1');
+      if(choice===null) return;
+      if(choice==='2' && hasSP) exportDevisSepareTXT();
+      else if(hasTC) exportDevisToutComprisTXT();
+      else alert('Option indisponible.');
+    };
+
+    window.genFactureUI = function(){
+      var hasTxt = (typeof exportInvoiceText === 'function');
+      var hasCsv = (typeof exportInvoiceCSV === 'function');
+      if(!hasTxt && !hasCsv){ alert('Exports facture non disponibles dans cette version.'); return; }
+      var choice = prompt('Exporter la facture :\n1 = TXT\n2 = CSV (compta)\nAnnuler pour quitter','1');
+      if(choice===null) return;
+      if(choice==='2' && hasCsv) exportInvoiceCSV();
+      else if(hasTxt) exportInvoiceText();
+      else alert('Option indisponible.');
+    };
+  };
+})();
+
+/* ============================
+   §6.5 • Expose (window)
+   ============================ */
+Object.assign(window, {
+  pageCreateDevis,
+  pageCreateFacture,
+  pageTransformDevisFacture,
+  startAutoSave6,
+  stopAutoSave6
+});
+
+// Charge l’état courant si présent (sécurité) et démarre l’autosave
+loadLocalSafe();
+startAutoSave6();
+</script>
+
+
+  
+
+
+
+
 
   
   
