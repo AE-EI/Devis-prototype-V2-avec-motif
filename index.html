@@ -385,6 +385,13 @@ function getPrix(designation, intervention){
 
 
 
+
+
+
+  
+
+
+
 <!-- =============================
      CHAPITRE 3.2 : CŒUR — STOCKAGE & ROUTAGE UNIFIÉS (v3)
      Sommaire :
@@ -816,145 +823,213 @@ Object.assign(window, {
 
   
 
+
+
+
+
+
+
+
+
   
 
   
 <!-- =============================
-     CHAPITRE 4 : MENU PRINCIPAL (pageMain)
-     - Interface d’accueil de l’application “Instant Devis”
-     - Gère la création de devis, factures, et l’accès aux catalogues et paramètres
-     - Corrige le bug “pageMain non défini”
+     CHAPITRE 4 : MENU PRINCIPAL — Instant Devis (UNIFIÉ)
+     Sommaire :
+       §4.0 • Styles (local)
+       §4.1 • Page principale (pageMain)
+       §4.2 • Wrappers de navigation (sans récursion, multi-alias)
+       §4.3 • Sauvegarde auto + retour accueil
+       §4.4 • Expose & auto-lancement
      ============================= -->
 <script>
-/* ======== Sommaire ========
-   4.1 • Styles & helpers
-   4.2 • Fonctions de navigation
-   4.3 • Page principale (pageMain)
-   4.4 • Accès rapides & sécurité
-   4.5 • Expose (window)
-=========================== */
-
-/* 4.1 • Styles de base */
+/* ============================
+   §4.0 • Styles (local)
+   ============================ */
 (function(){
   var css = `
-    .card { border:1px solid var(--line); border-radius:12px; background:#fff; padding:14px; margin-bottom:16px; }
+    .card { border:1px solid var(--line,#e6e6e6); border-radius:12px; background:#fff; padding:14px; margin-bottom:16px; }
     .title { font-size:22px; font-weight:700; margin-bottom:10px; }
     .section-title { font-size:18px; font-weight:600; margin:12px 0 6px; }
     .row { display:flex; flex-wrap:wrap; gap:8px; }
     .muted { color:var(--muted,#666); font-size:14px; }
     .btn { border:none; border-radius:8px; background:#eee; padding:8px 14px; cursor:pointer; font-size:15px; }
     .btn.primary { background:#0a84ff; color:#fff; }
+    .btn.ghost { background:#f6f6f6; }
     .btn.back { background:#ccc; }
   `;
   var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
 })();
 
-/* 4.2 • Fonctions de navigation */
-function goHomeConfirm(){
-  if (confirm("Revenir à l’accueil ? Les données non sauvegardées seront perdues.")) pageMain();
+/* Small helper “b(label, fnStr, cls)” attendu par l’app */
+if(typeof window.b!=='function'){
+  window.b=function(label, fnStr, cls){ return '<button class="'+(cls||'btn')+'" onclick="'+fnStr+'">'+label+'</button>'; };
 }
-function goAccueil(){ pageMain(); }
+/* Small helper view(html) attendu par l’app */
+if(typeof window.view!=='function'){
+  window.view=function(html){ var el=document.getElementById('app'); if(el) el.innerHTML=html; };
+}
 
-/* 4.3 • Page principale */
+/* ============================
+   §4.1 • Page principale
+   ============================ */
 function pageMain(){
-  view(
-    '<div class="card">'
-      + '<div class="title">Instant Devis</div>'
-      + '<div class="section-title">Créer un nouveau document</div>'
-      + '<div class="row">'
-        + b("Créer un nouveau devis","pageNewDevis()","btn primary")
-        + b("Créer une nouvelle facture","pageNewFacture()","btn")
-        + b("Transformer un devis en facture","pageTransformDevisFacture()","btn")
-      + '</div>'
+  var html =
+  '<div class="card">'
+    + '<h1 class="title" style="text-align:center;">Instant Devis</h1>'
+  + '</div>'
+
+  // === Cadre : création d’un nouveau document ===
+  + '<div class="card">'
+    + '<div class="section-title">Créer un nouveau document</div>'
+    + '<div class="row">'
+      + b('Créer un nouveau devis','navCreateDevis()','btn primary')
+      + b('Créer une nouvelle facture','navCreateFacture()','btn')
+      + b('Transformer un devis en facture','navTransformDevisFacture()','btn ghost')
     + '</div>'
+  + '</div>'
 
-    + '<div class="card">'
-      + '<div class="section-title">Documents sauvegardés</div>'
-      + '<div class="row">'
-        + b("Mes devis sauvegardés","pageSavedDevis()","btn")
-        + b("Mes factures sauvegardées","pageFacturesAccueil()","btn")
-      + '</div>'
+  // === Cadre : documents sauvegardés ===
+  + '<div class="card">'
+    + '<div class="section-title">Mes documents sauvegardés</div>'
+    + '<div class="row">'
+      + b('Mes devis sauvegardés','navSavedDevis()','btn')
+      + b('Mes factures sauvegardées','navSavedFactures()','btn')
     + '</div>'
+  + '</div>'
 
-    + '<div class="card">'
-      + '<div class="section-title">Configuration et paramètres</div>'
-      + '<div class="row">'
-        + b("Configuration entreprise","pageCompanyConfig()","btn")
-        + b("Préférences générales","pagePrefsGenerales()","btn")
-      + '</div>'
+  // === Cadre : configuration & paramètres ===
+  + '<div class="card">'
+    + '<div class="section-title">Configuration & paramètres</div>'
+    + '<div class="row">'
+      + b('Configuration entreprise','navCompanyConfig()','btn')
+      + b('Préférences générales','navPrefs()','btn')
     + '</div>'
+  + '</div>'
 
-    + '<div class="card">'
-      + '<div class="section-title">Catalogue prestations / matériel et tarifs</div>'
-      + '<div class="row">'
-        + b("Configuration catalogue prestations","pageCataloguePrestations()","btn primary")
-        + b("Tarifs et coefficients","pageTarifsEtCoeffs()","btn")
-        + b("Catalogue matériel","pageCatalogueMateriel()","btn")
-      + '</div>'
+  // === Cadre : catalogue prestations / matériel & tarifs ===
+  + '<div class="card">'
+    + '<div class="section-title">Catalogue prestations / matériel & tarifs</div>'
+    + '<div class="row">'
+      + b('Catalogue prestations','navCataloguePrestations()','btn primary')
+      + b('Tarifs & coefficients','navTarifsCoeffs()','btn')
+      + b('Catalogue matériel','navCatalogueMateriel()','btn')
     + '</div>'
+  + '</div>'
 
-    + '<div class="card muted">'
-      + '<p>Version 3.0 — Tous droits réservés © Alba Elec</p>'
-    + '</div>'
-  );
-}
+  + '<div class="card muted">'
+    + '<p>Version 3.0 — Tous droits réservés © Alba Elec</p>'
+  + '</div>';
 
-/* 4.4 • Pages de redirection (stubs sécurisés)
-   Ces fonctions existent même si leurs chapitres ne sont pas encore chargés. */
-function pageNewDevis(){
-  if(typeof window.pageCreateDevis === 'function') return pageCreateDevis();
-  alert("⚠️ Fonction création devis non encore chargée (chapitre devis manquant).");
-}
-function pageNewFacture(){
-  if(typeof window.pageCreateFacture === 'function') return pageCreateFacture();
-  alert("⚠️ Fonction création facture non encore chargée (chapitre facture manquant).");
-}
-function pageTransformDevisFacture(){
-  if(typeof window.pageTransformDevisFacture === 'function') return pageTransformDevisFacture();
-  alert("⚠️ Fonction de transformation non encore chargée (chapitre facturation manquant).");
-}
-function pageSavedDevis(){
-  if(typeof window.pageSavedDevisAccueil === 'function') return pageSavedDevisAccueil();
-  alert("⚠️ La page des devis sauvegardés n’est pas encore chargée.");
-}
-function pageFacturesAccueil(){
-  if(typeof window.pageFacturesAccueil === 'function') return window.pageFacturesAccueil();
-  alert("⚠️ La page des factures sauvegardées n’est pas encore chargée.");
-}
-function pageCompanyConfig(){
-  if(typeof window.pageCompanyConfig === 'function') return window.pageCompanyConfig();
-  alert("⚙️ Configuration entreprise : chapitre non encore chargé.");
-}
-function pagePrefsGenerales(){
-  if(typeof window.pagePrefsGenerales === 'function') return window.pagePrefsGenerales();
-  alert("⚙️ Préférences générales : chapitre non encore chargé.");
-}
-function pageCataloguePrestations(){
-  if(typeof window.pageCataloguePrestations === 'function') return window.pageCataloguePrestations();
-  alert("📦 Catalogue prestations : module non chargé.");
-}
-function pageTarifsEtCoeffs(){
-  if(typeof window.pageTarifsEtCoeffs === 'function') return window.pageTarifsEtCoeffs();
-  alert("📊 Tarifs & coefficients : module non chargé.");
-}
-function pageCatalogueMateriel(){
-  if(typeof window.pageCatalogueMateriel === 'function') return window.pageCatalogueMateriel();
-  alert("🔧 Catalogue matériel : module non chargé.");
+  view(html);
 }
 
-/* 4.5 • Expose (window) */
+/* ============================
+   §4.2 • Wrappers de navigation
+   - IMPORTANT : noms “nav*” ≠ cibles réelles → zéro récursion
+   - Chaque wrapper teste plusieurs alias potentiels
+   ============================ */
+function _goOneOf(){
+  for(var i=0;i<arguments.length;i++){
+    var fnName = arguments[i];
+    if(typeof window[fnName] === 'function'){ return window[fnName](); }
+  }
+  alert('⚠️ Fonction manquante : '+(arguments[0]||'inconnue')+' — chapitre non encore chargé.');
+}
+
+function navCreateDevis(){
+  // Aliases possibles de l’assistant de création d’un devis
+  _goOneOf('pageCreateDevis','pageNewDevisWizard','pageNewDevis');
+}
+function navCreateFacture(){
+  // Aliases possibles de l’assistant de création d’une facture
+  _goOneOf('pageCreateFacture','pageNewFactureWizard','pageNewFacture');
+}
+function navTransformDevisFacture(){
+  // Soit une page “transformer”, soit la liste des devis (puis choix)
+  _goOneOf('pageTransformDevisFacture','pageSavedDevis','pageSavedDevisAccueil');
+}
+function navSavedDevis(){
+  // Liste des devis sauvegardés
+  _goOneOf('pageSavedDevis','pageSavedDevisAccueil');
+}
+function navSavedFactures(){
+  // Liste des factures sauvegardées (chapitre facturation)
+  // Dans nos chapitres, la vraie page s’appelle “pageFacturesAccueil”
+  _goOneOf('pageFacturesAccueil','pageFacturesHome','pageInvoicesHome');
+}
+function navCompanyConfig(){
+  // Configuration entreprise
+  _goOneOf('pageConfigEntreprise','pageCompanyConfig');
+}
+function navPrefs(){
+  // Préférences générales
+  _goOneOf('pagePreferences','pagePrefsGenerales','pageConfigPreferences');
+}
+function navCataloguePrestations(){
+  // Catalogue des prestations (structuration des types)
+  _goOneOf('pageCataloguePrestations','pageCatalogue','pageConfigCataloguePrestations');
+}
+function navTarifsCoeffs(){
+  // Tarifs & coefficients (impacte les PU/estimatif)
+  _goOneOf('pageTarifsEtCoeffs','pageTarifsAccueil','pageConfigTarifsCoeffs');
+}
+function navCatalogueMateriel(){
+  // Catalogue matériel (marques/gammes/prix)
+  _goOneOf('pageCatalogueMateriel','pageConfigCatalogueMateriel');
+}
+
+/* ============================
+   §4.3 • Sauvegarde auto + retour accueil
+   ============================ */
+function goAccueil(){
+  // Si une auto-save existe dans l’app, on l’utilise
+  if(typeof window.startAutoSave==='function'){
+    // L’app sauvegarde déjà périodiquement → retour direct
+    pageMain();
+    return;
+  }
+  // Sinon on protège le retour si un devis courant est présent
+  var hasDirty = (window.devis && Object.keys(window.devis).some(k=>k.indexOf('__')!==0));
+  if(hasDirty){
+    if(confirm('Revenir à l’accueil ? Les modifications non sauvegardées pourraient être perdues.')){
+      pageMain();
+    }
+  } else {
+    pageMain();
+  }
+}
+function goHomeConfirm(){ goAccueil(); }
+
+/* ============================
+   §4.4 • Expose & auto-lancement
+   ============================ */
 Object.assign(window, {
   pageMain,
+  goAccueil,
   goHomeConfirm,
-  goAccueil
+  navCreateDevis,
+  navCreateFacture,
+  navTransformDevisFacture,
+  navSavedDevis,
+  navSavedFactures,
+  navCompanyConfig,
+  navPrefs,
+  navCataloguePrestations,
+  navTarifsCoeffs,
+  navCatalogueMateriel
 });
 
-// Auto-lancement à l’ouverture si aucune autre vue n’est affichée
-if(document.readyState==='complete'){
-  setTimeout(()=>{ if(document.getElementById('app')?.innerHTML.trim()===''){ pageMain(); } },200);
-}else{
-  window.addEventListener('load',()=>{ if(document.getElementById('app')?.innerHTML.trim()===''){ pageMain(); } });
-}
+// Auto-lancement (s’il n’y a encore aucune vue)
+(function(){
+  function boot(){
+    var app = document.getElementById('app');
+    if(app && String(app.innerHTML||'').trim()===''){ pageMain(); }
+  }
+  if(document.readyState==='complete') setTimeout(boot, 100);
+  else window.addEventListener('load', boot);
+})();
 </script>
 
 
