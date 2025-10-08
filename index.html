@@ -805,6 +805,637 @@ Object.assign(window,{
 
 
 
+<!-- =======================================================================
+     CHAPITRE 8 : CATALOGUES & TARIFS — V3
+     =======================================================================
+     SOMMAIRE
+       8.0 • Styles + Helpers communs
+       8.1 • Accueil “Catalogue & Tarifs” (pont d’entrée)
+       8.2 • Catalogue PRESTATIONS (families/types/prix)
+            8.2.1 Familles & libellés d’interventions
+            8.2.2 Éditeur par famille (liste, ajout, prix)
+            8.2.3 Import / Export / Reset
+       8.3 • TARIFS & COEFFICIENTS (pose, sections, overrides runtime)
+            8.3.1 Tarifs unitaires par famille (injection dans TARIFS_BASE)
+            8.3.2 Coefficients (pose / sections)
+            8.3.3 Sauvegarde overrides + application runtime
+       8.4 • Catalogue MATÉRIEL (marques, gammes, multiplicateurs)
+            8.4.1 Structure & stockage
+            8.4.2 Éditeur (marque/gamme par famille)
+            8.4.3 Import / Export / Reset
+       8.5 • Application runtime (DESIGNATIONS_PAR_CATEGORIE / TARIFS_BASE)
+       8.6 • Expose (window) + intégration menu (hook discret)
+     ======================================================================= -->
+
+<style>
+  /* 8.0 • Styles communs */
+  .cfg8-wrap .card{ margin-bottom:24px; }
+  .row.gap8{ gap:8px; flex-wrap:wrap; display:flex; }
+  .grid-auto{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .field{ border:1px solid var(--line, #e5e5e5); background:#fff; border-radius:10px; padding:10px; }
+  .field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .note{ color:var(--muted,#666); font-size:14px; }
+  .pill.small{ padding:6px 10px; font-size:14px; border:1px solid var(--line,#e5e5e5); border-radius:999px; background:#fafafa; }
+  .table-mini{ width:100%; border-collapse:collapse; }
+  .table-mini th, .table-mini td{ border:1px solid var(--line,#e5e5e5); padding:6px 8px; text-align:left; }
+  .table-mini th{ background:#fafafa; }
+  .muted{ color:var(--muted,#666); }
+  .space-top{ margin-top:12px; }
+  .sep{ border-top:1px solid var(--line,#e5e5e5); padding-top:10px; margin-top:10px; }
+  .footer-nav{ margin-top:16px; display:flex; justify-content:flex-end; }
+</style>
+
+<script>
+/* =======================================================================
+   8.0 • Helpers communs
+   ======================================================================= */
+(function(){
+  // Garde-fous (si l’app hôte n’a pas ces utilitaires)
+  if(typeof window.b!=='function'){
+    window.b=function(txt,fn,cls){ return '<button class="'+(cls||'btn')+'" onclick="'+fn+'">'+txt+'</button>'; };
+  }
+  if(typeof window.view!=='function'){
+    window.view=function(html){ var app=document.getElementById('app'); if(app) app.innerHTML=html; };
+  }
+
+  // Clés localStorage (versionnées)
+  const KEY_CAT_PREST = 'cat_prestations_v1';
+  const KEY_CAT_MAT   = 'catalogue_materiel_v1';
+  const KEY_TAR_OV    = 'tarifsOverrides_v1';
+
+  // I/O JSON LS
+  function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+  function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+  // Utilitaires
+  const _clone = x => JSON.parse(JSON.stringify(x));
+  const _num = n => Math.max(0, +n||0);
+  const _esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]);
+
+  // Boutons navigation "Retour / Accueil"
+  function topBackButton(){
+    return b('Retour','history.length>1?history.back():pageHome&&pageHome()','btn back');
+  }
+  function bottomHome(){
+    const act = (typeof window.confirmBackHome==='function') ? 'confirmBackHome()' : 'pageHome&&pageHome()';
+    return '<div class="footer-nav">'+b('🏠 Accueil',act,'btn')+'</div>';
+  }
+
+  /* =====================================================================
+     8.1 • Accueil “Catalogue & Tarifs”
+     ===================================================================== */
+  function pageCatalogueTarifsAccueil(){
+    view(
+      '<div class="cfg8-wrap">'
+      + '<div class="card">'
+        + topBackButton()
+        + '<h2>Catalogue & Tarifs</h2>'
+        + '<p class="note">Gère tes prestations (libellés + prix), tes coefficients et ton catalogue matériel (marques/gammes).</p>'
+        + '<div class="row gap8 space-top">'
+          + b('📚 Catalogue prestations','pageCataloguePrestations()','btn primary')
+          + b('💶 Tarifs & coefficients','pageTarifsCoeffs()','btn')
+          + b('🏷️ Catalogue matériel','pageCatalogueMateriel()','btn')
+        + '</div>'
+      + '</div>'
+      + bottomHome()
+      + '</div>'
+    );
+  }
+
+  /* =====================================================================
+     8.2 • CATALOGUE PRESTATIONS
+     ===================================================================== */
+
+  // 8.2.1 • Familles + types d’interventions
+  const PREST_FAMILIES = [
+    { id:'prises', label:'Prises', keys:[
+      'Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'
+    ]},
+    { id:'ecl_lum', label:'Éclairage — Luminaires', keys:[
+      'Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire'
+    ]},
+    { id:'ecl_cmd', label:'Éclairage — Commandes', keys:[
+      'Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'
+    ]},
+    { id:'cs', label:'Circuit spécialisé', keys:[
+      'Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'
+    ]},
+    { id:'tableau', label:'Tableau & distribution', keys:[
+      'Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'
+    ]},
+    { id:'vent', label:'Ventilation', keys:[
+      'Création','Remplacement appareillage','Entretien'
+    ]},
+    { id:'terre', label:'Mise à la terre', keys:[
+      'Création','Amélioration/ajout','Contrôle'
+    ]}
+  ];
+
+  // Modèle par défaut (simple, modifiable ensuite)
+  function _catPrestDefault(){
+    return {
+      prises:  [ { nom:'Prise 2P+T', prix:{'Création':90,'Remplacement appareillage':25,'Recâblage avec remplacement appareillage':45,'Recâblage sans remplacement appareillage':30} } ],
+      ecl_lum: [ { nom:'Point de centre', prix:{'Création':110,'Remplacement luminaire':35,'Recâblage avec remplacement luminaire':55,'Recâblage sans remplacement luminaire':40} } ],
+      ecl_cmd: [ { nom:'Interrupteur simple', prix:{'Création':65,'Remplacement appareillage':25,'Recâblage avec remplacement appareillage':40,'Recâblage sans remplacement appareillage':28} } ],
+      cs:      [ { nom:'Four', prix:{'Création':140,'Remplacement appareillage':35,'Recâblage avec remplacement appareillage':55,'Recâblage sans remplacement appareillage':40} } ],
+      tableau: [ { nom:'Remplacement coffret standard', prix:{'Création':100} } ],
+      vent:    [ { nom:'Kit VMC simple flux', prix:{'Création':280,'Remplacement appareillage':60,'Entretien':45} } ],
+      terre:   [ { nom:'Prise de terre (piquet)', prix:{'Création':180,'Amélioration/ajout':90,'Contrôle':30} } ]
+    };
+  }
+  function getCatPrest(){ return readJsonLS(KEY_CAT_PREST, _catPrestDefault()); }
+  function setCatPrest(obj){ writeJsonLS(KEY_CAT_PREST, obj||_catPrestDefault()); }
+
+  // 8.2.2 • Éditeur par famille
+  function pageCataloguePrestations(){
+    const cat = getCatPrest();
+    const cards = PREST_FAMILIES.map(f=>{
+      const arr = cat[f.id]||[];
+      const table = arr.length ? `
+        <table class="table-mini">
+          <thead>
+            <tr><th>Type</th>${f.keys.map(k=>`<th>${_esc(k)}</th>`).join('')}<th></th></tr>
+          </thead>
+          <tbody>
+            ${arr.map((t,idx)=>`
+              <tr>
+                <td>${_esc(t.nom)}</td>
+                ${f.keys.map(k=>{
+                  const id = `pr_${f.id}_${idx}_${k.replace(/\s+/g,'_')}`;
+                  const val = +(t.prix?.[k]||0);
+                  return `<td><input id="${id}" type="number" inputmode="decimal" step="1" min="0" value="${val}"></td>`;
+                }).join('')}
+                <td>${b('💾','catPrestSave("'+f.id+'",'+idx+')','btn')} ${b('🗑️','catPrestDel("'+f.id+'",'+idx+')','btn')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : '<p class="muted">Aucun type pour le moment.</p>';
+
+      return `
+        <div class="card">
+          <h3>${_esc(f.label)}</h3>
+          ${table}
+          <div class="row gap8 space-top">
+            <input id="add_${f.id}" placeholder="Ajouter un type (ex : Prise 2P+T IP55)" />
+            ${b('Ajouter','catPrestAdd("'+f.id+'")','btn')}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    view(
+      '<div class="cfg8-wrap">'
+      + '<div class="card">'
+        + topBackButton()
+        + '<h2>Catalogue prestations</h2>'
+        + '<p class="note">Ajoute/modifie tes types de prestations. Les prix saisis nourrissent les menus et les exports.</p>'
+        + '<div class="row gap8 space-top">'
+          + b('⬇️ Export JSON','catPrestExport()','btn')
+          + b('⬆️ Import JSON','catPrestImport()','btn')
+          + b('🧹 Réinitialiser','catPrestReset()','btn')
+        + '</div>'
+      + '</div>'
+      + cards
+      + bottomHome()
+      + '</div>'
+    );
+
+    // Handlers
+    window.catPrestAdd=function(fid){
+      const el=document.getElementById('add_'+fid); const name=(el&&el.value||'').trim(); if(!name) return;
+      const cur=getCatPrest(); cur[fid]=cur[fid]||[]; cur[fid].push({ nom:name, prix:{} });
+      setCatPrest(cur); applyPrestationsToRuntime(); pageCataloguePrestations();
+    };
+    window.catPrestDel=function(fid,idx){
+      const cur=getCatPrest(); (cur[fid]||[]).splice(idx,1);
+      setCatPrest(cur); applyPrestationsToRuntime(); pageCataloguePrestations();
+    };
+    window.catPrestSave=function(fid,idx){
+      const fam=PREST_FAMILIES.find(x=>x.id===fid); if(!fam) return;
+      const cur=getCatPrest(); const row=cur[fid]?.[idx]; if(!row) return;
+      const out={};
+      fam.keys.forEach(k=>{
+        const id=`pr_${fid}_${idx}_${k.replace(/\s+/g,'_')}`;
+        out[k]=_num(document.getElementById(id)?.value);
+      });
+      row.prix=out; setCatPrest(cur); applyPrestationsToRuntime();
+      alert('✅ Enregistré.');
+    };
+  }
+
+  // 8.2.3 • IO Prestations
+  function catPrestExport(){
+    const raw=JSON.stringify(getCatPrest(),null,2);
+    const blob=new Blob([raw],{type:'application/json;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='catalogue_prestations.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  function catPrestImport(){
+    const input=document.createElement('input'); input.type='file'; input.accept='application/json';
+    input.onchange=function(){
+      const f=input.files&&input.files[0]; if(!f) return;
+      const rd=new FileReader();
+      rd.onload=function(){
+        try{
+          const obj=JSON.parse(rd.result||'{}');
+          if(!obj || typeof obj!=='object') throw new Error('JSON inattendu');
+          setCatPrest(obj); applyPrestationsToRuntime(); alert('✅ Catalogue prestations importé.'); pageCataloguePrestations();
+        }catch(e){ alert('❌ Import impossible : '+e.message); }
+      };
+      rd.readAsText(f,'utf-8');
+    };
+    input.click();
+  }
+  function catPrestReset(){
+    if(!confirm('Réinitialiser le catalogue prestations ?')) return;
+    localStorage.removeItem(KEY_CAT_PREST);
+    applyPrestationsToRuntime();
+    pageCataloguePrestations();
+  }
+
+  /* =====================================================================
+     8.3 • TARIFS & COEFFICIENTS
+     ===================================================================== */
+
+  // Garantir les globaux runtime
+  function ensureTarifsGlobals(){
+    window.TARIFS_BASE = window.TARIFS_BASE || { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
+    window.COEFF_POSE  = window.COEFF_POSE  || { 'Placo':1,'Encastré maçonnerie':1.2,'Semi-encastré':1.1,'Sur-mesure':1.5,'Saillie avec moulure':0.9,'Sous tube IRL':1 };
+    window.COEFF_SECTIONS_CS = window.COEFF_SECTIONS_CS || { '0,75 mm²':0.8,'1,5 mm²':1,'2,5 mm²':1.2,'6 mm²':1.4 };
+    window.DESIGNATIONS_PAR_CATEGORIE = window.DESIGNATIONS_PAR_CATEGORIE || {};
+  }
+
+  // Overrides (fusion douce)
+  function getOverrides(){ return readJsonLS(KEY_TAR_OV, {}); }
+  function setOverrides(p){
+    const cur=getOverrides();
+    function deepMerge(base, add){
+      if(!add || typeof add!=='object') return;
+      Object.keys(add).forEach(k=>{
+        const v=add[k];
+        if(v && typeof v==='object' && !Array.isArray(v)){
+          if(!base[k] || typeof base[k]!=='object') base[k]={};
+          deepMerge(base[k], v);
+        }else{
+          base[k]=v;
+        }
+      });
+    }
+    deepMerge(cur, p||{});
+    writeJsonLS(KEY_TAR_OV, cur);
+    // Appliquer live si objets globaux existent
+    if(typeof window.TARIFS_BASE==='object' && p?.TARIFS_BASE) deepMerge(window.TARIFS_BASE, p.TARIFS_BASE);
+    if(typeof window.COEFF_POSE==='object' && p?.COEFF_POSE) deepMerge(window.COEFF_POSE, p.COEFF_POSE);
+    if(typeof window.COEFF_SECTIONS_CS==='object' && p?.COEFF_SECTIONS_CS) deepMerge(window.COEFF_SECTIONS_CS, p.COEFF_SECTIONS_CS);
+  }
+
+  // Page 8.3
+  function pageTarifsCoeffs(){
+    ensureTarifsGlobals();
+    const cat=getCatPrest();
+
+    // Section A : Tarifs par famille (injection dans TARIFS_BASE)
+    const familyCards = PREST_FAMILIES.map(f=>{
+      const arr=(cat[f.id]||[]);
+      if(!arr.length) return '';
+      return `
+        <div class="card">
+          <h3>${_esc(f.label)} — tarifs de base (par type)</h3>
+          <table class="table-mini">
+            <thead><tr><th>Type</th>${f.keys.map(k=>`<th>${_esc(k)}</th>`).join('')}<th></th></tr></thead>
+            <tbody>
+              ${arr.map((t,idx)=>`
+                <tr>
+                  <td>${_esc(t.nom)}</td>
+                  ${f.keys.map(k=>{
+                    const id=\`tb_${f.id}_${idx}_${k.replace(/\s+/g,'_')}\`;
+                    const def=+(t.prix?.[k]||0);
+                    return \`<td><input id="\${id}" type="number" inputmode="decimal" step="1" min="0" value="\${def}"></td>\`;
+                  }).join('')}
+                  <td>${b('💾','saveTarifBase("'+f.id+'",'+idx+')','btn')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <p class="note">Ces tarifs seront fusionnés dans TARIFS_BASE (overrides). Ils impacteront menus et exports.</p>
+        </div>
+      `;
+    }).join('');
+
+    // Section B : Coefficients
+    const pose = window.COEFF_POSE||{};
+    const cs   = window.COEFF_SECTIONS_CS||{};
+    const poseRows = Object.keys(pose).map(k=>{
+      const id='cp_'+k.replace(/\s+/g,'_');
+      return `<tr><td>${_esc(k)}</td><td><input id="${id}" type="number" inputmode="decimal" step="0.05" min="0" value="${+(pose[k]||1)}"></td></tr>`;
+    }).join('');
+    const csRows = Object.keys(cs).map(k=>{
+      const id='cs_'+k.replace(/\s+/g,'_');
+      return `<tr><td>${_esc(k)}</td><td><input id="${id}" type="number" inputmode="decimal" step="0.05" min="0" value="${+(cs[k]||1)}"></td></tr>`;
+    }).join('');
+
+    view(
+      '<div class="cfg8-wrap">'
+      + '<div class="card">'
+        + topBackButton()
+        + '<h2>Tarifs & coefficients</h2>'
+        + '<p class="note">Modifie les tarifs de base et les coefficients utilisés dans les calculs.</p>'
+      + '</div>'
+      + familyCards
+      + '<div class="card">'
+        + '<h3>Coefficients de pose</h3>'
+        + '<table class="table-mini"><thead><tr><th>Type de pose</th><th>Coeff</th></tr></thead><tbody>'+poseRows+'</tbody></table>'
+        + '<div class="row gap8 space-top">'+b('💾 Enregistrer','saveCoeffsPose()','btn primary')+'</div>'
+      + '</div>'
+      + '<div class="card">'
+        + '<h3>Coefficients sections (Circuit spécialisé)</h3>'
+        + '<table class="table-mini"><thead><tr><th>Section</th><th>Coeff</th></tr></thead><tbody>'+csRows+'</tbody></table>'
+        + '<div class="row gap8 space-top">'+b('💾 Enregistrer','saveCoeffsSections()','btn primary')+'</div>'
+      + '</div>'
+      + bottomHome()
+      + '</div>'
+    );
+
+    // Handlers
+    window.saveTarifBase=function(fid,idx){
+      const fam=PREST_FAMILIES.find(x=>x.id===fid); if(!fam) return;
+      const cat=getCatPrest(); const item=cat[fid]?.[idx]; if(!item) return;
+
+      const ov={ TARIFS_BASE:{} };
+      const read = k => _num(document.getElementById(`tb_${fid}_${idx}_${k.replace(/\s+/g,'_')}`)?.value);
+
+      if(fid==='prises'){
+        ov.TARIFS_BASE.prises = ov.TARIFS_BASE.prises||{};
+        ov.TARIFS_BASE.prises[item.nom]={}; fam.keys.forEach(k=> ov.TARIFS_BASE.prises[item.nom][k]=read(k));
+      }else if(fid==='ecl_lum'||fid==='ecl_cmd'){
+        ov.TARIFS_BASE.eclairage = ov.TARIFS_BASE.eclairage||{};
+        ov.TARIFS_BASE.eclairage[item.nom]={}; fam.keys.forEach(k=> ov.TARIFS_BASE.eclairage[item.nom][k]=read(k));
+      }else if(fid==='cs'){
+        ov.TARIFS_BASE.circuit_specialise = ov.TARIFS_BASE.circuit_specialise||{};
+        ov.TARIFS_BASE.circuit_specialise[item.nom]={}; fam.keys.forEach(k=> ov.TARIFS_BASE.circuit_specialise[item.nom][k]=read(k));
+      }else{
+        ov.TARIFS_BASE.divers = ov.TARIFS_BASE.divers||{};
+        ov.TARIFS_BASE.divers[item.nom]={}; fam.keys.forEach(k=> ov.TARIFS_BASE.divers[item.nom][k]=read(k));
+      }
+
+      setOverrides(ov);
+      alert('✅ TARIFS_BASE mis à jour.');
+    };
+    window.saveCoeffsPose=function(){
+      const map={}; Object.keys(window.COEFF_POSE||{}).forEach(k=>{
+        map[k]=_num(document.getElementById('cp_'+k.replace(/\s+/g,'_'))?.value);
+      });
+      setOverrides({ COEFF_POSE: map }); alert('✅ Coeffs de pose enregistrés.');
+    };
+    window.saveCoeffsSections=function(){
+      const map={}; Object.keys(window.COEFF_SECTIONS_CS||{}).forEach(k=>{
+        map[k]=_num(document.getElementById('cs_'+k.replace(/\s+/g,'_'))?.value);
+      });
+      setOverrides({ COEFF_SECTIONS_CS: map }); alert('✅ Coeffs sections enregistrés.');
+    };
+  }
+
+  /* =====================================================================
+     8.4 • CATALOGUE MATÉRIEL (marques/gammes)
+     ===================================================================== */
+  function _matDefault(){
+    return {
+      prises: [
+        { marque:'Schneider', gammes:[ {nom:'Odace', coef:1.00}, {nom:'Unica', coef:1.15} ] }
+      ],
+      ecl_cmd: [
+        { marque:'Legrand', gammes:[ {nom:'Céliane', coef:1.10} ] }
+      ],
+      tableau: [
+        { marque:'Schneider', gammes:[ {nom:'Resi9', coef:1.00}, {nom:'Acti9', coef:1.15} ] }
+      ]
+    };
+  }
+  function getMat(){ return readJsonLS(KEY_CAT_MAT, _matDefault()); }
+  function setMat(obj){ writeJsonLS(KEY_CAT_MAT, obj||_matDefault()); }
+
+  function pageCatalogueMateriel(){
+    const famOptions = PREST_FAMILIES.map(f=>`<option value="${f.id}">${_esc(f.label)}</option>`).join('');
+    const m=getMat();
+    const famCards = PREST_FAMILIES.map(f=>{
+      const arr=m[f.id]||[];
+      return `
+        <div class="card">
+          <h3>${_esc(f.label)}</h3>
+          ${arr.length ? `
+            <table class="table-mini">
+              <thead><tr><th>Marque</th><th>Gammes (nom — coef)</th><th></th></tr></thead>
+              <tbody>
+                ${arr.map((brand,bi)=>`
+                  <tr>
+                    <td>${_esc(brand.marque)}</td>
+                    <td>
+                      ${(brand.gammes||[]).map((g,gi)=>`
+                        <div class="row gap8" style="margin:4px 0">
+                          <input id="mg_${f.id}_${bi}_${gi}_name" value="${_esc(g.nom)}" placeholder="Nom de gamme"/>
+                          <input id="mg_${f.id}_${bi}_${gi}_coef" type="number" step="0.01" inputmode="decimal" min="0" value="${+(g.coef||1)}" placeholder="Coef"/>
+                          ${b('💾','saveMatGamme("'+f.id+'",'+bi+','+gi+')','btn')}
+                          ${b('🗑️','delMatGamme("'+f.id+'",'+bi+','+gi+')','btn')}
+                        </div>
+                      `).join('')}
+                      <div class="row gap8 sep">
+                        <input id="newg_${f.id}_${bi}_name" placeholder="Nouvelle gamme"/>
+                        <input id="newg_${f.id}_${bi}_coef" type="number" step="0.01" inputmode="decimal" min="0" value="1"/>
+                        ${b('Ajouter une gamme','addMatGamme("'+f.id+'",'+bi+')','btn')}
+                      </div>
+                    </td>
+                    <td>${b('🗑️ Marque','delMatBrand("'+f.id+'",'+bi+')','btn')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : '<p class="muted">Aucune marque pour le moment.</p>'}
+          <div class="row gap8 space-top">
+            <input id="addm_${f.id}" placeholder="Ajouter une marque (ex : Schneider)"/>
+            ${b('Ajouter','addMatBrand("'+f.id+'")','btn')}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    view(
+      '<div class="cfg8-wrap">'
+      + '<div class="card">'
+        + topBackButton()
+        + '<h2>Catalogue matériel</h2>'
+        + '<p class="note">Déclare tes marques et gammes par famille. Les coefficients peuvent pondérer tes prix.</p>'
+        + '<div class="row gap8 space-top">'
+          + b('⬇️ Export JSON','matExport()','btn')
+          + b('⬆️ Import JSON','matImport()','btn')
+          + b('🧹 Réinitialiser','matReset()','btn')
+        + '</div>'
+      + '</div>'
+      + famCards
+      + bottomHome()
+      + '</div>'
+    );
+
+    // Handlers
+    window.addMatBrand=function(fid){
+      const el=document.getElementById('addm_'+fid); const name=(el&&el.value||'').trim(); if(!name) return;
+      const cur=getMat(); cur[fid]=cur[fid]||[]; cur[fid].push({ marque:name, gammes:[] });
+      setMat(cur); pageCatalogueMateriel();
+    };
+    window.delMatBrand=function(fid,bi){
+      const cur=getMat(); (cur[fid]||[]).splice(bi,1); setMat(cur); pageCatalogueMateriel();
+    };
+    window.addMatGamme=function(fid,bi){
+      const n=document.getElementById(`newg_${fid}_${bi}_name`); const c=document.getElementById(`newg_${fid}_${bi}_coef`);
+      const nom=(n&&n.value||'').trim(); if(!nom) return; const coef=_num(c&&c.value);
+      const cur=getMat(); const br=(cur[fid]||[])[bi]; if(!br) return;
+      br.gammes=br.gammes||[]; br.gammes.push({ nom, coef }); setMat(cur); pageCatalogueMateriel();
+    };
+    window.delMatGamme=function(fid,bi,gi){
+      const cur=getMat(); const br=(cur[fid]||[])[bi]; if(!br) return; (br.gammes||[]).splice(gi,1);
+      setMat(cur); pageCatalogueMateriel();
+    };
+    window.saveMatGamme=function(fid,bi,gi){
+      const nameEl=document.getElementById(`mg_${fid}_${bi}_${gi}_name`);
+      const coefEl=document.getElementById(`mg_${fid}_${bi}_${gi}_coef`);
+      const cur=getMat(); const br=(cur[fid]||[])[bi]; if(!br) return;
+      const g=(br.gammes||[])[gi]; if(!g) return;
+      g.nom=(nameEl&&nameEl.value||'').trim(); g.coef=_num(coefEl&&coefEl.value);
+      setMat(cur); alert('✅ Gamme enregistrée.');
+    };
+  }
+
+  // IO Matériel
+  function matExport(){
+    const raw=JSON.stringify(getMat(),null,2);
+    const blob=new Blob([raw],{type:'application/json;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='catalogue_materiel.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  function matImport(){
+    const input=document.createElement('input'); input.type='file'; input.accept='application/json';
+    input.onchange=function(){
+      const f=input.files&&input.files[0]; if(!f) return;
+      const rd=new FileReader();
+      rd.onload=function(){
+        try{
+          const obj=JSON.parse(rd.result||'{}'); if(!obj || typeof obj!=='object') throw new Error('JSON inattendu');
+          setMat(obj); alert('✅ Catalogue matériel importé.'); pageCatalogueMateriel();
+        }catch(e){ alert('❌ Import impossible : '+e.message); }
+      };
+      rd.readAsText(f,'utf-8');
+    };
+    input.click();
+  }
+  function matReset(){
+    if(!confirm('Réinitialiser le catalogue matériel ?')) return;
+    localStorage.removeItem(KEY_CAT_MAT); pageCatalogueMateriel();
+  }
+
+  /* =====================================================================
+     8.5 • Application runtime (désignations & tarifs)
+     ===================================================================== */
+  function applyPrestationsToRuntime(){
+    ensureTarifsGlobals();
+
+    const cat=getCatPrest();
+
+    // DESIGNATIONS_PAR_CATEGORIE
+    const ensureList = (key)=>{ window.DESIGNATIONS_PAR_CATEGORIE[key] = window.DESIGNATIONS_PAR_CATEGORIE[key] || []; return window.DESIGNATIONS_PAR_CATEGORIE[key]; };
+    function pushU(list, name){ if(list.indexOf(name)===-1) list.push(name); }
+
+    (cat.prises||[]).forEach(t=> pushU(ensureList('Prises'), t.nom));
+    (cat.ecl_lum||[]).forEach(t=> pushU(ensureList('Éclairage/Luminaires'), t.nom));
+    (cat.ecl_cmd||[]).forEach(t=> pushU(ensureList('Éclairage/Commandes'), t.nom));
+    (cat.cs||[]).forEach(t=> pushU(ensureList('Circuit spécialisé'), t.nom));
+    (cat.tableau||[]).forEach(t=> pushU(ensureList('Tableau & distribution'), t.nom));
+    (cat.vent||[]).forEach(t=> pushU(ensureList('VMC'), t.nom));
+    (cat.terre||[]).forEach(t=> pushU(ensureList('Mise à la terre'), t.nom));
+
+    // TARIFS_BASE : fusionner
+    function mergeTarifs(dst, src){
+      Object.keys(src||{}).forEach(k=>{
+        if(!dst[k]) dst[k]={};
+        Object.assign(dst[k], src[k]);
+      });
+    }
+    const tb = { prises:{}, eclairage:{}, circuit_specialise:{}, divers:{} };
+    (cat.prises||[]).forEach(t=> tb.prises[t.nom] = _clone(t.prix||{}));
+    (cat.ecl_lum||[]).forEach(t=> { tb.eclairage[t.nom] = Object.assign(tb.eclairage[t.nom]||{}, _clone(t.prix||{})); });
+    (cat.ecl_cmd||[]).forEach(t=> { tb.eclairage[t.nom] = Object.assign(tb.eclairage[t.nom]||{}, _clone(t.prix||{})); });
+    (cat.cs||[]).forEach(t=> tb.circuit_specialise[t.nom] = _clone(t.prix||{}));
+    (cat.tableau||[]).forEach(t=> tb.divers[t.nom] = _clone(t.prix||{}));
+    (cat.vent||[]).forEach(t=> tb.divers[t.nom] = _clone(t.prix||{}));
+    (cat.terre||[]).forEach(t=> tb.divers[t.nom] = _clone(t.prix||{}));
+
+    mergeTarifs(TARIFS_BASE.prises, tb.prises);
+    mergeTarifs(TARIFS_BASE.eclairage, tb.eclairage);
+    mergeTarifs(TARIFS_BASE.circuit_specialise, tb.circuit_specialise);
+    TARIFS_BASE.divers = TARIFS_BASE.divers || {};
+    mergeTarifs(TARIFS_BASE.divers, tb.divers);
+
+    // Appliquer aussi les overrides enregistrés
+    const ov=getOverrides();
+    (function deepMerge(base, add){
+      if(!add || typeof add!=='object') return;
+      Object.keys(add).forEach(k=>{
+        const v=add[k];
+        if(v && typeof v==='object' && !Array.isArray(v)){
+          if(!base[k] || typeof base[k]!=='object') base[k]={};
+          deepMerge(base[k], v);
+        }else{
+          base[k]=v;
+        }
+      });
+    })(TARIFS_BASE, ov.TARIFS_BASE||{});
+  }
+
+  // Appliquer au chargement du chapitre
+  applyPrestationsToRuntime();
+
+  /* =====================================================================
+     8.6 • Expose (window) + hook menu
+     ===================================================================== */
+  Object.assign(window, {
+    // Pages
+    pageCatalogueTarifsAccueil,
+    pageCataloguePrestations,
+    pageTarifsCoeffs,
+    pageCatalogueMateriel,
+
+    // IO cat prestations
+    catPrestExport, catPrestImport, catPrestReset,
+
+    // IO matériel
+    matExport, matImport, matReset,
+
+    // Runtime
+    applyPrestationsToRuntime
+  });
+
+  // Hook discret : injecte les 3 boutons sur l’accueil s'ils n’existent pas
+  (function softHookIntoMenu(){
+    if(typeof window.pageHome!=='function') return;
+    const old = window.pageHome;
+    window.pageHome = function(){
+      old();
+      const app = document.getElementById('app'); if(!app) return;
+      if(app.innerHTML.indexOf('pageCataloguePrestations()')===-1){
+        const hint = '<div class="card"><div class="row" style="gap:8px;">'
+          + '<button class="btn" onclick="pageCataloguePrestations()">Catalogue prestations</button>'
+          + '<button class="btn" onclick="pageTarifsCoeffs()">Tarifs & coefficients</button>'
+          + '<button class="btn" onclick="pageCatalogueMateriel()">Catalogue matériel</button>'
+          + '</div></div>';
+        app.innerHTML += hint;
+      }
+    };
+  })();
+
+})();
+</script>
+
 
 
 
