@@ -100,91 +100,135 @@ Object.assign(window,{ saveLocal, loadLocal, ensureDevis, downloadBlob, makeUID 
 
 
 <!-- =====================================================
-     CHAPITRE 1 : SOCLE UI & HELPERS
+     CHAPITRE 2 : LISTE DES DEVIS & PERSISTANCE
      Sommaire :
-       1.0 • Styles de base + conteneur
-       1.1 • Boutons & rendu (b, view)
-       1.2 • Aides € / arrondi / formats
-       1.3 • État courant du devis (ensure)
-       1.4 • Persistance locale (load/save)
-       1.5 • Outils génériques (download, uid)
+       2.0 • Stockage (liste) & helpers
+       2.1 • Nouveau devis (actionNouveauDevis)
+       2.2 • Page “Mes devis” (ouvrir, dupliquer, renommer, supprimer)
+       2.3 • Import / Export (JSON)
      ===================================================== -->
-
-<style>
-  :root{
-    --line:#e5e7eb; --muted:#6b7280; --bg:#f7f7fb;
-  }
-  html,body{ margin:0; padding:0; background:var(--bg); font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; color:#111; }
-  .app-wrap{ max-width:980px; margin:24px auto; padding:0 14px; }
-  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; }
-  h1,h2,h3{ margin:0 0 8px; }
-  .row{ display:flex; gap:10px; flex-wrap:wrap; }
-  .btn{ appearance:none; border:1px solid #1112; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
-  .btn:hover{ background:#fafafa; }
-  .btn.primary{ background:#111; color:#fff; border-color:#111; }
-  .btn.back{ background:#f3f4f6; }
-  .pill{ display:inline-flex; align-items:center; gap:8px; background:#f9fafb; border:1px solid var(--line); border-radius:999px; padding:6px 10px; }
-  .muted{ color:var(--muted); font-size:14px; }
-  .table-mini{ width:100%; border-collapse:collapse; }
-  .table-mini th,.table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; }
-  .table-mini th{ background:#fafafa; }
-</style>
-
-<div id="app" class="app-wrap">
-  <div class="card"><h2>Chargement…</h2></div>
-</div>
-
 <script>
 /* =========================
-   1.1 • Boutons & rendu
+   2.0 • Stockage & helpers
    ========================= */
-window.b = window.b || function(txt, fn, cls){ return '<button class="'+(cls||'btn')+'" onclick="'+fn+'">'+txt+'</button>'; };
-window.view = window.view || function(html){ var el=document.getElementById('app'); if(el) el.innerHTML=html; };
+const KEY_DEVIS_LIST = 'saved_devis_list_v1';
+
+function readSavedList(){ try{ return JSON.parse(localStorage.getItem(KEY_DEVIS_LIST)||'null')||[]; }catch(e){ return []; } }
+function writeSavedList(arr){ try{ localStorage.setItem(KEY_DEVIS_LIST, JSON.stringify(arr||[])); }catch(e){} }
 
 /* =========================
-   1.2 • € / arrondi / format
+   2.1 • Nouveau devis
    ========================= */
-window.euro = window.euro || function(n){ var v=+(n||0); return v.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2})+' €'; };
-window.roundUp5 = window.roundUp5 || function(n){ n=+n||0; return Math.ceil(n/5)*5; };
-window.formatDateFR = function(d){ try{ return (d?new Date(d):new Date()).toLocaleDateString('fr-FR'); }catch(e){ return new Date().toLocaleDateString(); } };
-
-/* =========================
-   1.3 • État devis courant
-   ========================= */
-window.devis = window.devis || { __id:'', __name:'Nouveau devis', __created_at:'', __tva_applicable:undefined, __taux_tva:undefined };
-function ensureDevis(){
-  if(!devis.__id) devis.__id = 'dv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
-  if(!devis.__created_at) devis.__created_at = new Date().toISOString();
-  if(typeof devis.__name!=='string') devis.__name='Devis';
+function actionNouveauDevis(){
+  window.devis = { __id:'', __name:'Nouveau devis', __created_at:'', __tva_applicable:undefined, __taux_tva:undefined };
+  ensureDevis(); saveLocal(); pageMain();
 }
 
 /* =========================
-   1.4 • Persistance locale
+   2.2 • Page Mes devis
    ========================= */
-const KEY_DEVIS_CURRENT = 'devis_current_v1';
-function saveLocal(){ try{ ensureDevis(); localStorage.setItem(KEY_DEVIS_CURRENT, JSON.stringify(devis)); }catch(e){} }
-function loadLocal(){
-  try{
-    var raw = localStorage.getItem(KEY_DEVIS_CURRENT);
-    if(raw){ window.devis = JSON.parse(raw)||window.devis; }
-    ensureDevis();
-  }catch(e){ ensureDevis(); }
+function pageSavedDevis(){
+  const list = readSavedList();
+  const rows = list.length ? list.map(d=>{
+    const when = formatDateFR(d.__created_at);
+    return `<tr>
+      <td>${d.__name||'Devis'}</td>
+      <td>${when}</td>
+      <td>
+        ${b('Ouvrir','loadDevis("'+d.__id+'")','btn')}
+        ${b('Renommer','renameDevis("'+d.__id+'")','btn')}
+        ${b('Dupliquer','duplicateDevis("'+d.__id+'")','btn')}
+        ${b('Supprimer','deleteDevis("'+d.__id+'")','btn')}
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="3" class="muted">Aucun devis enregistré.</td></tr>';
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageMain()','btn back')
+      + '<h2>Mes devis</h2>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('💾 Enregistrer l’actuel dans la liste','saveCurrentDevis()','btn primary')
+        + b('⬇️ Exporter la liste (.json)','exportSavedDevis()','btn')
+        + b('⬆️ Importer une liste (.json)','importSavedDevisUI()','btn')
+      + '</div>'
+    + '</div>'
+    + '<div class="card">'
+      + '<table class="table-mini"><thead><tr><th>Nom</th><th>Créé le</th><th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    + '</div>'
+  );
+}
+
+function saveCurrentDevis(){
+  ensureDevis();
+  const list=readSavedList();
+  // si déjà présent → remplace
+  const i=list.findIndex(x=>x.__id===devis.__id);
+  if(i>=0) list[i]=JSON.parse(JSON.stringify(devis));
+  else list.unshift(JSON.parse(JSON.stringify(devis)));
+  writeSavedList(list);
+  alert('✅ Devis enregistré dans la liste.');
+}
+
+function loadDevis(id){
+  const d = readSavedList().find(x=>x.__id===id);
+  if(!d){ alert('Introuvable.'); return; }
+  window.devis = JSON.parse(JSON.stringify(d));
+  saveLocal();
+  alert('✅ Devis chargé.'); pageMain();
+}
+function deleteDevis(id){
+  if(!confirm('Supprimer ce devis ?')) return;
+  writeSavedList(readSavedList().filter(x=>x.__id!==id));
+  pageSavedDevis();
+}
+function duplicateDevis(id){
+  const d = readSavedList().find(x=>x.__id===id); if(!d) return;
+  const copy = JSON.parse(JSON.stringify(d));
+  copy.__id = makeUID('dv');
+  copy.__name = (d.__name||'Devis')+' (copie)';
+  copy.__created_at = new Date().toISOString();
+  const list=readSavedList(); list.unshift(copy); writeSavedList(list);
+  pageSavedDevis();
+}
+function renameDevis(id){
+  const list=readSavedList(); const d=list.find(x=>x.__id===id); if(!d) return;
+  const nn=prompt('Nouveau nom :', d.__name||''); if(nn==null) return;
+  d.__name=(nn||'').trim()||d.__name; writeSavedList(list); pageSavedDevis();
 }
 
 /* =========================
-   1.5 • Utilitaires divers
+   2.3 • Import / Export
    ========================= */
-function makeUID(pfx){ return (pfx||'id')+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6); }
-function downloadBlob(name, blob){
-  try{
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url);
-  }catch(e){ alert('Téléchargement impossible : '+e.message); }
+function exportSavedDevis(){
+  const blob=new Blob([JSON.stringify(readSavedList(),null,2)],{type:'application/json;charset=utf-8'});
+  downloadBlob('mes_devis.json', blob);
+}
+function importSavedDevisUI(){
+  const input=document.createElement('input'); input.type='file'; input.accept='application/json';
+  input.onchange=function(){
+    const f=input.files&&input.files[0]; if(!f) return;
+    const rd=new FileReader(); rd.onload=function(){
+      try{
+        const arr=JSON.parse(rd.result||'[]'); if(!Array.isArray(arr)) throw new Error('Format inattendu');
+        // merge (par __id)
+        const cur=readSavedList(); const map=new Map(cur.map(x=>[x.__id,x]));
+        arr.forEach(x=>{ if(x&&x.__id) map.set(x.__id,x); });
+        writeSavedList(Array.from(map.values()).sort((a,b)=>(b.__created_at||'').localeCompare(a.__created_at||'')));
+        alert('✅ Liste importée.');
+        pageSavedDevis();
+      }catch(e){ alert('❌ Import impossible : '+e.message); }
+    }; rd.readAsText(f,'utf-8');
+  };
+  input.click();
 }
 
-// expose minimal
-Object.assign(window,{ saveLocal, loadLocal, ensureDevis, downloadBlob, makeUID });
+Object.assign(window,{
+  pageSavedDevis, actionNouveauDevis, saveCurrentDevis,
+  loadDevis, deleteDevis, duplicateDevis, renameDevis,
+  exportSavedDevis, importSavedDevisUI
+});
 </script>
-
 
 
 
