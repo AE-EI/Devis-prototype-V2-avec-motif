@@ -4103,3 +4103,199 @@ applyPrestationsToApp();
 </script>
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- =============================
+     CHAPITRE 14 (V3) : DÉMARRAGE & EXPOSE — COMPLET
+     Index :
+       §0  • init() : chargement + reprise sauvegardes + pageMain()
+       §1  • Expose : publication contrôlée des fonctions (si présentes)
+       §2  • Shim compat : alias & garde-fous (anciens appels)
+       §3  • Boot automatique (DOMContentLoaded / fallback)
+     ============================= -->
+
+<script>
+/* =========================================
+   §0 • DÉMARRAGE (init) — robuste & idempotent
+   ========================================= */
+(function(){
+  // Drapeau interne pour éviter double init si le script est chargé 2x
+  if (window.__APP_V3_INIT_DONE__) return;
+  window.__APP_V3_INIT_DONE__ = false;
+
+  function _safe(fn, label){
+    try{ return typeof fn === 'function' ? fn() : undefined; }
+    catch(err){
+      console.error('[init:'+ (label||'fn') +']', err);
+      const app = document.getElementById('app');
+      if(app){
+        app.innerHTML = '<div class="card"><h2>Erreur au démarrage</h2>'
+          + '<pre style="white-space:pre-wrap">'+(err && err.stack || String(err))+'</pre></div>';
+      }
+    }
+  }
+
+  function init(){
+    if (window.__APP_V3_INIT_DONE__) return;
+    try{
+      // 1) Charger l’état local du devis (si le module de stockage est présent)
+      if (typeof window.loadLocal === 'function') _safe(window.loadLocal, 'loadLocal');
+
+      // 2) Reprendre un devis si la liste est vide (si le module le propose)
+      if (typeof window.recoverSavedIfEmpty === 'function') _safe(window.recoverSavedIfEmpty, 'recoverSavedIfEmpty');
+
+      // 3) Démarrer l’UI principale — priorité pageMain(), fallback pageHome()
+      if (typeof window.pageMain === 'function'){
+        _safe(window.pageMain, 'pageMain');
+      } else if (typeof window.pageHome === 'function'){
+        _safe(window.pageHome, 'pageHome');
+      } else {
+        var el = document.getElementById('app');
+        if (el){
+          el.innerHTML =
+            '<div class="card">'
+              + '<h2>Interface non initialisée</h2>'
+              + '<p>Aucune fonction d’accueil détectée (pageMain() / pageHome()).</p>'
+            + '</div>';
+        }
+      }
+
+      window.__APP_V3_INIT_DONE__ = true;
+      window.__CHAP14_V3__ = true; // trace
+    }catch(err){
+      console.error('[init]', err);
+      var el = document.getElementById('app');
+      if(el){
+        el.innerHTML =
+          '<div class="card"><h2>Erreur init()</h2><pre>'
+          + ((err && err.stack) || String(err))
+          + '</pre></div>';
+      }
+    }
+  }
+
+  /* =========================================
+     §1 • EXPOSE (window) — publication contrôlée
+     - On publie des alias pratiques UNIQUEMENT si les fonctions existent
+     - Évite tout crash si un chapitre manque
+     ========================================= */
+  function expose(names){
+    const out = {};
+    names.forEach(n=>{
+      if (typeof window[n] === 'function') out[n] = window[n];
+    });
+    Object.assign(window, out);
+  }
+
+  // Registre des fonctions usuelles (tous chapitres V3)
+  expose([
+    // ===== Chap.4 — Menu & sauvegarde
+    'pageMain','actionNouveauDevis','pageSavedDevis','loadDevis','deleteDevis',
+    'saveCurrentDevis','exportSavedDevis','importSavedDevisUI',
+
+    // ===== Chap.5 — Pièces & navigation (one-page) + spécifiques
+    'pageHome','pageAddPiece','confirmPieceChoice','removePiece','goPiece','delLine',
+    'editPieceNote','pageSpecifiqueForm','saveSpecifique','goCategory','goEclairageSub',
+    'setEclairageBranch','pageOneShotSelection','saveOneShotItem','goVent',
+
+    // ===== Chap.6 — Tableaux (multi-tableaux)
+    'pageTabCreate','saveTabCustomName','pageTabHome','pageTabPose','addTabPose',
+    'pageTab_ID','submitTab_ID','pageTab_Coupure','submitTab_Coupure',
+    'pageTab_Disjoncteurs','pageTab_DisjDetails','pageTab_DisjSaveDetails',
+    'pageTab_DisjValider','pageTabMod_Commandes','submitTabMod_Commandes',
+    'pageTabMod_Specifique','submitTabMod_Specifique',
+
+    // ===== Chap.7 — Ventilation
+    'pageVentAccueil','pageVentNew','saveVentName','ventDelete','pageVentHome',
+    'pageVentCreation','kitConduitMut','kitPercMut','exConduitMut','exPercMut','vcPercMut',
+    'ventAddKit','ventAddExtracteur','ventAddVentilateur','pageVentRetirage','ventAddRetirage',
+    'pageVentEntretien','ventAddEntretien',
+
+    // ===== Chap.8 — Paramétrage (tarifs, JSON perso, catalogue menus)
+    'pageTarifsAccueil',
+    'pageTarifsPrises','pageTarifsEclLuminaires','pageTarifsEclCommandes','pageTarifsCS',
+    'pageTarifsCoeffsPose','pageTarifsPersoJSON',
+    'pageCatalogue','pageCat_Prise','pageCat_Luminaires','pageCat_Commandes','pageCat_CS',
+    'cat13Export','cat13Import','cat13Reset','applyCatalogToApp',
+
+    // ===== Chap.9 — Modifs de tableau (déplacement/recâblage)
+    'pageTabModsAccueil','pageTabModsDeplacement','pageTabModsRecablage',
+    'addTabMod_Deplacement','addTabMod_Recablage',
+
+    // ===== Chap.10 — Facturation (TXT & CSV + stockage local)
+    'pageFactures','f10_saveCurrentAsInvoice','f10_openInvoice','f10_deleteInvoice',
+    'f10_duplicateInvoice','f10_renameInvoice','f10_exportInvoiceTXT_Current',
+    'f10_exportInvoiceCSV_Current','f10_exportInvoiceTXT_FromStored','f10_exportInvoiceCSV_FromStored',
+
+    // ===== Chap.11 — Estimatif & exports (devis TXT, ZIP…)
+    'pageEstimatif','pageTotaux','exportText','exportZipGroups',
+    'exportTextFull','exportZipFull','exportDevisToutComprisTXT','exportDevisSepareTXT',
+
+    // ===== Chap.12 — Config entreprise & Préférences
+    'pageConfigEntreprise','pagePreferences','saveConfigEntreprise','savePreferences',
+    'getCompany','setCompany','getPrefs','setPrefs',
+
+    // ===== Chap.13 — Catalogue & tarifs côté catalogue
+    'pageCatalogueAccueil','pageCataloguePrestations','pageTarifsEtCoeffs','pageCatalogueMateriel',
+    'applyPrestationsToApp','catPrestExport','catPrestImport','catPrestReset'
+  ]);
+
+  /* =========================================
+     §2 • SHIM COMPAT — neutralise anciens appels
+     ========================================= */
+  // Ancien raccourci historique
+  if (typeof window.goIntervention !== 'function') {
+    window.goIntervention = function(){
+      alert('⚠️ Raccourci “Intervention” obsolète.\n'
+          + 'Sélectionnez directement l’intervention depuis la page de saisie.');
+    };
+  }
+
+  // Aliases doux (si nouvelles fonctions dispo)
+  if (typeof window.applyPrestationsToApp === 'function' && typeof window.applyCatalogToApp !== 'function'){
+    window.applyCatalogToApp = function(){ return window.applyPrestationsToApp(); };
+  }
+  // Anciens alias de catalogue (chap.8) vers chap.13 si besoin
+  if (typeof window.pageCatalogue === 'function' && typeof window.pageCatalogueAccueil === 'function'){
+    // rien : les deux coexistent parfois — on laisse tel quel
+  } else if (typeof window.pageCatalogueAccueil === 'function' && typeof window.pageCatalogue !== 'function'){
+    window.pageCatalogue = window.pageCatalogueAccueil;
+  }
+
+  // Petits helpers UI génériques si absents (b, view)
+  if(typeof window.b!=='function'){
+    window.b=function(txt,fn,cls){ return '<button class="'+(cls||'btn')+'" onclick="'+fn+'">'+txt+'</button>'; };
+  }
+  if(typeof window.view!=='function'){
+    window.view=function(html){ var app=document.getElementById('app'); if(app) app.innerHTML=html; };
+  }
+
+  /* =========================================
+     §3 • BOOT AUTO — DOMContentLoaded + fallback
+     ========================================= */
+  function _boot(){ try{ init(); }catch(e){ console.error(e); } }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', _boot, { once:true });
+  } else {
+    // Fallback micro-task pour laisser le temps aux autres chapitres de s’enregistrer
+    setTimeout(_boot, 0);
+  }
+
+})(); // IIFE Chapitre 14 (V3)
+</script>
+
+
