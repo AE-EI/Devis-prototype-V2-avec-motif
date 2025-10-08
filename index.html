@@ -3017,3 +3017,411 @@ Object.assign(window, {
 });
 </script>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- =============================
+     CHAPITRE 12 (V3) : CONFIG ENTREPRISE & PRÉFÉRENCES
+     Index :
+       12.0 • Clés & helpers de stockage (localStorage)
+       12.1 • UI — Configuration entreprise (coordonnées, assurances, logo)
+       12.2 • UI — Préférences (facturation, devise, TVA, numérotation)
+       12.3 • Expose (window)
+     ============================= -->
+
+<style>
+  /* ====== Styles Chapitre 12 ====== */
+  .cfg-wrap .card{ margin-bottom:24px; }
+  .cfg-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .cfg-grid .field{ border:1px solid var(--line, #ddd); background:#fff; border-radius:10px; padding:10px; }
+  .cfg-grid .field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .cfg-actions{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  .cfg-note{ color:var(--muted, #666); font-size:14px; }
+
+  /* Logo */
+  .cfg-logo-block{ display:grid; grid-template-columns:1fr; gap:10px; }
+  .cfg-logo-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .cfg-logo img{ max-height:64px; border:1px solid var(--line, #ddd); border-radius:8px; background:#fff; padding:4px; }
+  .dropzone{
+    border:2px dashed var(--line, #ddd); border-radius:10px; padding:12px; background:#fafafa;
+    text-align:center; color:#444;
+  }
+  .dropzone.drag{ border-color:#4caf50; background:#f0fff4; }
+  .alert-ok{
+    border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
+    padding:8px 10px; border-radius:8px; font-size:14px;
+  }
+
+  /* Bouton générique si l’app n’a pas b() */
+  .btn{ cursor:pointer; border:1px solid #ddd; background:#fff; border-radius:8px; padding:8px 12px; }
+  .btn.primary{ background:#0d6efd; border-color:#0d6efd; color:#fff; }
+  .btn.back{ background:#f3f3f3; }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+</style>
+
+<script>
+/* =========================================================
+   Sécurités : helpers b() & view() si non fournis par l'app
+   ========================================================= */
+if(typeof window.b!=='function'){
+  window.b=function(txt,fn,cls){ return '<button class="'+(cls||'btn')+'" onclick="'+fn+'">'+txt+'</button>'; };
+}
+if(typeof window.view!=='function'){
+  window.view=function(html){ var app=document.getElementById('app'); if(app) app.innerHTML=html; };
+}
+
+/* ================================
+   12.0 • Stockage & helpers
+   ================================ */
+const KEY_COMPANY = 'companyConfig_v1';
+const KEY_PREFS   = 'appPrefs_v1';
+
+function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+/* — Config entreprise — */
+function getCompany(){
+  return readJsonLS(KEY_COMPANY, {
+    // Identité
+    raison_sociale: '', nom_commercial: '',
+    siren: '', tva_intracom: '',
+    adresse: '', code_postal: '', ville: '', pays: 'France',
+    email: '', telephone: '', site: '',
+    // Assurance / mentions
+    rc_pro: '', decennale: '', assureur: '',
+    iban: '', bic: '', conditions_paiement: 'Virement bancaire à 30 jours.',
+    mentions_legales: '',
+    // Logo (dataURL)
+    logo_dataurl: '',
+    logo_meta: { name:'', size:0, width:0, height:0, loaded_at:'' }
+  });
+}
+function setCompany(obj){ writeJsonLS(KEY_COMPANY, obj||{}); }
+
+/* — Préférences — */
+function getPrefs(){
+  return readJsonLS(KEY_PREFS, {
+    facturation_mode: 'tout_compris', // 'tout_compris' | 'separe'
+    devise: '€',
+    tva_applicable: false,  // si vrai : application du taux ci-dessous
+    taux_tva: 20,           // %
+    numerotation_prefix: 'DEV-',
+    numerotation_fact_prefix: 'FAC-',
+    numerotation_courante: 1
+  });
+}
+function setPrefs(obj){ writeJsonLS(KEY_PREFS, obj||{}); }
+
+/* Fichier → dataURL + meta (nom/taille + dimensions) */
+function fileToDataURLWithMeta(file, cb, errCb){
+  try{
+    const rd = new FileReader();
+    rd.onload = function(){
+      const dataUrl = rd.result || '';
+      const img = new Image();
+      img.onload = function(){
+        cb({
+          dataUrl,
+          meta: {
+            name: file.name || '',
+            size: file.size || 0,
+            width: img.naturalWidth||img.width||0,
+            height: img.naturalHeight||img.height||0,
+            loaded_at: new Date().toISOString()
+          }
+        });
+      };
+      img.onerror = function(){ (errCb||alert)('Impossible de lire l’image.'); };
+      img.src = dataUrl;
+    };
+    rd.onerror = function(){ (errCb||alert)('Lecture du fichier échouée.'); };
+    rd.readAsDataURL(file);
+  }catch(e){ (errCb||alert)('Sélection d’image impossible : '+e.message); }
+}
+function pickImageFile(cb){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = function(){ const f=input.files&&input.files[0]; if(f) cb(f); };
+  input.click();
+}
+
+/* ============================================
+   12.1 • UI — Configuration entreprise
+   ============================================ */
+function pageConfigEntreprise(notice){
+  const cfg = getCompany();
+
+  function f(label, id, val, placeholder){
+    return '<div class="field"><label for="'+id+'">'+label+'</label>'
+         + '<input id="'+id+'" value="'+(val?String(val).replace(/"/g,'&quot;'):'')+'" placeholder="'+(placeholder||'')+'"/></div>';
+  }
+  function ta(label, id, val, placeholder){
+    return '<div class="field"><label for="'+id+'">'+label+'</label>'
+         + '<textarea id="'+id+'" rows="5" placeholder="'+(placeholder||'')+'">'+(val||'')+'</textarea></div>';
+  }
+
+  const hasLogo = !!cfg.logo_dataurl;
+  const meta = cfg.logo_meta || {};
+  const metaTxt = hasLogo
+    ? ('<div class="cfg-note">Fichier: <strong>'+ (meta.name||'') +
+       '</strong> — '+(Math.round((meta.size||0)/102.4)/10)+' Ko — '+
+       (meta.width||'?')+'×'+(meta.height||'?')+' px</div>')
+    : '<div class="cfg-note">Aucun logo</div>';
+
+  const banner = notice ? '<div class="alert-ok">'+notice+'</div>' : '';
+
+  const logoHtml =
+    '<div class="field">'
+      + '<label>Logo</label>'
+      + '<div class="cfg-logo-block">'
+        + banner
+        + '<div class="cfg-logo-row cfg-logo">'
+            + (hasLogo ? ('<img id="cfg-logo-preview" src="'+cfg.logo_dataurl+'" alt="Logo"/>') : '')
+            + metaTxt
+        + '</div>'
+        + '<div class="cfg-logo-row">'
+            + b('Choisir une image','cfgPickLogoUI()','btn')
+            + (hasLogo ? b('Aperçu plein','cfgOpenLogoFull()','btn') : '')
+            + (hasLogo ? b('Retirer','cfgRemoveLogo()','btn') : '')
+        + '</div>'
+        + '<div id="dropzone" class="dropzone">Glissez-déposez votre logo ici (PNG/JPG recommandé)</div>'
+        + '<div class="cfg-note">Le logo sera exploitable par vos exports (PDF plus tard, TXT/CSV pour l’en-tête).</div>'
+      + '</div>'
+    + '</div>';
+
+  view(
+    '<div class="cfg-wrap">'
+      + '<div class="card">'
+        + b('Retour','(typeof pageMain==="function"?pageMain():history.back())','btn back')
+        + '<h2>Configuration entreprise</h2>'
+        + '<p class="cfg-note">Renseignez vos coordonnées, assurances et mentions légales. Ces informations sont réutilisées dans les exports (devis/factures texte, CSV, etc.).</p>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Identité & coordonnées</h3>'
+        + '<div class="cfg-grid">'
+          + f('Raison sociale','ce_rs', cfg.raison_sociale, 'Ex : SARL Dupont Électricité')
+          + f('Nom commercial','ce_nc', cfg.nom_commercial, 'Ex : Dupont Élec')
+          + f('SIREN','ce_siren', cfg.siren, 'Ex : 123 456 789')
+          + f('N° TVA intracom','ce_tva', cfg.tva_intracom, 'Ex : FRXX999999999')
+          + f('Adresse','ce_addr', cfg.adresse, 'Rue et n°')
+          + f('Code postal','ce_cp', cfg.code_postal, '75000')
+          + f('Ville','ce_ville', cfg.ville, 'Paris')
+          + f('Pays','ce_pays', cfg.pays || 'France', 'France')
+          + f('Email','ce_mail', cfg.email, 'contact@exemple.fr')
+          + f('Téléphone','ce_tel', cfg.telephone, '+33 6 12 34 56 78')
+          + f('Site web','ce_web', cfg.site, 'https://…')
+        + '</div>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Assurances & RIB</h3>'
+        + '<div class="cfg-grid">'
+          + f('RC Pro (n°)','ce_rc', cfg.rc_pro, '')
+          + f('Décennale (n°)','ce_dec', cfg.decennale, '')
+          + f('Assureur','ce_ass', cfg.assureur, '')
+          + f('IBAN','ce_iban', cfg.iban, '')
+          + f('BIC','ce_bic', cfg.bic, '')
+        + '</div>'
+        + ta('Conditions de paiement','ce_cond', cfg.conditions_paiement, 'Ex : Virement sous 30 jours…')
+        + ta('Mentions légales (pied de page)','ce_mentions', cfg.mentions_legales, 'Textes libres…')
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Logo</h3>'
+        + logoHtml
+      + '</div>'
+
+      + '<div class="cfg-actions">'
+        + b('💾 Enregistrer','saveConfigEntreprise()','btn primary')
+        + b('⬅️ Accueil','(typeof pageMain==="function"?pageMain():history.back())','btn')
+      + '</div>'
+    + '</div>'
+  );
+
+  // Handlers inline (évite les fuites globales)
+  window.cfgPickLogoUI = function(){
+    pickImageFile(function(file){
+      fileToDataURLWithMeta(file, function(res){
+        const c = getCompany();
+        c.logo_dataurl = res.dataUrl;
+        c.logo_meta = res.meta;
+        setCompany(c);
+        pageConfigEntreprise('Logo chargé ✅ ('+res.meta.width+'×'+res.meta.height+' px)');
+      });
+    });
+  };
+  window.cfgRemoveLogo = function(){
+    const c = getCompany(); c.logo_dataurl = ''; c.logo_meta = {name:'',size:0,width:0,height:0,loaded_at:''};
+    setCompany(c); pageConfigEntreprise('Logo supprimé.');
+  };
+  window.cfgOpenLogoFull = function(){
+    const c = getCompany(); if(!c.logo_dataurl) return;
+    const w = window.open(); if(!w) return;
+    w.document.write('<img src="'+c.logo_dataurl+'" style="max-width:100%;height:auto" alt="Logo" />');
+  };
+
+  // Drag & drop
+  (function setupDrop(){
+    const dz = document.getElementById('dropzone');
+    if(!dz) return;
+    ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', function(e){
+      const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) || null;
+      if(!f) return;
+      if(!/^image\//i.test(f.type||'')){ alert('Merci de déposer une image (PNG/JPG).'); return; }
+      fileToDataURLWithMeta(f, function(res){
+        const c = getCompany();
+        c.logo_dataurl = res.dataUrl;
+        c.logo_meta = res.meta;
+        setCompany(c);
+        pageConfigEntreprise('Logo chargé ✅ ('+res.meta.width+'×'+res.meta.height+' px)');
+      });
+    });
+  })();
+}
+
+function saveConfigEntreprise(){
+  const cfg = getCompany();
+  function gv(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+  Object.assign(cfg, {
+    raison_sociale: gv('ce_rs'),
+    nom_commercial: gv('ce_nc'),
+    siren: gv('ce_siren'),
+    tva_intracom: gv('ce_tva'),
+    adresse: gv('ce_addr'),
+    code_postal: gv('ce_cp'),
+    ville: gv('ce_ville'),
+    pays: gv('ce_pays'),
+    email: gv('ce_mail'),
+    telephone: gv('ce_tel'),
+    site: gv('ce_web'),
+    rc_pro: gv('ce_rc'),
+    decennale: gv('ce_dec'),
+    assureur: gv('ce_ass'),
+    iban: gv('ce_iban'),
+    bic: gv('ce_bic'),
+    conditions_paiement: gv('ce_cond'),
+    mentions_legales: gv('ce_mentions')
+  });
+  setCompany(cfg);
+  alert('✅ Configuration entreprise enregistrée.');
+}
+
+/* ============================================
+   12.2 • UI — Préférences générales
+   ============================================ */
+function pagePreferences(){
+  const p = getPrefs();
+  const radio = (name, val, cur, label) =>
+    '<label class="btn" style="display:inline-flex;align-items:center;gap:6px;">'
+    + '<input type="radio" name="'+name+'" value="'+val+'" '+(cur===val?'checked':'')+'> '
+    + label + '</label>';
+
+  view(
+    '<div class="cfg-wrap">'
+      + '<div class="card">'
+        + b('Retour','(typeof pageMain==="function"?pageMain():history.back())','btn back')
+        + '<h2>Préférences générales</h2>'
+        + '<p class="cfg-note">Ces réglages influencent la présentation des exports (devis/factures) et la logique de TVA.</p>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Mode de facturation</h3>'
+        + '<div class="row">'
+          + radio('pf_fmode','tout_compris', p.facturation_mode, 'Tarifs « fournitures + pose » (tout compris)')
+          + radio('pf_fmode','separe', p.facturation_mode, 'Séparer prestations et matériel')
+        + '</div>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Devise & TVA</h3>'
+        + '<div class="cfg-grid">'
+          + '<div class="field">'
+            + '<label>Devise</label>'
+            + '<input id="pf_dev" value="'+(p.devise||'€')+'" placeholder="€"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>TVA applicable</label>'
+            + '<select id="pf_tva_on"><option value="no" '+(!p.tva_applicable?'selected':'')+'>Non (Micro)</option><option value="yes" '+(p.tva_applicable?'selected':'')+'>Oui (Régime réel)</option></select>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Taux de TVA (%)</label>'
+            + '<input id="pf_tva" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="'+(+p.taux_tva||20)+'"/>'
+          + '</div>'
+        + '</div>'
+        + '<p class="cfg-note">Le devis peut surcharger la TVA (ex : chantier à 10%). Les exports utilisent d’abord la TVA du document courant.</p>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Numérotation</h3>'
+        + '<div class="cfg-grid">'
+          + '<div class="field">'
+            + '<label>Préfixe numérotation devis</label>'
+            + '<input id="pf_pref_dev" value="'+(p.numerotation_prefix||'DEV-')+'"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Préfixe numérotation facture</label>'
+            + '<input id="pf_pref_fac" value="'+(p.numerotation_fact_prefix||'FAC-')+'"/>'
+          + '</div>'
+          + '<div class="field">'
+            + '<label>Compteur courant</label>'
+            + '<input id="pf_counter" type="number" inputmode="numeric" min="1" value="'+(+p.numerotation_courante||1)+'"/>'
+            + '<div class="cfg-note">Servira pour générer DEV-0001, FAC-0001, etc. (incrément à l’export).</div>'
+          + '</div>'
+        + '</div>'
+      + '</div>'
+
+      + '<div class="cfg-actions">'
+        + b('💾 Enregistrer','savePreferences()','btn primary')
+        + b('⬅️ Accueil','(typeof pageMain==="function"?pageMain():history.back())','btn')
+      + '</div>'
+    + '</div>'
+  );
+}
+
+function savePreferences(){
+  const cur = getPrefs();
+  function gv(id){ const el=document.getElementById(id); return el?el.value:''; }
+  function gi(name){ const el=document.querySelector('input[name="'+name+'"]:checked'); return el?el.value:cur[name]; }
+  const tvay = (gv('pf_tva_on')==='yes');
+
+  const out = Object.assign({}, cur, {
+    facturation_mode: gi('pf_fmode') || cur.facturation_mode,
+    devise: (gv('pf_dev') || cur.devise || '€').trim() || '€',
+    tva_applicable: tvay,
+    taux_tva: Math.max(0, parseFloat(gv('pf_tva'))||cur.taux_tva||20),
+    numerotation_prefix: gv('pf_pref_dev') || cur.numerotation_prefix || 'DEV-',
+    numerotation_fact_prefix: gv('pf_pref_fac') || cur.numerotation_fact_prefix || 'FAC-',
+    numerotation_courante: Math.max(1, parseInt(gv('pf_counter'),10)||cur.numerotation_courante||1)
+  });
+  setPrefs(out);
+  alert('✅ Préférences enregistrées.');
+}
+
+/* =========================
+   12.3 • Expose (window)
+   ========================= */
+Object.assign(window, {
+  // accès lecture/écriture
+  getCompany, setCompany, getPrefs, setPrefs,
+  // pages
+  pageConfigEntreprise, pagePreferences,
+  // actions
+  saveConfigEntreprise, savePreferences
+});
+</script>
+
