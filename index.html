@@ -4373,3 +4373,258 @@ if (typeof window.goIntervention !== 'function') {
 // Lancement auto
 init();
 </script>
+
+
+
+
+
+
+
+
+
+
+<!-- =============================
+     CHAPITRE 15 : DUPLIQUER & RECALCULER AUX TARIFS ACTUELS
+     - Bouton sur Estimatif & Totaux
+     - Crée un duplicata du devis courant avec PU recalculés
+     - N'écrase rien (ajoute un nouveau devis dans la liste)
+     ============================= -->
+<script>
+(function(){
+
+/* ============ Helpers sûrs ============ */
+function _safe(obj, path, def){
+  try{
+    return path.split('.').reduce((o,k)=> (o && k in o)? o[k] : undefined, obj) ?? def;
+  }catch(e){ return def; }
+}
+function _num(x){ return +x || 0; }
+function _clone(x){ return JSON.parse(JSON.stringify(x)); }
+function _pickPoseCoef(pose){
+  // Utilise COEFF_POSE si dispo, sinon 1
+  var cp = (typeof COEFF_POSE==='object' && COEFF_POSE) ? COEFF_POSE : {};
+  return +cp[pose] || 1;
+}
+
+/* ============ Repricing par familles ============ */
+/* Prises, Éclairage, Circuit spécialisé → TARIFS_BASE (+ COEFF_POSE si Création) */
+function repriceFromTarifsBase(it){
+  var TB = (typeof TARIFS_BASE==='object' && TARIFS_BASE) ? TARIFS_BASE : null;
+  if(!TB) return null;
+
+  var cat  = String(it.category||'').trim();
+  var des  = String(it.designation||'').trim();
+  var intv = String(it.intervention||'').trim();
+  var pose = String(it.pose||'').trim();
+  var pu   = null;
+
+  if(/^Prises$/i.test(cat)){
+    pu = _safe(TB, 'prises["'+des+'"]["'+intv+'"]', null);
+    if(pu==null && TB.prises && TB.prises[des] && TB.prises[des]['Création']!=null && intv==='Création'){
+      pu = TB.prises[des]['Création']; // fallback
+    }
+    if(pu!=null && intv==='Création' && pose){
+      pu = pu * _pickPoseCoef(pose);
+    }
+    return (pu!=null)? roundUp5(pu) : null;
+  }
+
+  if(/^Éclairage\/Luminaires$/i.test(cat) || /^Éclairage\/Commandes$/i.test(cat)){
+    pu = _safe(TB, 'eclairage["'+des+'"]["'+intv+'"]', null);
+    if(pu!=null && intv==='Création' && pose){
+      pu = pu * _pickPoseCoef(pose);
+    }
+    return (pu!=null)? roundUp5(pu) : null;
+  }
+
+  // Circuit spécialisé : on tente d'abord par désignation (v13)
+  pu = _safe(TB, 'circuit_specialise["'+des+'"]["'+intv+'"]', null);
+  if(pu!=null && intv==='Création' && pose){
+    pu = pu * _pickPoseCoef(pose);
+  }
+  if(pu!=null) return roundUp5(pu);
+
+  // Sinon, si base générique existe on l’utilise (sans section ici)
+  pu = _safe(TB, 'circuit_specialise_base["'+intv+'"]', null);
+  if(pu!=null && intv==='Création' && pose){
+    pu = pu * _pickPoseCoef(pose);
+  }
+  return (pu!=null)? roundUp5(pu) : null;
+}
+
+/* Tableau & distribution (Chap.6/9) → TARIFS_TABLEAU + fonctions de calcul si dispo */
+function repriceTableauLike(it){
+  var des  = String(it.designation||'').trim();
+  var intv = String(it.intervention||'').trim();
+  var pose = String(it.pose||'').trim();
+  var TTab = (typeof TARIFS_TABLEAU==='object' && TARIFS_TABLEAU) ? TARIFS_TABLEAU : {};
+
+  // Pose tableau — r rangée(s), m modules
+  // Exemple : "Pose tableau — 2 rangée(s), 18 modules"
+  var m1 = /^Pose tableau\s+—\s+(\d+)\s+rangée\(s\),\s*(\d+)\s+modules/i.exec(des);
+  if(m1 && typeof getTabPrice==='function'){
+    var rangs = +m1[1]||1, modules=+m1[2]||13;
+    var pu = +getTabPrice(rangs, modules, pose||'Saillie', intv||'Création')||0;
+    return roundUp5(pu);
+  }
+
+  // Interrupteurs différentiels : "ID 30mA — 40A - Type A"
+  var m2 = /^ID\s*30mA\s*—\s*(\d+A\s*-\s*Type\s*(A|AC))/i.exec(des);
+  if(m2){
+    var key = String(m2[1]||'').toUpperCase().replace(/\s+/g,'').replace('TYPE','Type ').replace('A-','A - ');
+    // Clés attendues : "40A - Type A" | "40A - Type AC" | "63A - Type A" | ...
+    var pu = _safe(TTab, 'inter_diff["'+key.replace(/\s{2,}/g,' ')+'"]', null);
+    return (pu!=null)? roundUp5(+pu) : null;
+  }
+
+  // Disjoncteurs : "Disjoncteur 20 A ..."  ou "Disjoncteur 40 A — circuits : ..."
+  var m3 = /^Disjoncteur\s+(\d+)\s*A\b/i.exec(des);
+  if(m3){
+    var r = +m3[1]||0;
+    var pu = _safe(TTab, 'disjoncteurs["'+r+'"]', null);
+    if(pu==null && r===40) pu = 45; // fallback déjà en vigueur dans V10.0
+    return (pu!=null)? roundUp5(+pu) : null;
+  }
+
+  // Commandes tableau : désignation = clé exacte du tarif
+  if(/^Tableau\/Commandes$/i.test(String(it.category||'')) && TTab.commandes){
+    var pu = TTab.commandes[des];
+    return (pu!=null)? roundUp5(+pu) : null;
+  }
+
+  // Modifications de tableau — totaux calculés (Chap.9)
+  // (a) Déplacement : "Circuits à rallonger : N — Boîte : LABEL — Goulotte : X m"
+  if(/^Modification emplacement Tableau$/i.test(String(it.category||'')) && typeof calcDeplacementTotal==='function'){
+    var m = /Circuits à rallonger\s*:\s*(\d+)\s*—\s*Boîte\s*:\s*([^—]+?)\s*—\s*Goulotte\s*:\s*([\d.,]+)\s*m/i.exec(des);
+    if(m){
+      var n  = +m[1]||0;
+      var lbl= (m[2]||'').trim();
+      var id = 'NONE';
+      // on remappe le label en id minimalement
+      if(/100\s*×\s*150/i.test(lbl)) id='100x150';
+      else if(/150\s*×\s*200/i.test(lbl)) id='150x200';
+      else if(/200\s*×\s*250/i.test(lbl)) id='200x250';
+      else if(/300\s*×\s*350/i.test(lbl)) id='300x350';
+      var lm = parseFloat((m[3]||'0').replace(',','.'))||0;
+      return roundUp5(+calcDeplacementTotal(n, id, lm)||0);
+    }
+  }
+  // (b) Remplacement coffret : "N rangée(s) × 18 modules — Pose Encastré"
+  if(/^Remplacement coffret$/i.test(String(it.category||'')) && typeof calcRemplacementCoffretTotal==='function'){
+    var mr = /(\d+)\s*rangée\(s\).*?(\d+)\s*modules.*?Pose\s*(Saillie|Encastré)/i.exec(des);
+    if(mr){
+      var rang = +mr[1]||1, modTxt = (mr[2]||'13')+' modules', p = mr[3]||'Saillie';
+      return roundUp5(+calcRemplacementCoffretTotal(rang, modTxt, p)||0);
+    }
+  }
+  // (c) Recâblage circuits
+  if(/^Recâblage tableau existant — Circuits$/i.test(String(it.category||'')) && typeof calcRecabCircuits==='function'){
+    var mc = /Nombre de circuits à recâbler\s*:\s*(\d+)/i.exec(des);
+    if(mc){ return roundUp5(+calcRecabCircuits(+mc[1]||0)||0); }
+  }
+  // (d) Recâblage matériel suppl. → prix à l'unité saisi : on le laisse tel quel
+
+  return null; // pas de meilleure règle
+}
+
+/* ============ Décideur PU ============ */
+function computeNewPU(it){
+  // 1) familles “catalogue de pose”
+  var p1 = repriceFromTarifsBase(it);
+  if(p1!=null) return p1;
+
+  // 2) familles “tableau / mods” spécifiques
+  var p2 = repriceTableauLike(it);
+  if(p2!=null) return p2;
+
+  // 3) pas de recalcul possible → conserve PU d’origine
+  return +it.prixU || 0;
+}
+
+/* ============ Moteur de duplication ============ */
+function duplicateDevisWithCurrentTarifs(){
+  if(!window.devis || typeof devis!=='object'){ alert('Aucun devis en cours.'); return; }
+
+  // Choisir la source (devis courant)
+  var src = devis;
+  var baseName = (src.__name || 'Devis') + ' — recalculé';
+  var newName = prompt('Nom pour le duplicata recalculé :', baseName) || baseName;
+
+  // Nouveau conteneur de devis (copie profonde, puis recalcul)
+  var dst = _clone(src);
+
+  // Nouveau ID + nom
+  dst.__id = 'dv_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+  dst.__name = newName;
+
+  // Repricing ligne à ligne
+  for (var key in dst){
+    if(key.indexOf('__')===0) continue; // méta
+    var sect = dst[key];
+    if(!sect || !Array.isArray(sect.items)) continue;
+
+    sect.items = sect.items.map(function(it){
+      var out = _clone(it);
+      // Cas “Spécifique” utilisateur → on ne touche pas
+      var isSpec = /spécifique/i.test(String(out.category||'')) || /spécifique/i.test(String(out.designation||''));
+      if(isSpec) return out;
+
+      // Recalcul PU
+      out.prixU = computeNewPU(out);
+      return out;
+    });
+  }
+
+  // Enregistrer dans la liste multi-devis (si disponible) ou remplacer “courant”
+  // Chapitre 4 fournit normalement un stockage multi-devis.
+  try{
+    if(typeof saveCurrentDevis === 'function'){
+      // Sauvegarde le devis courant actuel dans l’historique
+      saveCurrentDevis(); 
+    }
+  }catch(e){}
+
+  // Injecte ce duplicata comme “devis courant” puis persiste
+  window.devis = dst;
+  try{ if(typeof saveLocal==='function') saveLocal(); }catch(e){}
+
+  alert('✅ Duplicata créé avec ré-application des tarifs actuels.\nNom : '+newName);
+  // Retour à l’estimatif pour contrôle
+  if(typeof pageEstimatif==='function') pageEstimatif();
+}
+
+/* ============ Injection UI : Estimatif & Totaux ============ */
+function injectButtonOnce(){
+  function injectIn(fnName){
+    var orig = window[fnName];
+    if(typeof orig !== 'function') return;
+
+    window[fnName] = function(){
+      orig();
+      var app = document.getElementById('app'); if(!app) return;
+      if(app.innerHTML.indexOf('duplicateDevisWithCurrentTarifs()')!==-1) return;
+
+      // On ajoute le bouton juste après la ligne des exports
+      app.innerHTML = app.innerHTML.replace(
+        /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
+        '$1<div class="row" style="margin-top:10px;">'
+        + '<button class="btn" onclick="duplicateDevisWithCurrentTarifs()">Dupliquer avec nouveaux tarifs</button>'
+        + '</div>'
+      );
+    };
+  }
+  injectIn('pageEstimatif');
+  injectIn('pageTotaux');
+}
+injectButtonOnce();
+
+/* ============ Expose global ============ */
+Object.assign(window, {
+  duplicateDevisWithCurrentTarifs
+});
+
+})();
+</script>
+
+
+  
