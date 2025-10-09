@@ -4625,6 +4625,36 @@ Object.assign(window, {
 
 })();
 </script>
+<script>
+/* Patch : après création du duplicata, on l’enregistre réellement
+   dans la liste multi-devis puis on ouvre l’écran “Devis sauvegardés”. */
+(function(){
+  if (typeof window.duplicateDevisWithCurrentTarifs !== 'function') return;
+
+  const _orig = window.duplicateDevisWithCurrentTarifs;
+
+  window.duplicateDevisWithCurrentTarifs = function(){
+    // 1) on laisse la logique de duplication/repricing faire son travail
+    _orig();
+
+    // 2) À ce stade, window.devis contient le duplicata (dst) et __name est posé.
+    try{
+      // Sauvegarde locale “courant”
+      if (typeof saveLocal === 'function') saveLocal();
+
+      // Ajout à la liste des devis sauvegardés (chapitre 4)
+      // => IMPORTANT : on sauve APRES avoir remplacé window.devis par le duplicata
+      if (typeof saveCurrentDevis === 'function') saveCurrentDevis();
+
+      // Optionnel : on affiche directement la liste pour que tu voies le duplicata
+      if (typeof pageSavedDevis === 'function') pageSavedDevis();
+    }catch(e){
+      console.warn('Sauvegarde duplicata :', e);
+      alert('Le duplicata a bien été créé. Si tu ne le vois pas dans la liste, utilise “Sauvegarder le devis”.');
+    }
+  };
+})();
+</script>
 
 
   
