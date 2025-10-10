@@ -1906,7 +1906,36 @@ Object.assign(window,{
   openParamJSON
 });
 </script>
+<script>
+/* ===== Patch Chapitre 8 : route le bouton "Catalogue prestation" vers la bonne page =====
+   - Remplace tout ancien appel (pageCatalogue() / pageCatalogueFourniture()) par pageCataloguePrestation()
+   - Ne modifie pas la structure ni le style : on se contente d’ajuster l’onclick après rendu
+*/
+(function fixCataloguePrestationLink(){
+  function wrap(fnName){
+    const orig = window[fnName];
+    if (typeof orig !== 'function') return;
+    window[fnName] = function(){
+      orig();
+      const app = document.getElementById('app');
+      if (!app) return;
 
+      // 1) Redirige tout ancien onclick vers la nouvelle fonction
+      app.innerHTML = app.innerHTML
+        .replace(/onclick="[^"]*pageCatalogue\(\)[^"]*"/g, 'onclick="pageCataloguePrestation()"')
+        .replace(/onclick="[^"]*pageCatalogueFourniture\(\)[^"]*"/g, 'onclick="pageCataloguePrestation()"');
+
+      // 2) Optionnel : harmonise le libellé si besoin (n'affecte pas la mise en page)
+      app.innerHTML = app.innerHTML
+        .replace(/Catalogue (matériel|fourniture)s?/gi, 'Catalogue prestation');
+    };
+  }
+
+  // Le Chapitre 8 peut s'appeler différemment selon les versions (V10.0+)
+  wrap('pageParametrageAccueil');
+  wrap('pageTarifsAccueil');
+})();
+</script>
 
 
 
