@@ -3290,20 +3290,18 @@ Object.assign(window, {
   
 
 <!-- =============================
-     CHAPITRE 13 : CATALOGUE MATÉRIEL (LIÉ AUX MENUS + TARIFS)
+     CHAPITRE 13 : CATALOGUE PRESTATION — V10.2
      Index :
        13.0 • Styles
-       13.1 • Stockage & Structure (alignée avec l’app)
-       13.2 • Helpers (merge, IO, UI utils)
-       13.3 • Application au runtime (DESIGNATIONS + TARIFS_BASE)
-       13.4 • Page d’accueil du catalogue
-       13.5 • Éditeur : PRISES
-       13.6 • Éditeur : ÉCLAIRAGE / Luminaires
-       13.7 • Éditeur : ÉCLAIRAGE / Commandes
-       13.8 • Éditeur : CIRCUIT SPÉCIALISÉ
-       13.9 • Import / Export / Reset
-       13.10 • Injection dans le Chapitre 8 (Paramétrage)
-       13.11 • Expose (window)
+       13.1 • Stockage & structure
+       13.2 • Helpers & persistance
+       13.3 • Injection dans TARIFS_BASE + DESIGNATIONS
+       13.4 • Page d’accueil du catalogue prestation
+       13.5 • Éditeurs : Appareillage (Prises, Luminaires, Commandes, CS)
+       13.6 • Sections vierges : Tableau, Ventilation, Mise à la terre
+       13.7 • Import / Export / Reset
+       13.8 • Intégration au Chapitre 8 (Paramétrage)
+       13.9 • Expose (window)
      ============================= -->
 
 <style>
@@ -3312,11 +3310,7 @@ Object.assign(window, {
   .cat-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
   .cat-field label{ display:block; font-weight:600; margin-bottom:6px; }
   .cat-note{ color:var(--muted); font-size:14px; }
-  .pill.small{ padding:6px 10px; font-size:14px; }
   .row.gap8{ gap:8px; flex-wrap:wrap; }
-  .table-mini{ width:100%; border-collapse:collapse; font-size:14px; }
-  .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
-  .table-mini th{ background:#fafafa; }
   .type-head{ display:flex; align-items:center; justify-content:space-between; }
   .muted{ color:var(--muted); }
   .cat-tip{ font-size:13px; color:#555; }
@@ -3324,517 +3318,222 @@ Object.assign(window, {
 
 <script>
 /* ============================================================
-   13.1 • Stockage & Structure (alignée avec l’app)
-   ------------------------------------------------------------
-   - Familles : Prises / Éclairage(Luminaires, Commandes) / Circuit spécialisé
-   - Chaque type possède ses tarifs par intervention (suivant la famille)
-   - Sauvegarde dans localStorage (KEY_CATALOG13)
+   13.1 • Stockage & structure
    ============================================================ */
-const KEY_CATALOG13 = 'catalogueTypes_v2';
+const KEY_CATALOG_PREST = 'CATALOGUE_PRESTATION_V10';
 
-/*
-Structure de base :
-
-{
-  "prises": [
-    {"nom":"Prise 2P+T","tarifs":{"Création":90,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":45,"Recâblage sans remplacement appareillage":30}},
-    ...
-  ],
-  "eclairage": {
-    "luminaires":[
-      {"nom":"Point de centre","tarifs":{"Création":110,"Remplacement luminaire":35,"Recâblage avec remplacement luminaire":55,"Recâblage sans remplacement luminaire":40}},
-      ...
-    ],
-    "commandes":[
-      {"nom":"Interrupteur simple","tarifs":{"Création":65,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":40,"Recâblage sans remplacement appareillage":28}},
-      ...
-    ]
-  },
-  "circuit_spec":[
-    {"nom":"Four","tarifs":{"Création":140,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":55,"Recâblage sans remplacement appareillage":40}},
-    ...
-  ]
-}
-
-Les libellés d’intervention sont adaptés :
-- Prises & Commandes : ...“appareillage”
-- Luminaires : ...“luminaire”
-- Circuit spécialisé : libellés “appareillage”
-*/
-
-function _catDefault(){
+function _prestDefault(){
   return {
-    prises: [
-      { nom:"Prise 2P+T",        tarifs:{ "Création":90, "Remplacement appareillage":25, "Recâblage avec remplacement appareillage":45, "Recâblage sans remplacement appareillage":30 } },
-      { nom:"Prise 2P+T IP44",   tarifs:{ "Création":110,"Remplacement appareillage":30, "Recâblage avec remplacement appareillage":50, "Recâblage sans remplacement appareillage":35 } }
-    ],
-    eclairage: {
+    appareillage: {
+      prises: [
+        { nom: "Création prise", tarifs: { "Création": 110, "Remplacement appareillage": 30, "Recâblage avec remplacement appareillage": 85, "Recâblage sans remplacement appareillage": 65 } }
+      ],
       luminaires: [
-        { nom:"Point de centre",  tarifs:{ "Création":110,"Remplacement luminaire":35, "Recâblage avec remplacement luminaire":55, "Recâblage sans remplacement luminaire":40 } },
-        { nom:"Applique",         tarifs:{ "Création":95, "Remplacement luminaire":30, "Recâblage avec remplacement luminaire":50, "Recâblage sans remplacement luminaire":35 } }
+        { nom: "Point de centre", tarifs: { "Création": 100, "Remplacement luminaire": 30, "Recâblage avec remplacement luminaire": 95, "Recâblage sans remplacement luminaire": 65 } },
+        { nom: "Applique", tarifs: { "Création": 100, "Remplacement luminaire": 30, "Recâblage avec remplacement luminaire": 95, "Recâblage sans remplacement luminaire": 65 } },
+        { nom: "Alimentation spot", tarifs: { "Création": 60, "Remplacement luminaire": 25, "Recâblage avec remplacement luminaire": 45, "Recâblage sans remplacement luminaire": 35 } },
+        { nom: "Spot", tarifs: { "Création": 80, "Remplacement luminaire": 30, "Recâblage avec remplacement luminaire": 55, "Recâblage sans remplacement luminaire": 40 } }
       ],
       commandes: [
-        { nom:"Interrupteur simple", tarifs:{ "Création":65,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":40,"Recâblage sans remplacement appareillage":28 } },
-        { nom:"Interrupteur double", tarifs:{ "Création":80,"Remplacement appareillage":30,"Recâblage avec remplacement appareillage":48,"Recâblage sans remplacement appareillage":34 } }
+        { nom: "Allumage simple", tarifs: { "Création": 50, "Remplacement appareillage": 25, "Recâblage avec remplacement appareillage": 75, "Recâblage sans remplacement appareillage": 55 } },
+        { nom: "Allumage double", tarifs: { "Création": 55, "Remplacement appareillage": 30, "Recâblage avec remplacement appareillage": 80, "Recâblage sans remplacement appareillage": 60 } },
+        { nom: "Va-et-vient", tarifs: { "Création": 55, "Remplacement appareillage": 30, "Recâblage avec remplacement appareillage": 80, "Recâblage sans remplacement appareillage": 60 } },
+        { nom: "Variateur", tarifs: { "Création": 70, "Remplacement appareillage": 35, "Recâblage avec remplacement appareillage": 90, "Recâblage sans remplacement appareillage": 65 } }
+      ],
+      circuits: [
+        { nom: "Circuit spécialisé 1,5 mm²", tarifs: { "Création": 110, "Remplacement appareillage": 30, "Recâblage avec remplacement appareillage": 85, "Recâblage sans remplacement appareillage": 65 } },
+        { nom: "Circuit spécialisé 2,5 mm²", tarifs: { "Création": 120, "Remplacement appareillage": 35, "Recâblage avec remplacement appareillage": 95, "Recâblage sans remplacement appareillage": 75 } },
+        { nom: "Circuit spécialisé 6 mm²", tarifs: { "Création": 140, "Remplacement appareillage": 40, "Recâblage avec remplacement appareillage": 105, "Recâblage sans remplacement appareillage": 80 } },
+        { nom: "Circuit spécialisé 10 mm²", tarifs: { "Création": 160, "Remplacement appareillage": 50, "Recâblage avec remplacement appareillage": 120, "Recâblage sans remplacement appareillage": 95 } }
       ]
     },
-    circuit_spec: [
-      { nom:"Four",                tarifs:{ "Création":140,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":55,"Recâblage sans remplacement appareillage":40 } },
-      { nom:"Plaque de cuisson",   tarifs:{ "Création":155,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":60,"Recâblage sans remplacement appareillage":42 } },
-      { nom:"Lave-linge",          tarifs:{ "Création":135,"Remplacement appareillage":30,"Recâblage avec remplacement appareillage":52,"Recâblage sans remplacement appareillage":38 } }
-    ]
+    tableau: [],
+    ventilation: [],
+    terre: []
   };
 }
 
-function getCatalog13(){
-  try{ return JSON.parse(localStorage.getItem(KEY_CATALOG13)||'null') || _catDefault(); }
-  catch(e){ return _catDefault(); }
-}
-function setCatalog13(obj){
-  try{ localStorage.setItem(KEY_CATALOG13, JSON.stringify(obj||_catDefault())); }catch(e){}
-}
-
 /* ============================================================
-   13.2 • Helpers (merge, IO, UI utils)
+   13.2 • Helpers & persistance
    ============================================================ */
+function getPrestCatalog(){ try{ return JSON.parse(localStorage.getItem(KEY_CATALOG_PREST)||'null') || _prestDefault(); }catch(e){ return _prestDefault(); } }
+function setPrestCatalog(obj){ try{ localStorage.setItem(KEY_CATALOG_PREST, JSON.stringify(obj||_prestDefault())); }catch(e){} }
+function _mergeTarifs(base, add){ if(!add) return; Object.keys(add).forEach(k=>{ if(typeof add[k]==='object') _mergeTarifs(base[k]=base[k]||{}, add[k]); else base[k]=add[k]; }); }
 function _clone(x){ return JSON.parse(JSON.stringify(x)); }
-function _ensureNum(n){ return Math.max(0, +n || 0); }
-function _escape(s){ return String(s||'').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
-
-// Deep merge “add-only + override on leaf numbers”
-function _mergeTarifs(base, add){
-  if(!add || typeof add!=='object') return;
-  Object.keys(add).forEach(k=>{
-    const v = add[k];
-    if(v && typeof v==='object' && !Array.isArray(v)){
-      if(!base[k] || typeof base[k]!=='object') base[k] = {};
-      _mergeTarifs(base[k], v);
-    }else{
-      base[k] = v; // leaf (number/string) → override
-    }
-  });
-}
+function _ensureNum(n){ return Math.max(0, +n||0); }
 
 /* ============================================================
-   13.3 • Application au runtime (DESIGNATIONS + TARIFS_BASE)
-   ------------------------------------------------------------
-   - Alimente DESIGNATIONS_PAR_CATEGORIE :
-       * "Prises" → tous types de prises
-       * "Éclairage/Luminaires" → types luminaires
-       * "Éclairage/Commandes" → types commandes
-       * "Circuit spécialisé" → types circuit_spec
-   - Fusionne dans TARIFS_BASE (ajout/override pour ces désignations)
+   13.3 • Injection dynamique dans TARIFS_BASE & DESIGNATIONS
    ============================================================ */
-function applyCatalogToApp(){
-  const cat = getCatalog13();
+function applyPrestToApp(){
+  const cat = getPrestCatalog();
+  if(typeof window.TARIFS_BASE!=='object') return;
 
-  // 1) DESIGNATIONS_PAR_CATEGORIE (si défini par l’app)
-  if(typeof window.DESIGNATIONS_PAR_CATEGORIE === 'object'){
-    // Prises
-    window.DESIGNATIONS_PAR_CATEGORIE['Prises'] = window.DESIGNATIONS_PAR_CATEGORIE['Prises'] || [];
-    cat.prises.forEach(t=>{
-      if(window.DESIGNATIONS_PAR_CATEGORIE['Prises'].indexOf(t.nom)===-1){
-        window.DESIGNATIONS_PAR_CATEGORIE['Prises'].push(t.nom);
-      }
-    });
+  // Appareillage — Prises
+  cat.appareillage.prises.forEach(t=>{
+    TARIFS_BASE.prises[t.nom] = TARIFS_BASE.prises[t.nom] || {};
+    _mergeTarifs(TARIFS_BASE.prises[t.nom], t.tarifs);
+  });
 
-    // Éclairage
-    window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'] = window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'] || [];
-    cat.eclairage.luminaires.forEach(t=>{
-      if(window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'].indexOf(t.nom)===-1){
-        window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'].push(t.nom);
-      }
-    });
-    window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'] = window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'] || [];
-    cat.eclairage.commandes.forEach(t=>{
-      if(window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'].indexOf(t.nom)===-1){
-        window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'].push(t.nom);
-      }
-    });
-
-    // Circuit spécialisé
-    window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'] = window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'] || [];
-    cat.circuit_spec.forEach(t=>{
-      if(window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'].indexOf(t.nom)===-1){
-        window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'].push(t.nom);
-      }
-    });
-  }
-
-  // 2) TARIFS_BASE (si défini par l’app)
-  //    On injecte/override les désignations avec les tarifs saisis ici.
-  if(typeof window.TARIFS_BASE === 'object'){
-    // Prises
-    TARIFS_BASE.prises = TARIFS_BASE.prises || {};
-    cat.prises.forEach(t=>{
-      TARIFS_BASE.prises[t.nom] = TARIFS_BASE.prises[t.nom] || {};
-      _mergeTarifs(TARIFS_BASE.prises[t.nom], t.tarifs || {});
-    });
-
-    // Éclairage / Luminaires (libellés “luminaire”)
+  // Luminaires
+  cat.appareillage.luminaires.forEach(t=>{
     TARIFS_BASE.eclairage = TARIFS_BASE.eclairage || {};
-    cat.eclairage.luminaires.forEach(t=>{
-      TARIFS_BASE.eclairage[t.nom] = TARIFS_BASE.eclairage[t.nom] || {};
-      _mergeTarifs(TARIFS_BASE.eclairage[t.nom], t.tarifs || {});
-    });
+    TARIFS_BASE.eclairage[t.nom] = TARIFS_BASE.eclairage[t.nom] || {};
+    _mergeTarifs(TARIFS_BASE.eclairage[t.nom], t.tarifs);
+  });
 
-    // Éclairage / Commandes (libellés “appareillage”)
-    cat.eclairage.commandes.forEach(t=>{
-      TARIFS_BASE.eclairage[t.nom] = TARIFS_BASE.eclairage[t.nom] || {};
-      _mergeTarifs(TARIFS_BASE.eclairage[t.nom], t.tarifs || {});
-    });
+  // Commandes
+  cat.appareillage.commandes.forEach(t=>{
+    TARIFS_BASE.eclairage[t.nom] = TARIFS_BASE.eclairage[t.nom] || {};
+    _mergeTarifs(TARIFS_BASE.eclairage[t.nom], t.tarifs);
+  });
 
-    // Circuit spécialisé : on injecte des désignations spécifiques (si un flux les utilise)
-    // Sinon, ces tarifs serviront dans les écrans one-shot/rapides.
-    TARIFS_BASE.circuit_specialise = TARIFS_BASE.circuit_specialise || {};
-    cat.circuit_spec.forEach(t=>{
-      TARIFS_BASE.circuit_specialise[t.nom] = TARIFS_BASE.circuit_specialise[t.nom] || {};
-      _mergeTarifs(TARIFS_BASE.circuit_specialise[t.nom], t.tarifs || {});
-    });
+  // Circuits spécialisés
+  cat.appareillage.circuits.forEach(t=>{
+    TARIFS_BASE.circuit_specialise_base[t.nom] = TARIFS_BASE.circuit_specialise_base[t.nom] || {};
+    _mergeTarifs(TARIFS_BASE.circuit_specialise_base[t.nom], t.tarifs);
+  });
+
+  // DESIGNATIONS_PAR_CATEGORIE
+  if(typeof window.DESIGNATIONS_PAR_CATEGORIE==='object'){
+    window.DESIGNATIONS_PAR_CATEGORIE['Prises'] = cat.appareillage.prises.map(x=>x.nom);
+    window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'] = cat.appareillage.luminaires.map(x=>x.nom);
+    window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'] = cat.appareillage.commandes.map(x=>x.nom);
+    window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'] = cat.appareillage.circuits.map(x=>x.nom);
   }
 }
-// Applique au chargement du chapitre
-applyCatalogToApp();
 
 /* ============================================================
-   13.4 • Page d’accueil du catalogue
+   13.4 • Page d’accueil du catalogue prestation
    ============================================================ */
-function pageCatalogue(){
-  const c = getCatalog13();
+function pageCataloguePrestation(){
+  const c = getPrestCatalog();
   view(
     '<div class="cat-wrap">'
-      + '<div class="card">'
-        + b('⬅️ Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
-        + '<h2>Catalogue matériel (lié aux menus + tarifs)</h2>'
-        + '<p class="cat-note">Ajoute des types et renseigne leurs tarifs : ils apparaissent automatiquement dans les menus correspondants et sont pris en compte dans les calculs.</p>'
-        + '<div class="row gap8" style="margin-top:8px;">'
-          + b('⚡ Prises','pageCat_Prise()','btn primary')
-          + b('💡 Éclairage — Luminaires','pageCat_Luminaires()','btn')
-          + b('🕹️ Éclairage — Commandes','pageCat_Commandes()','btn')
-          + b('🔌 Circuit spécialisé','pageCat_CS()','btn')
-          + b('⬇️ Export JSON','cat13Export()','btn ghost')
-          + b('⬆️ Import JSON','cat13Import()','btn ghost')
-          + b('🧹 Réinitialiser','cat13Reset()','btn')
-        + '</div>'
-      + '</div>'
-
-      + '<div class="card">'
-        + '<h3>Aperçu rapide</h3>'
-        + '<p><strong>Prises :</strong> '+c.prises.length+'</p>'
-        + '<p><strong>Luminaires :</strong> '+c.eclairage.luminaires.length+' • <strong>Commandes :</strong> '+c.eclairage.commandes.length+'</p>'
-        + '<p><strong>Circuit spécialisé :</strong> '+c.circuit_spec.length+'</p>'
-        + '<p class="cat-tip">Astuce : après modifications, les menus de l’app sont mis à jour immédiatement.</p>'
+    + '<div class="card">'
+      + b('⬅️ Retour','pageTarifsAccueil()','btn back')
+      + '<h2>Catalogue prestation</h2>'
+      + '<p class="cat-note">Paramètre les tarifs de pose et ajoute de nouveaux types de prestations.</p>'
+      + '<div class="row gap8" style="margin-top:8px;">'
+        + b('Appareillage','pageCat_Appareillage()','btn primary')
+        + b('Tableau','pageCat_Tableau()','btn')
+        + b('Ventilation','pageCat_Ventilation()','btn')
+        + b('Mise à la terre','pageCat_Terre()','btn')
       + '</div>'
     + '</div>'
   );
 }
 
 /* ============================================================
-   13.5 • Éditeur : PRISES
-   (libellés “appareillage”)
+   13.5 • Éditeurs — Appareillage (groupé)
    ============================================================ */
-const _PRIX_KEYS_APP = [
-  "Création",
-  "Remplacement appareillage",
-  "Recâblage avec remplacement appareillage",
-  "Recâblage sans remplacement appareillage"
-];
-function _prixRowInputs(prefix, tarifs, keys){ 
+const _PREST_KEYS = ["Création","Remplacement appareillage","Recâblage avec remplacement appareillage","Recâblage sans remplacement appareillage"];
+const _PREST_KEYS_LUM = ["Création","Remplacement luminaire","Recâblage avec remplacement luminaire","Recâblage sans remplacement luminaire"];
+
+function _prixInputs(prefix, tarifs, keys){
   return keys.map(k=>{
-    const id = `${prefix}-${k.replace(/\s+/g,'_')}`;
+    const id = prefix+'-'+k.replace(/\s+/g,'_');
     const val = +(tarifs?.[k]||0);
-    return `<div class="cat-field"><label>${_escape(k)}</label><input id="${id}" type="number" step="1" inputmode="decimal" value="${val}"/></div>`;
+    return `<div class="cat-field"><label>${k}</label><input id="${id}" type="number" step="1" inputmode="decimal" value="${val}"/></div>`;
   }).join('');
 }
-function _saveTarifsFromInputs(prefix, keys){
-  const out = {};
-  keys.forEach(k=>{
-    const id = `${prefix}-${k.replace(/\s+/g,'_')}`;
-    const el = document.getElementById(id);
-    out[k] = _ensureNum(el && el.value);
-  });
-  return out;
+function _saveInputs(prefix, keys){
+  const out={}; keys.forEach(k=>{ const el=document.getElementById(prefix+'-'+k.replace(/\s+/g,'_')); out[k]=_ensureNum(el?.value); }); return out;
 }
 
-function pageCat_Prise(){
-  const c = getCatalog13();
-  const rows = c.prises.map((t,idx)=>{
-    const prefix = `p${idx}`;
-    return `
-      <div class="card">
-        <div class="type-head">
-          <h3>${_escape(t.nom)}</h3>
-          <div>${b('Supprimer','catPriseDel('+idx+')','btn')}</div>
-        </div>
-        <div class="cat-grid">
-          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_APP)}
-        </div>
-        <div class="row gap8" style="margin-top:8px;">
-          ${b('💾 Enregistrer','catPriseSave('+idx+')','btn primary')}
-        </div>
-      </div>
-    `;
-  }).join('');
+function pageCat_Appareillage(){
+  const c = getPrestCatalog();
+  let html = '<div class="cat-wrap">'
+    + '<div class="card">'+b('⬅️ Retour','pageCataloguePrestation()','btn back')+'<h2>Appareillage</h2></div>';
 
-  view(
-    '<div class="cat-wrap">'
-      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>⚡ Prises</h2></div>'
-      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
-      + '<div class="card">'
-        + '<h3>Ajouter un type (Prises)</h3>'
-        + '<div class="row gap8">'
-          + '<input id="p-add-name" placeholder="ex : Prise 2P+T IP55" />'
-          + b('Ajouter','catPriseAdd()','btn')
-        + '</div>'
-      + '</div>'
-    + '</div>'
-  );
+  function bloc(titre, arr, keyset, sectionKey){
+    return `<div class="card"><h3>${titre}</h3>` +
+      (arr.map((t,idx)=>{
+        const prefix=sectionKey+idx;
+        return `<div class="type-head"><h4>${t.nom}</h4><div>${b('Supprimer',`prestDel('${sectionKey}',${idx})`,'btn')}</div></div>
+          <div class="cat-grid">${_prixInputs(prefix,t.tarifs,keyset)}</div>
+          <div class="row gap8" style="margin-top:8px;">${b('💾 Enregistrer',`prestSave('${sectionKey}',${idx})`,'btn primary')}</div>`;
+      }).join('') || '<p class="cat-note">Aucun type.</p>')
+      + `<div class="row gap8" style="margin-top:10px;"><input id="${sectionKey}-add" placeholder="Ajouter un type..." />${b('Ajouter',`prestAdd('${sectionKey}')`,'btn')}</div></div>`;
+  }
 
-  // handlers
-  window.catPriseAdd = function(){
-    const el=document.getElementById('p-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
-    const cur=getCatalog13(); cur.prises.push({ nom:name, tarifs:{} }); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_Prise();
-  };
-  window.catPriseDel = function(idx){
-    const cur=getCatalog13(); cur.prises.splice(idx,1); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_Prise();
-  };
-  window.catPriseSave = function(idx){
-    const cur=getCatalog13(); const t=cur.prises[idx]; if(!t) return;
-    t.tarifs = _saveTarifsFromInputs(`p${idx}`, _PRIX_KEYS_APP);
-    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
-  };
+  html += bloc('Prises', c.appareillage.prises, _PREST_KEYS, 'prises');
+  html += bloc('Éclairage — Luminaires', c.appareillage.luminaires, _PREST_KEYS_LUM, 'luminaires');
+  html += bloc('Éclairage — Commandes', c.appareillage.commandes, _PREST_KEYS, 'commandes');
+  html += bloc('Circuit spécialisé', c.appareillage.circuits, _PREST_KEYS, 'circuits');
+  html += '</div>';
+  view(html);
+}
+
+window.prestAdd = function(section){
+  const c=getPrestCatalog();
+  const name=(document.getElementById(section+'-add')?.value||'').trim(); if(!name) return;
+  const bloc = c.appareillage[section]; bloc.push({nom:name,tarifs:{}});
+  setPrestCatalog(c); applyPrestToApp(); pageCat_Appareillage();
+};
+window.prestDel = function(section,idx){
+  const c=getPrestCatalog(); c.appareillage[section].splice(idx,1); setPrestCatalog(c);
+  applyPrestToApp(); pageCat_Appareillage();
+};
+window.prestSave = function(section,idx){
+  const c=getPrestCatalog();
+  const arr=c.appareillage[section]; if(!arr[idx]) return;
+  const keyset=(section==='luminaires'?_PREST_KEYS_LUM:_PREST_KEYS);
+  arr[idx].tarifs=_saveInputs(section+idx,keyset);
+  setPrestCatalog(c); applyPrestToApp(); alert('✅ Tarifs enregistrés.');
+};
+
+/* ============================================================
+   13.6 • Sections vierges : Tableau / Ventilation / Terre
+   ============================================================ */
+function pageCat_Tableau(){
+  view('<div class="card">'+b('⬅️ Retour','pageCataloguePrestation()','btn back')+'<h2>Tableau</h2><p class="cat-note">Section à venir.</p></div>');
+}
+function pageCat_Ventilation(){
+  view('<div class="card">'+b('⬅️ Retour','pageCataloguePrestation()','btn back')+'<h2>Ventilation</h2><p class="cat-note">Section à venir.</p></div>');
+}
+function pageCat_Terre(){
+  view('<div class="card">'+b('⬅️ Retour','pageCataloguePrestation()','btn back')+'<h2>Mise à la terre</h2><p class="cat-note">Section à venir.</p></div>');
 }
 
 /* ============================================================
-   13.6 • Éditeur : ÉCLAIRAGE / Luminaires
-   (libellés “luminaire”)
+   13.7 • Import / Export / Reset
    ============================================================ */
-const _PRIX_KEYS_LUM = [
-  "Création",
-  "Remplacement luminaire",
-  "Recâblage avec remplacement luminaire",
-  "Recâblage sans remplacement luminaire"
-];
-
-function pageCat_Luminaires(){
-  const c = getCatalog13();
-  const rows = c.eclairage.luminaires.map((t,idx)=>{
-    const prefix = `lum${idx}`;
-    return `
-      <div class="card">
-        <div class="type-head">
-          <h3>${_escape(t.nom)}</h3>
-          <div>${b('Supprimer','catLumDel('+idx+')','btn')}</div>
-        </div>
-        <div class="cat-grid">
-          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_LUM)}
-        </div>
-        <div class="row gap8" style="margin-top:8px;">
-          ${b('💾 Enregistrer','catLumSave('+idx+')','btn primary')}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  view(
-    '<div class="cat-wrap">'
-      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>💡 Éclairage — Luminaires</h2></div>'
-      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
-      + '<div class="card">'
-        + '<h3>Ajouter un type (Luminaires)</h3>'
-        + '<div class="row gap8">'
-          + '<input id="lum-add-name" placeholder="ex : Réglette LED" />'
-          + b('Ajouter','catLumAdd()','btn')
-        + '</div>'
-        + '<p class="cat-tip">Les types ajoutés apparaîtront dans le menu “Éclairage / Luminaires”.</p>'
-      + '</div>'
-    + '</div>'
-  );
-
-  window.catLumAdd = function(){
-    const el=document.getElementById('lum-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
-    const cur=getCatalog13(); cur.eclairage.luminaires.push({ nom:name, tarifs:{} }); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_Luminaires();
-  };
-  window.catLumDel = function(idx){
-    const cur=getCatalog13(); cur.eclairage.luminaires.splice(idx,1); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_Luminaires();
-  };
-  window.catLumSave = function(idx){
-    const cur=getCatalog13(); const t=cur.eclairage.luminaires[idx]; if(!t) return;
-    t.tarifs = _saveTarifsFromInputs(`lum${idx}`, _PRIX_KEYS_LUM);
-    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
-  };
+function prestExport(){
+  const raw=JSON.stringify(getPrestCatalog(),null,2);
+  const blob=new Blob([raw],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='catalogue_prestation.json'; a.click();
+  URL.revokeObjectURL(a.href);
 }
-
-/* ============================================================
-   13.7 • Éditeur : ÉCLAIRAGE / Commandes
-   (libellés “appareillage”)
-   ============================================================ */
-function pageCat_Commandes(){
-  const c = getCatalog13();
-  const rows = c.eclairage.commandes.map((t,idx)=>{
-    const prefix = `cmd${idx}`;
-    return `
-      <div class="card">
-        <div class="type-head">
-          <h3>${_escape(t.nom)}</h3>
-          <div>${b('Supprimer','catCmdDel('+idx+')','btn')}</div>
-        </div>
-        <div class="cat-grid">
-          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_APP)}
-        </div>
-        <div class="row gap8" style="margin-top:8px;">
-          ${b('💾 Enregistrer','catCmdSave('+idx+')','btn primary')}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  view(
-    '<div class="cat-wrap">'
-      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>🕹️ Éclairage — Commandes</h2></div>'
-      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
-      + '<div class="card">'
-        + '<h3>Ajouter un type (Commandes)</h3>'
-        + '<div class="row gap8">'
-          + '<input id="cmd-add-name" placeholder="ex : Variateur rotatif" />'
-          + b('Ajouter','catCmdAdd()','btn')
-        + '</div>'
-        + '<p class="cat-tip">Les types ajoutés apparaîtront dans le menu “Éclairage / Commandes”.</p>'
-      + '</div>'
-    + '</div>'
-  );
-
-  window.catCmdAdd = function(){
-    const el=document.getElementById('cmd-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
-    const cur=getCatalog13(); cur.eclairage.commandes.push({ nom:name, tarifs:{} }); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_Commandes();
-  };
-  window.catCmdDel = function(idx){
-    const cur=getCatalog13(); cur.eclairage.commandes.splice(idx,1); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_Commandes();
-  };
-  window.catCmdSave = function(idx){
-    const cur=getCatalog13(); const t=cur.eclairage.commandes[idx]; if(!t) return;
-    t.tarifs = _saveTarifsFromInputs(`cmd${idx}`, _PRIX_KEYS_APP);
-    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
-  };
-}
-
-/* ============================================================
-   13.8 • Éditeur : CIRCUIT SPÉCIALISÉ
-   (libellés “appareillage”)
-   ============================================================ */
-function pageCat_CS(){
-  const c = getCatalog13();
-  const rows = c.circuit_spec.map((t,idx)=>{
-    const prefix = `cs${idx}`;
-    return `
-      <div class="card">
-        <div class="type-head">
-          <h3>${_escape(t.nom)}</h3>
-          <div>${b('Supprimer','catCSDel('+idx+')','btn')}</div>
-        </div>
-        <div class="cat-grid">
-          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_APP)}
-        </div>
-        <div class="row gap8" style="margin-top:8px;">
-          ${b('💾 Enregistrer','catCSSave('+idx+')','btn primary')}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  view(
-    '<div class="cat-wrap">'
-      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>🔌 Circuit spécialisé</h2></div>'
-      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
-      + '<div class="card">'
-        + '<h3>Ajouter un type (Circuit spécialisé)</h3>'
-        + '<div class="row gap8">'
-          + '<input id="cs-add-name" placeholder="ex : Cumulus, VMC, Pompe de relevage…" />'
-          + b('Ajouter','catCSAdd()','btn')
-        + '</div>'
-        + '<p class="cat-tip">Les types ajoutés apparaîtront dans “Circuit spécialisé”.</p>'
-      + '</div>'
-    + '</div>'
-  );
-
-  window.catCSAdd = function(){
-    const el=document.getElementById('cs-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
-    const cur=getCatalog13(); cur.circuit_spec.push({ nom:name, tarifs:{} }); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_CS();
-  };
-  window.catCSDel = function(idx){
-    const cur=getCatalog13(); cur.circuit_spec.splice(idx,1); setCatalog13(cur);
-    applyCatalogToApp(); pageCat_CS();
-  };
-  window.catCSSave = function(idx){
-    const cur=getCatalog13(); const t=cur.circuit_spec[idx]; if(!t) return;
-    t.tarifs = _saveTarifsFromInputs(`cs${idx}`, _PRIX_KEYS_APP);
-    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
-  };
-}
-
-/* ============================================================
-   13.9 • Import / Export / Reset
-   ============================================================ */
-function cat13Export(){
-  const raw = JSON.stringify(getCatalog13(), null, 2);
-  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'catalogue_types_v2.json'; a.click();
-  URL.revokeObjectURL(url);
-}
-function cat13Import(){
-  const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'application/json';
-  input.onchange = function(){
-    const f = input.files && input.files[0]; if(!f) return;
-    const rd = new FileReader();
-    rd.onload = function(){
-      try{
-        const obj = JSON.parse(rd.result||'{}');
-        if(!obj || !obj.prises || !obj.eclairage || !obj.circuit_spec) { alert('❌ JSON inattendu.'); return; }
-        setCatalog13(obj);
-        applyCatalogToApp();
-        alert('✅ Catalogue importé.');
-        pageCatalogue();
-      }catch(e){ alert('❌ Import impossible : '+e.message); }
-    };
+function prestImport(){
+  const input=document.createElement('input'); input.type='file'; input.accept='application/json';
+  input.onchange=function(){ const f=input.files?.[0]; if(!f)return; const rd=new FileReader();
+    rd.onload=function(){ try{ const obj=JSON.parse(rd.result||'{}'); setPrestCatalog(obj); applyPrestToApp(); alert('✅ Catalogue importé.'); pageCataloguePrestation(); }catch(e){ alert('❌ Import invalide : '+e.message); } };
     rd.readAsText(f,'utf-8');
-  };
-  input.click();
+  }; input.click();
 }
-function cat13Reset(){
-  if(!confirm('Réinitialiser le catalogue aux valeurs par défaut ?')) return;
-  localStorage.removeItem(KEY_CATALOG13);
-  applyCatalogToApp();
-  alert('✅ Catalogue réinitialisé.');
-  pageCatalogue();
+function prestReset(){
+  if(!confirm('Réinitialiser le catalogue prestation ?'))return;
+  localStorage.removeItem(KEY_CATALOG_PREST);
+  applyPrestToApp(); alert('✅ Catalogue réinitialisé.'); pageCataloguePrestation();
 }
 
 /* ============================================================
-   13.10 • Injection dans le Chapitre 8 (Paramétrage)
+   13.8 • Intégration au Chapitre 8 (Paramétrage)
    ============================================================ */
-(function injectIntoParametrage(){
-  const orig = window.pageTarifsAccueil;
-  if(typeof orig === 'function'){
-    window.pageTarifsAccueil = function(){
+(function injectPrest(){
+  const orig=window.pageTarifsAccueil;
+  if(typeof orig==='function'){
+    window.pageTarifsAccueil=function(){
       orig();
-      const app = document.getElementById('app');
-      if(!app) return;
-      const btn = 'Catalogue matériel (lié aux menus + tarifs)';
-      if(app.innerHTML.indexOf('pageCatalogue()')===-1){
+      const app=document.getElementById('app');
+      if(!app)return;
+      if(app.innerHTML.indexOf('pageCataloguePrestation()')===-1){
         app.innerHTML = app.innerHTML.replace(
           /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
           '$1'
           + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
-          +   '<button class="btn" onclick="pageCatalogue()">'+btn+'</button>'
+          +   '<button class="btn" onclick="pageCataloguePrestation()">Catalogue prestation</button>'
           + '</div></div>'
         );
       }
@@ -3843,18 +3542,17 @@ function cat13Reset(){
 })();
 
 /* ============================================================
-   13.11 • Expose (window)
+   13.9 • Expose (window)
    ============================================================ */
-Object.assign(window, {
-  pageCatalogue,
-  pageCat_Prise,
-  pageCat_Luminaires,
-  pageCat_Commandes,
-  pageCat_CS,
-  cat13Export,
-  cat13Import,
-  cat13Reset,
-  applyCatalogToApp
+Object.assign(window,{
+  pageCataloguePrestation,
+  pageCat_Appareillage,
+  pageCat_Tableau,
+  pageCat_Ventilation,
+  pageCat_Terre,
+  prestAdd, prestDel, prestSave,
+  prestExport, prestImport, prestReset,
+  applyPrestToApp
 });
 </script>
 
