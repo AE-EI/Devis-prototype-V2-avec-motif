@@ -1786,7 +1786,7 @@ function ventAddEntretien(key){
   
   
 <!-- =============================
-     CHAPITRE 8 : PARAMÉTRAGE — V10.0
+     CHAPITRE 8 : PARAMÉTRAGE — V10.1
      Index :
        §8.1 • Accueil du paramétrage
        §8.2 • Catalogue fourniture (tarifs de pose)
@@ -1794,6 +1794,7 @@ function ventAddEntretien(key){
        §8.4 • Configuration entreprise
        §8.5 • Préférences devis et facturation
        §8.6 • Paramétrage avancé (JSON / développeur)
+       §8.7 • Expose (window)
      ============================= -->
 <script>
 /* ======================
@@ -1916,6 +1917,18 @@ function pageParametrageAvance(){
     + '</div>'
   );
 }
+
+/* ======================
+   §8.7 • EXPOSE (WINDOW)
+   ====================== */
+Object.assign(window, {
+  pageParametrageAccueil,
+  pageCatalogueFourniture,
+  pageCataloguePrestation,
+  pageConfigEntreprise,
+  pagePreferences,
+  pageParametrageAvance
+});
 </script>
 
 
