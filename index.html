@@ -1771,171 +1771,128 @@ function ventAddEntretien(key){
 
 
 
-
-
-  
-  
-  
-  
-<!-- ===============================
+<!-- ================================
      CHAPITRE 8 : PARAMÉTRAGE — V10.1
-     (accueil + routes propres + compat)
-     =============================== -->
-
+     ================================ -->
 <script>
-/* ========= Accueil ========== */
+/* ----------------------------------
+   §8.0 • Accueil du paramétrage
+   ---------------------------------- */
 function pageParametrageAccueil(){
   view(
     '<div class="card">'
-      + b("Retour","pageMain()","btn back")
+      + b('Retour','pageMain()','btn back')
       + '<h2>Paramétrage</h2>'
-      + '<p class="muted">Personnalise les tarifs, les catalogues et les préférences.</p>'
+      + '<p class="muted">Personnalise les tarifs, les catalogues et les préférences de l’application.</p>'
     + '</div>'
 
-    /* Bloc 1 : Catalogue fourniture (tarifs de pose) */
-    + '<div class="card">'
-      + '<h3>Catalogue fourniture</h3>'
-      + '<p class="muted">Définis les tarifs de base de pose (prises, éclairage, circuits, etc.).</p>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('Ouvrir le catalogue fourniture','openCatalogueFourniture()','btn')
-      + '</div>'
-    + '</div>'
-
-    /* Bloc 2 : Catalogue prestation (matériel / types + prix) */
+    /* ------- Bloc 1 : Catalogue prestation ------- */
     + '<div class="card">'
       + '<h3>Catalogue prestation</h3>'
-      + '<p class="muted">Gère les types de fournitures vendues (marques, gammes, finitions) et leurs prix de vente.</p>'
-      + '<div class="row" style="margin-top:8px;">'
+      + '<p class="muted">Gère les tarifs de pose (appareillage, etc.). Les valeurs sont utilisées dans les écrans, les aperçus et les exports, et dans la duplication de devis “appliquer nouveaux tarifs”.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
         + b('Ouvrir le catalogue prestation','openCataloguePrestation()','btn')
       + '</div>'
     + '</div>'
 
-    /* Bloc 3 : Configuration entreprise */
+    /* ------- Bloc 2 : Catalogue fourniture ------- */
     + '<div class="card">'
-      + '<h3>Configuration entreprise</h3>'
-      + '<p class="muted">Coordonnées, mentions légales, RIB, logo… utilisés dans les exports.</p>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('Ouvrir la configuration entreprise','openConfigEntreprise()','btn')
+      + '<h3>Catalogue fourniture</h3>'
+      + '<p class="muted">Gère les types de fournitures (matériel) liés aux menus et tarifs. Sert pour enrichir les désignations et prix de fournitures.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('Ouvrir le catalogue fourniture','openCatalogueFourniture()','btn')
       + '</div>'
     + '</div>'
 
-    /* Bloc 4 : Préférences devis et facturation */
+    /* ------- Bloc 3 : Configuration entreprise ------- */
+    + '<div class="card">'
+      + '<h3>Configuration entreprise</h3>'
+      + '<p class="muted">Coordonnées, SIRET/SIREN, TVA, mentions, logo… Ces informations sont utilisées dans les exports.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('Ouvrir la configuration','openCompanyConfig()','btn')
+      + '</div>'
+    + '</div>'
+
+    /* ------- Bloc 4 : Préférences devis et facturation ------- */
     + '<div class="card">'
       + '<h3>Préférences devis et facturation</h3>'
-      + '<p class="muted">Mode de facturation (tout compris/séparé), devise, TVA, numérotation…</p>'
-      + '<div class="row" style="margin-top:8px;">'
+      + '<p class="muted">Mode de facturation (tout compris / séparé), devise, TVA, numérotation, etc.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
         + b('Ouvrir les préférences','openPreferences()','btn')
       + '</div>'
     + '</div>'
 
-    /* Bloc 5 : Paramétrage avancé (JSON / développeur) */
+    /* ------- Bloc 5 : Paramétrage avancé ------- */
     + '<div class="card">'
       + '<h3>Paramétrage avancé (JSON / développeur)</h3>'
-      + '<p class="muted">Ajouts de catégories/poses/désignations par JSON. N’écrase pas le tronc existant.</p>'
-      + '<div class="row" style="margin-top:8px;">'
-        + b('Ouvrir le paramétrage avancé','openParamJSON()','btn')
+      + '<p class="muted">Accès direct aux données stockées localement (import/export, reset). Pour utilisateurs avancés.</p>'
+      + '<div class="row" style="gap:8px;margin-top:8px;">'
+        + b('Ouvrir','openParamJSON()','btn')
       + '</div>'
     + '</div>'
   );
 }
 
-/* ========= Routes (ouvrent les pages existantes si présentes) ========== */
-function openCatalogueFourniture(){
-  // ex Chapitre “tarifs de pose” (avant : pageTarifsAccueil / sous-pages)
-  if(typeof pageTarifsAccueil === 'function'){ pageTarifsAccueil(); return; }
-  if(typeof pageTarifsEclLuminaires === 'function' || typeof pageTarifsPrises === 'function'){
-    // S’il n’y a pas d’accueil dédié, montre une petite porte d’entrée
-    view(
-      '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Catalogue fourniture</h2>'
-      + '<p class="muted">Choisis une famille pour modifier ses tarifs de pose.</p>'
-      + '<div class="row" style="margin-top:8px;">'
-        + (typeof pageTarifsPrises==='function'? b('Prises','pageTarifsPrises()','btn'):'')
-        + (typeof pageTarifsEclLuminaires==='function'? b('Éclairage — Luminaires','pageTarifsEclLuminaires()','btn'):'')
-        + (typeof pageTarifsEclCommandes==='function'? b('Éclairage — Commandes','pageTarifsEclCommandes()','btn'):'')
-        + (typeof pageTarifsCS==='function'? b('Circuit spécialisé','pageTarifsCS()','btn'):'')
-        + (typeof pageTarifsCoeffsPose==='function'? b('Coefficients de pose','pageTarifsCoeffsPose()','btn'):'')
-      + '</div>'
-    + '</div>');
-    return;
-  }
-  alert('Cette partie n’est pas chargée dans la page.');
-}
-
+/* ----------------------------------
+   §8.1 • Actions (sécurisées)
+   ---------------------------------- */
 function openCataloguePrestation(){
-  // ex Chapitre 13 (catalogue matériel) : pageCatalogue()
-  if(typeof pageCatalogue === 'function'){ pageCatalogue(); return; }
-  if(typeof pageCatalogueFourniture === 'function'){ pageCatalogueFourniture(); return; }
-  // fallback minimal
-  view(
-    '<div class="card">'
-      + b('Retour','pageParametrageAccueil()','btn back')
-      + '<h2>Catalogue prestation</h2>'
-      + '<p class="muted">Module de gestion des fournitures non chargé.</p>'
-    + '</div>'
-  );
+  // Chapitre 13 (nouveau) expose pageCataloguePrestation
+  if (typeof pageCataloguePrestation === 'function'){ pageCataloguePrestation(); return; }
+  alert('Le module “Catalogue prestation” n’est pas chargé. Vérifie que le Chapitre 13 (prestation) est bien inclus et qu’il expose pageCataloguePrestation().');
 }
-
-function openConfigEntreprise(){
-  if(typeof pageConfigEntreprise === 'function'){ pageConfigEntreprise(); return; }
-  alert("La page 'Configuration entreprise' n’est pas encore dispo dans cette build.");
+function openCatalogueFourniture(){
+  // Compat : anciens modules pouvaient s’appeler pageCatalogue() ou pageCatalogueFourniture()
+  if (typeof pageCatalogueFourniture === 'function'){ pageCatalogueFourniture(); return; }
+  if (typeof pageCatalogue === 'function'){ pageCatalogue(); return; }
+  alert('Le module “Catalogue fourniture” n’est pas chargé. Vérifie que le Chapitre 13 (catalogue matériel/fourniture) est bien inclus.');
 }
-
+function openCompanyConfig(){
+  if (typeof pageConfigEntreprise === 'function'){ pageConfigEntreprise(); return; }
+  alert('La page “Configuration entreprise” n’est pas disponible dans ce build.');
+}
 function openPreferences(){
-  if(typeof pagePreferences === 'function'){ pagePreferences(); return; }
-  alert("La page 'Préférences devis et facturation' n’est pas encore dispo dans cette build.");
+  if (typeof pagePreferences === 'function'){ pagePreferences(); return; }
+  alert('La page “Préférences devis et facturation” n’est pas disponible dans ce build.');
 }
-
 function openParamJSON(){
-  if(typeof pageTarifsPersoJSON === 'function'){ pageTarifsPersoJSON(); return; }
-  alert("Le module 'Paramétrage avancé (JSON)' n’est pas encore dispo dans cette build.");
+  if (typeof openParamJSON === 'function'){ openParamJSON(); return; }
+  if (typeof pageParamJSON === 'function'){ pageParamJSON(); return; }
+  alert('La page “Paramétrage avancé (JSON)” n’est pas disponible dans ce build.');
 }
 
-/* ========= Compat & expose global ========== */
-// Compat : anciens liens qui appellent encore l’ex-accueil
-if(typeof window.pageTarifsAccueil !== 'function'){
+/* ----------------------------------
+   §8.2 • Compat & expose
+   ---------------------------------- */
+// Compatibilité : certains anciens menus appellent encore pageTarifsAccueil()
+if (typeof window.pageTarifsAccueil !== 'function'){
   window.pageTarifsAccueil = pageParametrageAccueil;
+} else {
+  // on remplace par un wrapper pour garder les injections éventuelles faites ailleurs
+  const _old = window.pageTarifsAccueil;
+  window.pageTarifsAccueil = function(){ pageParametrageAccueil(); };
 }
 
-// Expose pour le menu principal (Chapitre 4)
-Object.assign(window,{
+// Expose explicitement
+Object.assign(window, {
   pageParametrageAccueil,
-  openCatalogueFourniture,
   openCataloguePrestation,
-  openConfigEntreprise,
+  openCatalogueFourniture,
+  openCompanyConfig,
   openPreferences,
   openParamJSON
 });
 </script>
-<script>
-/* ===== Patch Chapitre 8 : route le bouton "Catalogue prestation" vers la bonne page =====
-   - Remplace tout ancien appel (pageCatalogue() / pageCatalogueFourniture()) par pageCataloguePrestation()
-   - Ne modifie pas la structure ni le style : on se contente d’ajuster l’onclick après rendu
-*/
-(function fixCataloguePrestationLink(){
-  function wrap(fnName){
-    const orig = window[fnName];
-    if (typeof orig !== 'function') return;
-    window[fnName] = function(){
-      orig();
-      const app = document.getElementById('app');
-      if (!app) return;
 
-      // 1) Redirige tout ancien onclick vers la nouvelle fonction
-      app.innerHTML = app.innerHTML
-        .replace(/onclick="[^"]*pageCatalogue\(\)[^"]*"/g, 'onclick="pageCataloguePrestation()"')
-        .replace(/onclick="[^"]*pageCatalogueFourniture\(\)[^"]*"/g, 'onclick="pageCataloguePrestation()"');
+  
+  
+  
+  
 
-      // 2) Optionnel : harmonise le libellé si besoin (n'affecte pas la mise en page)
-      app.innerHTML = app.innerHTML
-        .replace(/Catalogue (matériel|fourniture)s?/gi, 'Catalogue prestation');
-    };
-  }
 
-  // Le Chapitre 8 peut s'appeler différemment selon les versions (V10.0+)
-  wrap('pageParametrageAccueil');
-  wrap('pageTarifsAccueil');
-})();
-</script>
+
+
+   
 
 
 
