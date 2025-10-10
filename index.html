@@ -1785,174 +1785,137 @@ function ventAddEntretien(key){
   
   
   
-<!-- ============================================================
-     CHAPITRE 8.R — PARAMÉTRAGE (accueil + routage propres)
-     - Accueil "Paramétrage"
-     - Catalogue des tarifs de pose (home avec 5 boutons)
-     - Catalogue fournitures (home / relais vers Chap. 13)
-     - Shims sûrs (messages si un sous-écran manque)
-     ============================================================ -->
-<style>
-  .param-wrap .card{ margin-bottom:24px; }
-  .param-wrap .card h2{ margin:0 0 6px; }
-  .param-wrap .subnote{ color:var(--muted); font-size:14px; margin-top:4px; }
-  .param-wrap .row.gap8{ gap:8px; flex-wrap:wrap; }
-</style>
-
+<!-- =============================
+     CHAPITRE 8 : PARAMÉTRAGE — V10.0
+     Index :
+       §8.1 • Accueil du paramétrage
+       §8.2 • Catalogue fourniture (tarifs de pose)
+       §8.3 • Catalogue prestation (lié aux menus + tarifs)
+       §8.4 • Configuration entreprise
+       §8.5 • Préférences devis et facturation
+       §8.6 • Paramétrage avancé (JSON / développeur)
+     ============================= -->
 <script>
-/* ---------- Helpers UI ---------- */
-function _btn(label, onclick, klass){ return '<button class="btn '+(klass||'')+'" onclick="'+onclick+'">'+label+'</button>'; }
-function _backBtn(){ return (typeof b==='function') ? b('Retour','pageMain()','btn back') : _btn('Retour','pageMain()','back'); }
-function _shim(name, hint){
-  return function(){
-    view(
-      '<div class="card">'
-        + _backBtn()
-        + '<h2>Module indisponible</h2>'
-        + '<p class="subnote">La fonction <code>'+name+'()</code> n’est pas chargée dans ce build.</p>'
-        + (hint?('<p class="subnote">'+hint+'</p>'):'')
-      + '</div>'
-    );
-  };
-}
-
-/* ---------- Liens vers sous-écrans (shims si absents) ---------- */
-window.pageTarifsPrises        = window.pageTarifsPrises        || _shim('pageTarifsPrises','Vérifie le Chapitre 8 — Tarifs.');
-window.pageTarifsEclLuminaires = window.pageTarifsEclLuminaires || _shim('pageTarifsEclLuminaires');
-window.pageTarifsEclCommandes  = window.pageTarifsEclCommandes  || _shim('pageTarifsEclCommandes');
-window.pageTarifsCS            = window.pageTarifsCS            || _shim('pageTarifsCS');
-window.pageTarifsCoeffsPose    = window.pageTarifsCoeffsPose    || _shim('pageTarifsCoeffsPose');
-
-/* ============================================================
-   A) Accueil — Paramétrage
-   ============================================================ */
+/* ======================
+   §8.1 • ACCUEIL
+   ====================== */
 function pageParametrageAccueil(){
   view(
-    '<div class="param-wrap">'
-      /* — carte 1 : Catalogue des tarifs de pose */
-      + '<div class="card">'
-        + _backBtn()
-        + '<h2>Paramétrage</h2>'
-      + '</div>'
+    '<div class="card">'
+      + b('⬅️ Retour','pageMain()','btn back')
+      + '<h2>Paramétrage</h2>'
+      + '<p class="muted">Personnalise les tarifs, les catalogues et les préférences générales de l’application.</p>'
+    + '</div>'
 
-      + '<div class="card">'
-        + '<h3>Catalogue des tarifs de pose</h3>'
-        + '<p class="subnote">Gérez les tarifs unitaires de pose (création, remplacement, recâblage, coefficients, etc.).</p>'
-        + _btn('Ouvrir','pageCatalogueTarifsPoseHome()','primary')
+    /* ---- Bloc 1 : Catalogue fourniture ---- */
+    + '<div class="card">'
+      + '<h3>Catalogue fourniture</h3>'
+      + '<p class="muted">Définis les tarifs de pose de base (prises, éclairage, circuits, tableaux…).</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('📚 Ouvrir le catalogue fourniture','pageCatalogueFourniture()','btn primary')
       + '</div>'
+    + '</div>'
 
-      /* — carte 2 : Catalogue fournitures */
-      + '<div class="card">'
-        + '<h3>Catalogue fournitures</h3>'
-        + '<p class="subnote">Gérez vos marques/gammes/types de fournitures et leurs prix de vente. S’intègre aux menus et aux calculs.</p>'
-        + _btn('Ouvrir','pageCatalogueFournituresHome()')
+    /* ---- Bloc 2 : Catalogue prestation ---- */
+    + '<div class="card">'
+      + '<h3>Catalogue prestation</h3>'
+      + '<p class="muted">Gère les familles de prestations (prises, éclairage, etc.) et leurs prix unitaires. Ces valeurs sont liées aux menus et à l’estimatif.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('📘 Ouvrir le catalogue prestation','pageCatalogue()','btn')
       + '</div>'
+    + '</div>'
 
-      /* — carte 3 : Configuration entreprise */
-      + '<div class="card">'
-        + '<h3>Configuration entreprise</h3>'
-        + '<p class="subnote">Identité, coordonnées, mentions, logo, RIB… utilisées dans les exports (devis/factures).</p>'
-        + _btn('Ouvrir','(window.pageConfigEntreprise||'+_shim('pageConfigEntreprise').toString()+')()')
+    /* ---- Bloc 3 : Configuration entreprise ---- */
+    + '<div class="card">'
+      + '<h3>Configuration entreprise</h3>'
+      + '<p class="muted">Renseigne le nom de ton entreprise, tes coordonnées et tes mentions légales. Ces données apparaîtront sur les devis et factures.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('⚙️ Ouvrir la configuration','pageConfigEntreprise()','btn')
       + '</div>'
+    + '</div>'
 
-      /* — carte 4 : Préférences devis et facturation */
-      + '<div class="card">'
-        + '<h3>Préférences devis et facturation</h3>'
-        + '<p class="subnote">Mode de facturation (tout compris / séparé), devise, TVA, numérotation.</p>'
-        + _btn('Ouvrir','(window.pagePreferences||'+_shim('pagePreferences').toString()+')()')
+    /* ---- Bloc 4 : Préférences devis et facturation ---- */
+    + '<div class="card">'
+      + '<h3>Préférences devis et facturation</h3>'
+      + '<p class="muted">Personnalise la présentation des devis, la numérotation, les modes de calcul et la séparation des postes (pose/fourniture).</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('🧾 Ouvrir les préférences','pagePreferences()','btn')
       + '</div>'
+    + '</div>'
 
-      /* — carte 5 : Paramétrage avancé (JSON / développeur) */
-      + '<div class="card">'
-        + '<h3>Paramétrage avancé (JSON / développeur)</h3>'
-        + '<p class="subnote">Ajouts “catalogue” (catégories, poses, sections, désignations) et tarifs de nouvelles désignations sans écraser le tronc.</p>'
-        + _btn('Ouvrir','(window.pageTarifsPersoJSON||'+_shim('pageTarifsPersoJSON').toString()+')()','ghost')
+    /* ---- Bloc 5 : Paramétrage avancé ---- */
+    + '<div class="card">'
+      + '<h3>Paramétrage avancé (JSON / développeur)</h3>'
+      + '<p class="muted">Accède aux données internes (catalogues, tarifs, etc.) pour effectuer des sauvegardes, restaurations ou exports JSON.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('💻 Ouvrir le mode avancé','pageParametrageAvance()','btn ghost')
       + '</div>'
     + '</div>'
   );
 }
 
-/* Remplace proprement l’ancienne entrée, si elle existe */
-window.pageTarifsAccueil = pageParametrageAccueil;
-
-/* ============================================================
-   B) Catalogue des tarifs de pose — Accueil
-   (les 5 boutons n’apparaissent qu’ici)
-   ============================================================ */
-function pageCatalogueTarifsPoseHome(){
+/* ======================
+   §8.2 • CATALOGUE FOURNITURE (tarifs de pose)
+   ====================== */
+function pageCatalogueFourniture(){
   view(
-    '<div class="param-wrap">'
-      + '<div class="card">'
-        + _backBtn()
-        + '<h2>Catalogue des tarifs de pose</h2>'
-        + '<p class="subnote">Sélectionnez une famille pour éditer ses tarifs.</p>'
-      + '</div>'
-
-      + '<div class="card">'
-        + '<h3>Prises</h3>'
-        + '<p class="subnote">Création, remplacement d’appareillage, recâblage (avec/sans remplacement).</p>'
-        + _btn('Prises','pageTarifsPrises()','primary')
-      + '</div>'
-
-      + '<div class="card">'
-        + '<h3>Éclairage — Luminaires</h3>'
-        + '<p class="subnote">Point de centre, applique… libellés “luminaire”.</p>'
-        + _btn('Éclairage — Luminaires','pageTarifsEclLuminaires()')
-      + '</div>'
-
-      + '<div class="card">'
-        + '<h3>Éclairage — Commandes</h3>'
-        + '<p class="subnote">Interrupteur simple/double… libellés “appareillage”.</p>'
-        + _btn('Éclairage — Commandes','pageTarifsEclCommandes()')
-      + '</div>'
-
-      + '<div class="card">'
-        + '<h3>Circuit spécialisé</h3>'
-        + '<p class="subnote">Tarif base par intervention + coefficients de section.</p>'
-        + _btn('Circuit spécialisé','pageTarifsCS()')
-      + '</div>'
-
-      + '<div class="card">'
-        + '<h3>Coefficients de pose</h3>'
-        + '<p class="subnote">Placo, encastré maçonnerie, semi-encastré, sur-mesure, moulure, IRL…</p>'
-        + _btn('Coefficients de pose','pageTarifsCoeffsPose()')
+    '<div class="card">'
+      + b('⬅️ Retour','pageParametrageAccueil()','btn back')
+      + '<h2>Catalogue fourniture</h2>'
+      + '<p class="muted">Définis les tarifs de base de chaque type de pose : prises, éclairage, circuits spécialisés, tableaux, ventilation, etc.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('⚡ Prises','pageCat_Prise()','btn primary')
+        + b('💡 Éclairage — Luminaires','pageCat_Luminaires()','btn')
+        + b('🕹️ Éclairage — Commandes','pageCat_Commandes()','btn')
+        + b('🔌 Circuit spécialisé','pageCat_CS()','btn')
+        + b('🧰 Tableaux & disjoncteurs','pageTabCreate()','btn')
       + '</div>'
     + '</div>'
   );
 }
 
-/* ============================================================
-   C) Catalogue fournitures — Accueil
-   - Relais vers le Chapitre 13 (pageCatalogue) si présent
-   - Sinon, petit écran d’info.
-   ============================================================ */
-function pageCatalogueFournituresHome(){
-  // Si la page du Chapitre 13 existe déjà, on l’utilise (nouveau nom conservé dans l’UI)
-  if (typeof window.pageCatalogue === 'function'){
-    window.pageCatalogue();      // réutilise l’éditeur existant (Prises/Luminaires/Commandes/CS)
-    return;
-  }
-  // Sinon, affiche une info non bloquante
+/* ======================
+   §8.3 • CATALOGUE PRESTATION (lié aux menus + tarifs)
+   ====================== */
+function pageCataloguePrestation(){
+  if(typeof pageCatalogue === 'function'){ pageCatalogue(); return; }
+  alert('La page du catalogue prestation n’est pas encore disponible.');
+}
+
+/* ======================
+   §8.4 • CONFIGURATION ENTREPRISE
+   ====================== */
+function pageConfigEntreprise(){
+  if(typeof openConfigEntreprise === 'function'){ openConfigEntreprise(); return; }
+  alert('La configuration entreprise n’est pas encore disponible.');
+}
+
+/* ======================
+   §8.5 • PRÉFÉRENCES DEVIS ET FACTURATION
+   ====================== */
+function pagePreferences(){
+  if(typeof openPreferences === 'function'){ openPreferences(); return; }
+  alert('La page des préférences devis et facturation n’est pas encore disponible.');
+}
+
+/* ======================
+   §8.6 • PARAMÉTRAGE AVANCÉ (JSON / DÉVELOPPEUR)
+   ====================== */
+function pageParametrageAvance(){
+  if(typeof openParamJSON === 'function'){ openParamJSON(); return; }
   view(
-    '<div class="param-wrap">'
-      + '<div class="card">'
-        + _backBtn()
-        + '<h2>Catalogue fournitures</h2>'
-        + '<p class="subnote">Le module de catalogue fournitures (Chapitre 13) n’est pas chargé.</p>'
-        + '<p class="subnote">Quand il sera présent, ce bouton ouvrira l’éditeur (marques, gammes, types, prix de vente).</p>'
+    '<div class="card">'
+      + b('⬅️ Retour','pageParametrageAccueil()','btn back')
+      + '<h2>Paramétrage avancé (JSON / développeur)</h2>'
+      + '<p class="muted">Accès direct aux données stockées localement. Export, import et réinitialisation manuelle.</p>'
+      + '<div class="row" style="margin-top:8px;">'
+        + b('💾 Exporter les données','exportSavedDevis()','btn')
+        + b('⬆️ Importer un fichier','importSavedDevisUI()','btn')
+        + b('🧹 Réinitialiser les catalogues','cat13Reset()','btn ghost')
       + '</div>'
     + '</div>'
   );
 }
-
-/* ============================================================
-   D) Export des entrées (pour menus/boutons externes)
-   ============================================================ */
-Object.assign(window, {
-  pageParametrageAccueil,
-  pageCatalogueTarifsPoseHome,
-  pageCatalogueFournituresHome
-});
 </script>
 
 
