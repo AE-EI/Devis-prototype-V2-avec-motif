@@ -367,251 +367,214 @@ function getPrix(designation, intervention){
   
 
   
-<!-- =============================
-     CHAPITRE 4 : MENU PRINCIPAL & SAUVEGARDES (robuste)
-     Index :
-       §4.0 • Clés & helpers de stockage
-       §4.1 • Accueil principal (avec bouton Paramétrage)
-       §4.2 • Nouveau devis / Ouverture / Suppression
-       §4.3 • Sauvegarde (nommage, dédoublonnage, MAJ)
-       §4.4 • Export / Import (.json) avec fusion non destructive
-       §4.5 • Routines internes : backup miroir, merge, recovery
-     ============================= -->
+<!-- =========================================
+     CHAPITRE 4 : MENU & SAUVEGARDES — V10.1
+     - Menu principal (Nouveau devis, Mes devis sauvegardés, Paramétrage)
+     - Gestion des devis sauvegardés (LS)
+     - Export / import de la bibliothèque de devis
+     - Restauration « si vide » (recoverSavedIfEmpty)
+     ========================================= -->
+
 <script>
-// === §4.0 • Clés & helpers de stockage =========================
-const STORE_KEYS = {
-  current: 'devis',
-  saved:   'savedDevisList',
-  backup:  'savedDevisListBackup'
-};
-function readJSON(key, fallback){
-  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
-  catch(e){ return fallback; }
-}
-function writeJSON(key, value){
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){}
+// ==============================
+// §4.0 • Stockage & helpers
+// ==============================
+const KEY_SAVED_LIST = 'savedDevis_v1';  // bibliothèque (liste de devis)
+const KEY_CURRENT    = 'devis';          // devis courant (objet global existant)
+
+/* Lecture / écriture JSON LS */
+function _readLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+/* Récupère la bibliothèque des devis sauvegardés */
+function _getSavedList(){ return _readLS(KEY_SAVED_LIST, []); }
+function _setSavedList(list){ _writeLS(KEY_SAVED_LIST, Array.isArray(list)? list : []); }
+
+/* Génère un id court */
+function _shortId(){ return Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4); }
+
+/* Sécurise le nom d’affichage */
+function _friendlyName(dv){
+  const n = (dv && (dv.__name || dv.nom || 'Devis')).toString().trim() || 'Devis';
+  const t = dv && dv.__ts ? new Date(dv.__ts).toLocaleDateString('fr-FR') : '';
+  return t ? n+' — '+t : n;
 }
 
-// Petit helper HTML safe (listes)
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+/* Clone profond simple */
+function _clone(x){ return JSON.parse(JSON.stringify(x)); }
+
+/* Total rapide (sans TVA) pour l’aperçu liste */
+function _quickTotal(dv){
+  let sum=0;
+  if(!dv) return 0;
+  for(const k in dv){
+    if(k.indexOf('__')===0) continue;
+    const s=dv[k]; const items=(s&&s.items)||[];
+    for(let i=0;i<items.length;i++){
+      const it=items[i];
+      sum += ( (+it.prixU||0) * (+it.qty||0) );
+    }
+  }
+  return sum;
 }
 
-// Bouton Paramétrage (sécurisé si le Chap.8 n'est pas chargé)
-function openTarifs(){
-  if (typeof pageTarifsAccueil === 'function') pageTarifsAccueil();
-  else alert('Le chapitre Paramétrage (8) n’est pas encore chargé.');
-}
-
-// === §4.1 • Accueil principal =================================
+// ==================================================
+// §4.1 • Menu principal
+// ==================================================
 function pageMain(){
-  // view() & b() sont définis dans les chapitres communs (2.x)
   view(
     '<div class="card">'
       + '<h2>Menu principal</h2>'
-      + '<div class="row">'
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
         + b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
-        + b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
-        + b('⚙️ Paramétrage des tarifs','openTarifs()','btn')
+        + b('📁 Mes devis sauvegardés','pageSavedDevis()','btn')
       + '</div>'
     + '</div>'
-  , true);
-}
 
-// === §4.2 • Nouveau devis / Ouverture / Suppression ===========
-function actionNouveauDevis(){
-  // genId(), saveLocal(), pageHome() → chapitres 2 & 5
-  devis = { __id: genId(), __name: '' };
-  saveLocal();
-  pageHome();
-}
-
-function pageSavedDevis(){
-  var saved = getSavedList();
-
-  if(!saved.length){
-    return view(
-      '<div class="card">'
-        + b('⬅️ Retour','pageMain()','btn back')
-        + '<h2>Mes devis sauvegardés</h2>'
-        + '<p class="muted">Aucun devis sauvegardé.</p>'
-        + '<div class="row" style="margin-top:10px;">'
-          + b('⬆️ Importer…','importSavedDevisUI()','btn')
-        + '</div>'
+    + '<div class="card" style="margin-top:12px;">'
+      + '<div class="section-title">Configuration</div>'
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+        // ⬇️ IMPORTANT : appel correct vers le Chapitre 8
+        + b('Paramétrage','pageParametrageAccueil()','btn')
       + '</div>'
-    , true);
-  }
+    + '</div>'
+  );
+}
 
-  var list = saved.map(function(d,i){
-    var title = escapeHtml(d.name || ('Devis '+(i+1)));
-    var date  = escapeHtml(d.date || '');
-    return '<div class="pill" style="width:100%; justify-content:space-between;">'
-         +   '<span><strong>'+title+'</strong> <small class="muted">'+date+'</small></span>'
-         +   '<span>'
-         +     b('Ouvrir','loadDevis('+i+')','btn')
-         +     b('Supprimer','deleteDevis('+i+')','btn')
-         +   '</span>'
-         + '</div>';
-  }).join('');
+// Créer/vider un devis courant
+function actionNouveauDevis(){
+  if(!confirm('Créer un nouveau devis ? Le devis courant non sauvegardé sera perdu.')) return;
+  window.devis = { __id:_shortId(), __name:'Nouveau devis', __ts: Date.now() };
+  saveLocal && saveLocal();
+  pageHome && pageHome();
+}
+
+// ==================================================
+// §4.2 • Devis sauvegardés (bibliothèque)
+// ==================================================
+function pageSavedDevis(){
+  const list = _getSavedList();
+  const rows = list.length ? list.map(it=>{
+    const total = euro(_quickTotal(it.data));
+    return (
+      '<div class="pill" style="width:100%;align-items:center;">'
+      +  '<div style="flex:1 1 auto;"><strong>'+_friendlyName(it.data)+'</strong>'
+      +  '<div class="muted" style="font-size:13px;">ID: '+it.id+' • '+total+'</div></div>'
+      +  b('Ouvrir','loadDevis('+JSON.stringify(it.id)+')','btn')
+      +  b('Supprimer','deleteDevis('+JSON.stringify(it.id)+')','btn')
+      +'</div>'
+    );
+  }).join('') : '<p class="muted">Aucun devis sauvegardé.</p>';
 
   view(
     '<div class="card">'
-      + b('⬅️ Retour','pageMain()','btn back')
+      + b('Retour','pageMain()','btn back')
       + '<h2>Mes devis sauvegardés</h2>'
-      + '<div class="list">'+list+'</div>'
-      + '<div class="row" style="margin-top:12px;">'
-        + b('💾 Exporter tout (.json)','exportSavedDevis()','btn')
-        + b('⬆️ Importer…','importSavedDevisUI()','btn')
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">'
+        + b('💾 Sauvegarder le devis courant','saveCurrentDevis()','btn primary')
+        + b('⬇️ Exporter la bibliothèque (.json)','exportSavedDevis()','btn')
+        + b('⬆️ Importer une bibliothèque','importSavedDevisUI()','btn')
       + '</div>'
     + '</div>'
-  , true);
+    + '<div class="card" style="margin-top:12px;">'
+      + '<h3>Liste</h3>'
+      + rows
+    + '</div>'
+  );
 }
 
-function loadDevis(idx){
-  var saved = getSavedList();
-  if(!saved[idx]) return pageSavedDevis();
-  devis = saved[idx].data || {};
-  ensureId();
-  saveLocal();
-  pageHome();
-}
-
-function deleteDevis(idx){
-  if(!confirm('Supprimer ce devis sauvegardé ?')) return;
-  var saved = getSavedList();
-  saved.splice(idx,1);
-  setSavedList(saved);
-  makeSavedBackup(saved);
+/* Sauvegarde le devis courant dans la bibliothèque */
+function saveCurrentDevis(){
+  if(!window.devis){ alert('Aucun devis courant.'); return; }
+  const list=_getSavedList();
+  const dv=_clone(window.devis);
+  if(!dv.__id) dv.__id=_shortId();
+  dv.__ts = Date.now();
+  // remplace si même __id, sinon ajoute
+  const idx=list.findIndex(x=>x.id===dv.__id);
+  const pack={ id: dv.__id, data: dv };
+  if(idx>=0) list[idx]=pack; else list.unshift(pack);
+  _setSavedList(list);
+  alert('✅ Devis sauvegardé dans la bibliothèque.');
   pageSavedDevis();
 }
 
-// === §4.3 • Sauvegarde complète (+ backup automatique) ========
-function saveCurrentDevis(){
-  ensureId();
-  var saved = getSavedList();
-
-  // Cherche par __id (mise à jour si trouvé)
-  var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
-
-  // Détermine/valide le nom
-  var name = (devis.__name||'').trim();
-  if(i < 0 && !name){
-    name = (prompt('Nom du devis :','')||'').trim();
-    if(!name){ alert('Sauvegarde annulée.'); return; }
-  }
-  devis.__name = name || (saved[i]?.name) || ('Devis '+new Date().toLocaleDateString());
-
-  var record = { name: devis.__name, date: new Date().toLocaleString(), data: devis };
-
-  if(i >= 0){
-    saved[i] = record;
-  } else {
-    // Dédoublonnage par nom (évite 2 entrées strictement homonymes)
-    var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === devis.__name.toLowerCase(); });
-    if(j >= 0){
-      if(!confirm('Un devis « '+devis.__name+' » existe déjà. L\'écraser ?')) return;
-      saved[j] = record;
-    } else {
-      saved.push(record);
-    }
-  }
-
-  setSavedList(saved);
-  makeSavedBackup(saved);
-  alert('✅ Devis sauvegardé.');
+/* Charger un devis depuis la bibliothèque */
+function loadDevis(id){
+  const list=_getSavedList();
+  const it=list.find(x=>x.id===id);
+  if(!it){ alert('Introuvable.'); return; }
+  window.devis = _clone(it.data||{});
+  saveLocal && saveLocal();
+  pageHome && pageHome();
 }
 
-// === §4.4 • Export / Import ===================================
+/* Supprimer un devis de la bibliothèque */
+function deleteDevis(id){
+  if(!confirm('Supprimer ce devis sauvegardé ?')) return;
+  const list=_getSavedList().filter(x=>x.id!==id);
+  _setSavedList(list);
+  pageSavedDevis();
+}
+
+/* Export / Import de la bibliothèque */
 function exportSavedDevis(){
-  var saved = getSavedList();
-  var payload = {
-    _kind: 'MiniDevisSaved',
-    version: 1,
-    origin: location.origin,
-    exported_at: new Date().toISOString(),
-    items: saved
-  };
-  var blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json;charset=utf-8'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url;
-  a.download = 'minidevis_sauvegardes_'+(new Date().toISOString().slice(0,19).replace(/[:T]/g,'-'))+'.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  const raw = JSON.stringify(_getSavedList(), null, 2);
+  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='mes_devis.json'; a.click(); URL.revokeObjectURL(url);
 }
-
 function importSavedDevisUI(){
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'application/json';
-  input.onchange = function(){
-    var f = input.files && input.files[0];
-    if(!f) return;
-    var rd = new FileReader();
-    rd.onload = function(){
+  const input=document.createElement('input');
+  input.type='file'; input.accept='application/json';
+  input.onchange = ()=>{
+    const f=input.files && input.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{
       try{
-        var json = JSON.parse(rd.result||'null');
-        var items = Array.isArray(json?.items) ? json.items : (Array.isArray(json)? json : null);
-        if(!items){ alert('Fichier non reconnu.'); return; }
-        var merged = mergeSavedLists(getSavedList(), items);
-        setSavedList(merged);
-        makeSavedBackup(merged);
-        alert('✅ Import terminé : '+items.length+' enregistrement(s) lu(s).');
+        const arr=JSON.parse(rd.result||'[]'); if(!Array.isArray(arr)) throw new Error('format');
+        // merge par id
+        const cur=_getSavedList();
+        arr.forEach(p=>{
+          const idx=cur.findIndex(x=>x.id===p.id);
+          if(idx>=0) cur[idx]=p; else cur.push(p);
+        });
+        _setSavedList(cur);
+        alert('✅ Bibliothèque importée.');
         pageSavedDevis();
-      }catch(e){
-        alert('Erreur d’import : '+e.message);
-      }
+      }catch(e){ alert('❌ Import impossible.'); }
     };
-    rd.readAsText(f, 'utf-8');
+    rd.readAsText(f,'utf-8');
   };
   input.click();
 }
 
-// === §4.5 • Routines internes (backup, merge, recovery) =======
-function getSavedList(){ return readJSON(STORE_KEYS.saved, []); }
-function setSavedList(list){ writeJSON(STORE_KEYS.saved, Array.isArray(list)?list:[]); }
-
-// Sauvegarde miroir (pour récupération si effacement accidentel)
-function makeSavedBackup(list){
-  writeJSON(STORE_KEYS.backup, {
-    saved: Array.isArray(list)?list:[],
-    host: location.host,
-    t: Date.now()
-  });
-}
-
-// Appeler recoverSavedIfEmpty() au boot (cf. init() du Chap. 10)
+/* Restaure automatiquement le dernier devis si rien n’est présent (utilisé par init) */
 function recoverSavedIfEmpty(){
-  var saved = getSavedList();
-  if(saved && saved.length) return; // rien à faire
-  var backup = readJSON(STORE_KEYS.backup, null);
-  if(backup && Array.isArray(backup.saved) && backup.saved.length){
-    if(confirm('Aucune sauvegarde active trouvée, mais une copie de secours est disponible. Restaurer ?')){
-      setSavedList(backup.saved);
-    }
-  }
+  try{
+    if(window.devis && Object.keys(window.devis).length>0) return; // déjà chargé
+    const list=_getSavedList();
+    if(!list.length) return;
+    window.devis = _clone(list[0].data||{});
+    saveLocal && saveLocal();
+  }catch(e){}
 }
 
-// Fusion non destructive par __id (priorité au plus récent via date)
-function mergeSavedLists(existing, incoming){
-  var map = new Map();
-  function put(rec){
-    var id = rec?.data?.__id || rec?.__id || genId();
-    var cur = map.get(id);
-    var recDate = new Date(rec?.date||0).getTime() || 0;
-    var curDate = new Date(cur?.date||0).getTime() || 0;
-    if(!cur || recDate >= curDate){
-      map.set(id, {
-        name: rec?.name || rec?.data?.__name || 'Devis',
-        date: rec?.date || new Date().toLocaleString(),
-        data: rec?.data || rec
-      });
-    }
-  }
-  (existing||[]).forEach(put);
-  (incoming||[]).forEach(put);
-  return Array.from(map.values());
-}
+// ==================================================
+// §4.3 • Expose (global)
+// ==================================================
+Object.assign(window, {
+  pageMain,
+  actionNouveauDevis,
+  pageSavedDevis,
+  saveCurrentDevis,
+  exportSavedDevis,
+  importSavedDevisUI,
+  loadDevis,
+  deleteDevis,
+  recoverSavedIfEmpty
+});
 </script>
 
 
