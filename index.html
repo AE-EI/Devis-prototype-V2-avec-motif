@@ -3555,7 +3555,45 @@ Object.assign(window,{
   applyPrestToApp
 });
 </script>
+<!-- === Fin du Chapitre 13 : expose + init sûrs ================== -->
+<script>
+// 1) Exposer toutes les fonctions du catalogue prestation au global
+Object.assign(window, {
+  // accueil + sections
+  pageCataloguePrestation,
+  pagePrest_Appareillage,
+  pagePrest_Tableau,
+  pagePrest_Ventilation,
+  pagePrest_Terre,
 
+  // sous-pages appareillage
+  pagePrest_App_Prise,
+  pagePrest_App_Luminaires,
+  pagePrest_App_Commandes,
+  pagePrest_App_Circuit,
+
+  // utilitaires catalogue (si présents dans le chapitre)
+  applyPrestToApp,             // pousse les tarifs dans TARIFS_BASE + designations
+  getPrestCatalog,
+  setPrestCatalog,
+  prestExportJSON,
+  prestImportJSON,
+  prestResetDefault
+});
+
+// 2) Initialisation à froid : pousser les tarifs dans l’app au chargement
+try { 
+  if (typeof applyPrestToApp === 'function') applyPrestToApp();
+} catch(e) {
+  console.warn('applyPrestToApp init skipped', e);
+}
+</script>
+
+
+
+
+
+  
   
   
 
