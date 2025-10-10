@@ -175,6 +175,13 @@ function loadLocal(){
 
 
 
+
+
+
+
+
+
+  
   
 <!-- =============================
      CHAPITRE 3 : CONSTANTES + PRIX
@@ -357,6 +364,9 @@ function getPrix(designation, intervention){
 
 
   
+
+
+
 
 
 
@@ -586,6 +596,10 @@ Object.assign(window, {
 
   
 
+
+
+
+  
   
 
 
@@ -1009,6 +1023,12 @@ function editPieceNote(){
 
 
 
+
+
+
+
+
+
   
 
   
@@ -1423,6 +1443,11 @@ function submitTabMod_Specifique(key){
 
 
 
+
+
+
+
+  
   
   
   
@@ -1745,6 +1770,10 @@ function ventAddEntretien(key){
 
 
 
+
+
+
+  
   
   
   
@@ -1878,6 +1907,17 @@ Object.assign(window,{
 });
 </script>
 
+
+
+
+
+
+
+
+
+
+
+  
 
 
 
@@ -2331,6 +2371,15 @@ Object.assign(window,{
   
 
 
+
+
+
+
+
+
+
+  
+
 <!-- =============================
      CHAPITRE 10 : FACTURATION (export .txt)
      - Génère une facture texte
@@ -2511,6 +2560,9 @@ function exportInvoiceText(){
   
 
 
+
+
+  
 
 
 
@@ -2830,9 +2882,16 @@ async function exportZipFull(){
 
 
 
+
+
+
+
+  
+
+
 <!-- =============================
-     CHAPITRE 12 : CONFIG ENTREPRISE & PRÉFÉRENCES
-     (Autonome, non intrusif — ajoute 2 pages et 1 bouton dans le Chap.8)
+     CHAPITRE 12 : CONFIG ENTREPRISE & PRÉFÉRENCES — V10.1
+     (Autonome, non intrusif — pages indépendantes)
      ============================= -->
 
 <style>
@@ -2857,18 +2916,14 @@ async function exportZipFull(){
     border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
     padding:8px 10px; border-radius:8px; font-size:14px;
   }
-  .alert-warn{
-    border:1px solid #ffe0b2; background:#fff3e0; color:#9c6f19;
-    padding:8px 10px; border-radius:8px; font-size:14px;
-  }
 </style>
 
 <script>
 /* ============================================================
-   §11.0 • Stockage & helpers (localStorage)
+   Stockage & helpers (localStorage)
    ============================================================ */
-const KEY_COMPANY   = 'companyConfig_v1';
-const KEY_PREFS     = 'appPrefs_v1';
+const KEY_COMPANY = 'companyConfig_v1';
+const KEY_PREFS   = 'appPrefs_v1';
 
 function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
 function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
@@ -2892,12 +2947,11 @@ function getCompany(){
 function setCompany(obj){ writeJsonLS(KEY_COMPANY, obj||{}); }
 
 function getPrefs(){
-  // ➜ Ratio matériel supprimé (on bascule vers le catalogue)
   return readJsonLS(KEY_PREFS, {
     facturation_mode: 'tout_compris', // 'tout_compris' | 'separe'
     devise: '€',
-    tva_applicable: false,  // pour futur « réel »
-    taux_tva: 20,           // % (non utilisé tant que tva_applicable=false)
+    tva_applicable: false,
+    taux_tva: 20,
     numerotation_prefix: 'DEV-',
     numerotation_fact_prefix: 'FAC-',
     numerotation_courante: 1
@@ -2943,7 +2997,7 @@ function pickImageFile(cb){
 }
 
 /* ============================================================
-   §11.1 • UI — Configuration entreprise
+   UI — Configuration entreprise
    ============================================================ */
 function pageConfigEntreprise(notice){
   const cfg = getCompany();
@@ -2965,9 +3019,7 @@ function pageConfigEntreprise(notice){
        (meta.width||'?')+'×'+(meta.height||'?')+' px</div>')
     : '<div class="cfg-note">Aucun logo</div>';
 
-  const banner = notice
-    ? '<div class="alert-ok">'+notice+'</div>'
-    : '';
+  const banner = notice ? '<div class="alert-ok">'+notice+'</div>' : '';
 
   const logoHtml =
     '<div class="field">'
@@ -2984,16 +3036,16 @@ function pageConfigEntreprise(notice){
             + (hasLogo ? b('Retirer','cfgRemoveLogo()','btn') : '')
         + '</div>'
         + '<div id="dropzone" class="dropzone">Glissez-déposez votre logo ici (PNG/JPG recommandé)</div>'
-        + '<div class="cfg-note">Le logo sera intégré aux futurs PDF (devis/factures).</div>'
+        + '<div class="cfg-note">Le logo sera intégré aux futurs documents (devis/factures).</div>'
       + '</div>'
     + '</div>';
 
   view(
     '<div class="cfg-wrap">'
     +  '<div class="card">'
-        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+        + b('Retour','pageParametrageAccueil ? pageParametrageAccueil() : pageMain()','btn back')
         + '<h2>Configuration entreprise</h2>'
-        + '<p class="cfg-note">Ces informations seront utilisées pour les futurs export PDF (devis/factures) et rappels légaux.</p>'
+        + '<p class="cfg-note">Ces informations sont utilisées pour les exports (devis/factures) et les mentions légales.</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -3001,8 +3053,8 @@ function pageConfigEntreprise(notice){
         + '<div class="cfg-grid">'
           + f('Raison sociale','ce_rs', cfg.raison_sociale, 'Ex : SARL Dupont Électricité')
           + f('Nom commercial','ce_nc', cfg.nom_commercial, 'Ex : Dupont Élec')
-          + f('SIREN','ce_siren', cfg.siren, 'Ex : 123 456 789')
-          + f('N° TVA intracom','ce_tva', cfg.tva_intracom, 'Ex : FRXX999999999')
+          + f('SIREN','ce_siren', cfg.siren, '123 456 789')
+          + f('N° TVA intracom','ce_tva', cfg.tva_intracom, 'FRXX999999999')
           + f('Adresse','ce_addr', cfg.adresse, 'Rue et n°')
           + f('Code postal','ce_cp', cfg.code_postal, '75000')
           + f('Ville','ce_ville', cfg.ville, 'Paris')
@@ -3022,7 +3074,7 @@ function pageConfigEntreprise(notice){
           + f('IBAN','ce_iban', cfg.iban, '')
           + f('BIC','ce_bic', cfg.bic, '')
         + '</div>'
-        + ta('Conditions de paiement','ce_cond', cfg.conditions_paiement, 'Ex : Virement sous 30 jours…')
+        + ta('Conditions de paiement','ce_cond', cfg.conditions_paiement, 'Virement sous 30 jours…')
         + ta('Mentions légales (pied de page)','ce_mentions', cfg.mentions_legales, 'Textes libres…')
       + '</div>'
 
@@ -3080,36 +3132,50 @@ function pageConfigEntreprise(notice){
   })();
 }
 
+/* ==========================
+   Sauvegarde — robuste (FIX)
+   ========================== */
 function saveConfigEntreprise(){
-  const cfg = getCompany();
-  function gv(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
-  Object.assign(cfg, {
-    raison_sociale: gv('ce_rs'),
-    nom_commercial: gv('ce_nc'),
-    siren: gv('ce_siren'),
-    tva_intracom: gv('ce_tva'),
-    adresse: gv('ce_addr'),
-    code_postal: gv('ce_cp'),
-    ville: gv('ce_ville'),
-    pays: gv('ce_pays'),
-    email: gv('ce_mail'),
-    telephone: gv('ce_tel'),
-    site: gv('ce_web'),
-    rc_pro: gv('ce_rc'),
-    decennale: gv('ce_dec'),
-    assureur: gv('ce_ass'),
-    iban: gv('ce_iban'),
-    bic: gv('ce_bic'),
-    conditions_paiement: gv('ce_cond'),
-    mentions_legales: gv('ce_mentions')
+  // État courant pour préserver ce qui n'est pas saisi
+  const prev = getCompany();
+
+  // Helper sécurisé : lit la valeur; si vide -> undefined (n'écrase pas)
+  const gv = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return undefined;
+    const v = (el.value ?? '').trim();
+    return v === '' ? undefined : v;
+  };
+
+  const next = Object.assign({}, prev, {
+    raison_sociale:         gv('ce_rs')       ?? prev.raison_sociale,
+    nom_commercial:         gv('ce_nc')       ?? prev.nom_commercial,
+    siren:                  gv('ce_siren')    ?? prev.siren,
+    tva_intracom:           gv('ce_tva')      ?? prev.tva_intracom,
+    adresse:                gv('ce_addr')     ?? prev.adresse,
+    code_postal:            gv('ce_cp')       ?? prev.code_postal,
+    ville:                  gv('ce_ville')    ?? prev.ville,
+    pays:                   gv('ce_pays')     ?? prev.pays,
+    email:                  gv('ce_mail')     ?? prev.email,
+    telephone:              gv('ce_tel')      ?? prev.telephone,
+    site:                   gv('ce_web')      ?? prev.site,
+    rc_pro:                 gv('ce_rc')       ?? prev.rc_pro,
+    decennale:              gv('ce_dec')      ?? prev.decennale,
+    assureur:               gv('ce_ass')      ?? prev.assureur,
+    iban:                   gv('ce_iban')     ?? prev.iban,
+    bic:                    gv('ce_bic')      ?? prev.bic,
+    conditions_paiement:    gv('ce_cond')     ?? prev.conditions_paiement,
+    mentions_legales:       gv('ce_mentions') ?? prev.mentions_legales
+    // Logo géré ailleurs — on ne touche pas ici
   });
-  setCompany(cfg);
-  alert('✅ Configuration entreprise enregistrée.');
+
+  setCompany(next);
+  // Relit pour garantir l'affichage des valeurs persistées
+  pageConfigEntreprise('Configuration entreprise enregistrée.');
 }
 
 /* ============================================================
-   §11.2 • UI — Préférences (mode facturation, devise, TVA…)
-   (ratio matériel retiré)
+   UI — Préférences (mode facturation, devise, TVA…)
    ============================================================ */
 function pagePreferences(){
   const p = getPrefs();
@@ -3119,9 +3185,9 @@ function pagePreferences(){
   view(
     '<div class="cfg-wrap">'
       + '<div class="card">'
-        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
-        + '<h2>Préférences</h2>'
-        + '<p class="cfg-note">Ces réglages influencent la présentation des futurs exports (devis/factures) et la logique de TVA.</p>'
+        + b('Retour','pageParametrageAccueil ? pageParametrageAccueil() : pageMain()','btn back')
+        + '<h2>Préférences devis et facturation</h2>'
+        + '<p class="cfg-note">Ces réglages influencent la présentation des exports et la logique de TVA.</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -3196,33 +3262,8 @@ function savePreferences(){
 }
 
 /* ============================================================
-   §11.3 • Intégration douce : ajoute 2 boutons au Chapitre 8
-   (si présent) et expose les pages au global
+   Expose (aucune injection automatique ici)
    ============================================================ */
-(function injectButtonsIntoParametrage(){
-  const orig = window.pageTarifsAccueil;
-  if(typeof orig === 'function'){
-    window.pageTarifsAccueil = function(){
-      orig();
-      const app = document.getElementById('app');
-      if(!app) return;
-      const btn1 = 'Configuration entreprise';
-      const btn2 = 'Préférences';
-      if(app.innerHTML.indexOf(btn1)===-1 || app.innerHTML.indexOf(btn2)===-1){
-        app.innerHTML = app.innerHTML.replace(
-          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
-          '$1'
-          + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
-          +   '<button class="btn" onclick="pageConfigEntreprise()">'+btn1+'</button>'
-          +   '<button class="btn" onclick="pagePreferences()">'+btn2+'</button>'
-          + '</div></div>'
-        );
-      }
-    };
-  }
-})();
-
-/* Expose au global */
 Object.assign(window, {
   pageConfigEntreprise,
   pagePreferences,
@@ -3230,7 +3271,6 @@ Object.assign(window, {
   savePreferences
 });
 </script>
-
 
 
 
