@@ -6134,3 +6134,96 @@ Object.assign(window, {
   pageClientNewDevis
 });
 </script>
+
+  <!-- =============================
+     CHAPITRE 16E — Étape "Nom du devis" + Référence
+     - Intercepte l'arrivée sur l'Accueil après le choix client
+     - Demande un nom de devis + attribue une référence (prefs)
+     - Sauvegarde dans devis.__name et devis.__ref
+     ============================= -->
+<style>
+  .dvname-wrap .card{ margin-bottom:16px; }
+  .dvname-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:12px; }
+  .dvname-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .muted{ color:var(--muted); }
+</style>
+<script>
+(function(){
+  function _rdJSON(k,d){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } }
+  function _wrJSON(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  function _prefs(){ return _rdJSON('appPrefs_v1', {}); }
+  function _pad4(n){ return String(n).padStart(4,'0'); }
+  function _refFromPrefs(){
+    const p=_prefs();
+    const prefix = p.numerotation_prefix || 'DEV-';
+    const num    = Math.max(1, parseInt(p.numerotation_courante||1,10));
+    return prefix+_pad4(num);
+  }
+  function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Page : saisie/confirmation du nom du devis
+  window.pageNameDevis16e = function(comingFromFlow){
+    const dv = window.devis || (window.devis={});
+    const clientName = (dv.__client && dv.__client.nom) ? dv.__client.nom : '';
+    const defName = dv.__name && dv.__name!=='Nouveau devis' ? dv.__name
+                   : (clientName ? ('Devis — '+clientName) : 'Devis sans titre');
+    const ref = dv.__ref || _refFromPrefs();
+
+    view(
+      '<div class="dvname-wrap">'
+      +  '<div class="card">'
+      +    (typeof b==='function' ? b('Annuler','_abortName16e()','btn back') : '')
+      +    '<h2>Nom du devis</h2>'
+      +    '<p class="muted">Donne un nom clair au devis (ex : « Rénovation électrique cuisine »). La référence sera utilisée dans les exports.</p>'
+      +  '</div>'
+      +  '<div class="card dvname-field">'
+      +    '<label>Nom du devis</label>'
+      +    '<input id="dvname" value="'+_esc(defName)+'" />'
+      +    '<div class="muted" style="margin-top:6px;">Référence : <strong>'+_esc(ref)+'</strong></div>'
+      +    '<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;">'
+      +      b('Enregistrer et continuer','_saveName16e('+(comingFromFlow? 'true':'false')+')','btn primary')
+      +      b('Passer pour l’instant','_skipName16e('+(comingFromFlow? 'true':'false')+')','btn')
+      +    '</div>'
+      +  '</div>'
+      +'</div>'
+    );
+  };
+
+  // Actions
+  window._saveName16e = function(goHomeAfter){
+    const dv = window.devis || (window.devis={});
+    const name = (document.getElementById('dvname')||{}).value || '';
+    dv.__name = name || 'Devis';
+    if(!dv.__ref) dv.__ref = _refFromPrefs();
+    if(typeof saveLocal==='function') saveLocal();
+    if(goHomeAfter){ if(typeof pageHome==='function') pageHome(); } else { alert('Nom enregistré.'); }
+  };
+  window._skipName16e = function(goHomeAfter){
+    const dv = window.devis || (window.devis={});
+    if(!dv.__name) dv.__name = 'Devis';
+    if(!dv.__ref)  dv.__ref  = _refFromPrefs();
+    if(typeof saveLocal==='function') saveLocal();
+    if(goHomeAfter){ if(typeof pageHome==='function') pageHome(); }
+  };
+  window._abortName16e = function(){
+    if(confirm('Annuler la création du devis ?')){
+      window.devis = {};
+      if(typeof saveLocal==='function') saveLocal();
+      if(typeof pageMain==='function') pageMain();
+    }
+  };
+
+  // Interception douce : si on arrive à l’accueil avec un devis sans nom → demander le nom
+  const _origHome = window.pageHome;
+  if(typeof _origHome==='function'){
+    window.pageHome = function(){
+      try{
+        if(window.devis && (!devis.__name || devis.__name==='Nouveau devis')){
+          return pageNameDevis16e(true);
+        }
+      }catch(e){}
+      return _origHome();
+    };
+  }
+})();
+</script>
