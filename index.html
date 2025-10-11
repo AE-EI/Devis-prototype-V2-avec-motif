@@ -378,7 +378,7 @@ function getPrix(designation, intervention){
 
   
 <!-- =========================================
-     CHAPITRE 4 : MENU & SAUVEGARDES — V10.1
+     CHAPITRE 4 : MENU & SAUVEGARDES — V10.1 (corrigé)
      - Menu principal (Nouveau devis, Mes devis sauvegardés, Paramétrage)
      - Gestion des devis sauvegardés (LS)
      - Export / import de la bibliothèque de devis
@@ -444,8 +444,8 @@ function pageMain(){
     + '<div class="card" style="margin-top:12px;">'
       + '<div class="section-title">Configuration</div>'
       + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-        // ⬇️ IMPORTANT : appel correct vers le Chapitre 8
-        + b('Paramétrage','pageParametrageAccueil()','btn')
+        <!-- 🔧 Correctif : on appelle désormais pageTarifsAccueil() -->
+        + b('Paramétrage','pageTarifsAccueil()','btn')
       + '</div>'
     + '</div>'
   );
@@ -586,7 +586,6 @@ Object.assign(window, {
   recoverSavedIfEmpty
 });
 </script>
-
 
 
 
