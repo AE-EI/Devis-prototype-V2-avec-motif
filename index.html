@@ -6227,3 +6227,149 @@ Object.assign(window, {
   }
 })();
 </script>
+
+  <!-- =============================
+     CHAPITRE 16G — Correctif PDF (NaN & ligne « Taux de TVA »)
+     - Sécurise tous les calculs (anti-NaN)
+     - Ajoute la ligne « Taux de TVA : XX % » entre HT et TTC
+     - Remplace proprement _buildPrintableHTML16 si présent
+     ============================= -->
+<script>
+(function(){
+  if (typeof window._buildPrintableHTML16 !== 'function') return;
+
+  // Helpers locaux (sans dépendances)
+  const rd = (k,d)=>{ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } };
+  const prefs = ()=> rd('appPrefs_v1', {});
+  const company = ()=> rd('companyConfig_v1', {});
+  const cgv = ()=> rd('devis_cgv_v1','');
+  const esc = s => String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const today = ()=> { try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } };
+  const pad4 = n => String(n).padStart(4,'0');
+  const num = v => (Number.isFinite(+v) ? +v : 0);
+  const euro = v => {
+    const n = num(v);
+    try{ return n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }
+    catch(e){ return (Math.round(n*100)/100)+' €'; }
+  };
+
+  // Compat : réemploie tes utilitaires si dispo
+  const group = ()=> (typeof groupDevis==='function'
+    ? groupDevis()
+    : (function(){ const g={'Devis':{}}; for(const k in devis){ if(k.indexOf('__')===0) continue; g.Devis[k]=devis[k]; } return g; })());
+  const pieceLabel = k => (typeof pieceDisplayLabel==='function' ? pieceDisplayLabel(k) : k);
+  const sortItems  = (k,items)=> (typeof sortedItemsForPiece==='function' ? sortedItemsForPiece(k,items) : (Array.isArray(items)?items.slice():[]));
+
+  // ====== Nouvelle version robustifiée ======
+  window._buildPrintableHTML16 = function(){
+    const pr   = prefs();
+    const comp = company();
+    const taux = num(pr.taux_tva || 20);         // taux « lisible »
+    const tvaOn= !!pr.tva_applicable;            // applicabilité
+    const prefix = pr.numerotation_prefix || 'DEV-';
+    const numCour= Math.max(1, parseInt(pr.numerotation_courante||1,10));
+    const ref  = (window.devis && devis.__ref) ? String(devis.__ref) : (prefix+pad4(numCour));
+    const devName = (window.devis && devis.__name) ? String(devis.__name) : 'Devis';
+
+    // Collecte sécurisée
+    const grouped = group();
+    const lines = [];
+    let totalGlobal = 0;
+
+    for(const grp in grouped){
+      for(const key in grouped[grp]){
+        const sec = grouped[grp][key];
+        if(!sec || !Array.isArray(sec.items) || !sec.items.length) continue;
+        sortItems(key, sec.items).forEach(it=>{
+          const q  = num(it.qty);
+          const pu = num(it.prixU);
+          const t  = num(q * pu);
+          totalGlobal += t;
+
+          const left = it.intervention ? (it.intervention+' — ') : '';
+          const pose = (it.intervention==='Création' && it.pose) ? (' — '+String(it.pose).toLowerCase()) : '';
+          lines.push({
+            piece: pieceLabel(key),
+            designation: left + (it.designation || 'Élément') + pose,
+            qty: q, pu: pu, total: t
+          });
+        });
+      }
+    }
+
+    // Groupement par pièce
+    const byPiece = {};
+    lines.forEach(L => { (byPiece[L.piece]||(byPiece[L.piece]=[])).push(L); });
+
+    let sectionsHTML = '';
+    Object.keys(byPiece).forEach(pl=>{
+      const rows = byPiece[pl].map(L =>
+        '<tr>'
+          + '<td>'+esc(L.designation)+'</td>'
+          + '<td style="text-align:right">'+num(L.qty)+'</td>'
+          + '<td style="text-align:right">'+euro(L.pu)+'</td>'
+          + '<td style="text-align:right">'+euro(L.total)+'</td>'
+        + '</tr>'
+      ).join('');
+      const st = byPiece[pl].reduce((s,x)=> num(s) + num(x.total), 0);
+      sectionsHTML +=
+        '<h3 style="margin:18px 0 6px 0;">'+esc(pl)+'</h3>'
+        + '<table class="dv-table"><thead><tr>'
+        +   '<th>Désignation</th><th style="width:70px;text-align:right">Qté</th><th style="width:110px;text-align:right">PU</th><th style="width:130px;text-align:right">Total</th>'
+        + '</tr></thead><tbody>'+rows+'</tbody>'
+        + '<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td>'
+        + '<td style="text-align:right"><strong>'+euro(st)+'</strong></td></tr></tfoot>'
+        + '</table>';
+    });
+
+    // Totaux (anti-NaN)
+    const totalHT  = num(totalGlobal);
+    const totalTVA = tvaOn ? num(totalHT * (taux/100)) : 0;
+    const totalTTC = num(totalHT + totalTVA);
+
+    const logoHTML = comp.logo_dataurl
+      ? '<img src="'+comp.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>'
+      : '';
+
+    // HTML final
+    const html =
+'<!doctype html><html lang="fr"><head><meta charset="utf-8"/>'
++'<title>'+esc(devName)+' — '+esc(ref)+'</title>'
++'<style>'
++'body{font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;color:#222;margin:0;background:#fff}'
++'.sheet{width:210mm;margin:0 auto;padding:18mm 16mm}'
++'h1,h2,h3{margin:0 0 6px 0}.row{display:flex;justify-content:space-between;gap:16px}'
++'.box{border:1px solid #ddd;border-radius:8px;padding:10px;background:#fafafa}.muted{color:#666}'
++'.dv-table{width:100%;border-collapse:collapse;margin:6px 0 12px}'
++'.dv-table th,.dv-table td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}'
++'.totals{margin-top:8px;width:100%}.totals td{padding:6px 8px}'
++'@media print{.no-print{display:none !important}.sheet{box-shadow:none;margin:0}}'
++'</style></head><body>'
++'<div class="sheet">'
++  '<div class="row">'
++    '<div style="flex:1 1 auto"><div>'+logoHTML+'</div></div>'
++    '<div class="box" style="min-width:280px;">'
++      '<h2>Devis</h2>'
++      '<div>Référence : <strong>'+esc(ref)+'</strong></div>'
++      '<div>Date : '+esc(today())+'</div>'
++    '</div>'
++  '</div>'
++  '<div style="margin-top:14px;">'
++    '<h1 style="font-size:20px;">'+esc(devName)+'</h1>'
++    '<div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div>'
++  '</div>'
++  '<div style="margin-top:10px;">'+(sectionsHTML || '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
++  '<table class="totals" style="margin-top:6px;">'
++    '<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+euro(totalHT)+'</strong></td></tr>'
++    '<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+esc(String(taux))+' %</td></tr>'
++    +(tvaOn ? ('<tr><td style="text-align:right">TVA</td><td style="text-align:right">'+euro(totalTVA)+'</td></tr>') : '')
++    '<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+euro(totalTTC)+'</strong></td></tr>'
++  '</table>'
++  '<div style="margin-top:16px;"><h3>Conditions générales</h3><div class="box" style="white-space:pre-wrap;">'+esc(cgv())+'</div></div>'
++  '<div class="no-print" style="margin-top:14px;display:flex;gap:8px;"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button><button onclick="window.close()">Fermer</button></div>'
++'</div></body></html>';
+
+    return html;
+  };
+})();
+</script>
