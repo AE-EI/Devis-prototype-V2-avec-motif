@@ -5603,133 +5603,7 @@ Object.assign(window, {
 </script>
   
 
-<!-- =============================
-     CHAPITRE 16C : Saisie client à la création du devis
-     - Ajoute une page "Client du devis" immédiatement après "Nouveau devis"
-     - Sauvegarde dans devis.__client (persisté via saveLocal)
-     - Patch léger : _getClient16() (chap.16A) lit en priorité devis.__client
-     - Intégration non destructive (remplace actionNouveauDevis avec même UX)
-     ============================= -->
 
-<style>
-  .cli-wrap .card{ margin-bottom:16px; }
-  .cli-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-  .cli-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
-  .cli-field label{ display:block; font-weight:600; margin-bottom:6px; }
-  .cli-note{ color:var(--muted); font-size:14px; }
-  .cli-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-</style>
-
-<script>
-/* ============================================================
-   §16C.0 • Helpers locaux
-   ============================================================ */
-function _esc16c(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-/* ============================================================
-   §16C.1 • Page de saisie client (routée juste après "Nouveau devis")
-   ============================================================ */
-function pageClientNewDevis(){
-  // Valeurs existantes si on revient (ou si duplicata)
-  var cur = (window.devis && devis.__client) ? devis.__client : {
-    nom:'', email:'', tel:'', adresse:'', cp:'', ville:''
-  };
-
-  view(
-    '<div class="cli-wrap">'
-    +  '<div class="card">'
-    +    (typeof b==='function' ? b('Annuler','_abortNewDevis16c()','btn back') : '')
-    +    '<h2>Informations client du devis</h2>'
-    +    '<p class="cli-note">Ces informations seront affichées sur le devis (PDF) et mémorisées dans ce devis.</p>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<div class="cli-grid">'
-    +      '<div class="cli-field"><label>Nom / Société</label><input id="cli-nom" value="'+_esc16c(cur.nom)+'"/></div>'
-    +      '<div class="cli-field"><label>Email</label><input id="cli-email" value="'+_esc16c(cur.email)+'"/></div>'
-    +      '<div class="cli-field"><label>Téléphone</label><input id="cli-tel" value="'+_esc16c(cur.tel)+'"/></div>'
-    +      '<div class="cli-field" style="grid-column:1/-1;"><label>Adresse</label><input id="cli-adr" value="'+_esc16c(cur.adresse)+'"/></div>'
-    +      '<div class="cli-field"><label>Code postal</label><input id="cli-cp" value="'+_esc16c(cur.cp)+'"/></div>'
-    +      '<div class="cli-field"><label>Ville</label><input id="cli-ville" value="'+_esc16c(cur.ville)+'"/></div>'
-    +    '</div>'
-    +    '<div class="cli-actions">'
-    +      (typeof b==='function' ? b('Enregistrer et continuer','_saveClientNewDevis16c()','btn primary') : '<button onclick="_saveClientNewDevis16c()">Enregistrer et continuer</button>')
-    +      (typeof b==='function' ? b('Ignorer pour l’instant','_skipClientNewDevis16c()','btn') : '<button onclick="_skipClientNewDevis16c()">Ignorer pour l’instant</button>')
-    +    '</div>'
-    +  '</div>'
-    +'</div>'
-  );
-}
-
-/* Enregistrer client dans devis + retour workflow normal */
-function _saveClientNewDevis16c(){
-  if(!window.devis) window.devis = {};
-  devis.__client = {
-    nom: (document.getElementById('cli-nom')||{}).value || '',
-    email: (document.getElementById('cli-email')||{}).value || '',
-    tel: (document.getElementById('cli-tel')||{}).value || '',
-    adresse: (document.getElementById('cli-adr')||{}).value || '',
-    cp: (document.getElementById('cli-cp')||{}).value || '',
-    ville: (document.getElementById('cli-ville')||{}).value || ''
-  };
-  if(typeof saveLocal==='function') saveLocal();
-  // On enchaîne vers l’accueil des pièces
-  if(typeof pageHome==='function') pageHome(); else alert('Client enregistré.');
-}
-function _skipClientNewDevis16c(){
-  // Sans enregistrer (ou si déjà prérempli), on enchaîne
-  if(typeof pageHome==='function') pageHome(); else alert('OK.');
-}
-function _abortNewDevis16c(){
-  // Annuler la création du devis si l’utilisateur le souhaite
-  if(confirm('Annuler ce nouveau devis ?')){
-    // On vide le devis courant pour revenir à l’accueil
-    window.devis = {};
-    if(typeof saveLocal==='function') saveLocal();
-    if(typeof pageMain==='function') pageMain();
-  }
-}
-
-/* ============================================================
-   §16C.2 • Remplacement non destructif de actionNouveauDevis()
-   - Conserve le confirm d’origine
-   - Initialise le devis courant puis ouvre pageClientNewDevis()
-   ============================================================ */
-(function overrideNewDevis16c(){
-  var _oldNew = window.actionNouveauDevis;
-  window.actionNouveauDevis = function(){
-    // On garde le comportement UX d’origine
-    if(!confirm('Créer un nouveau devis ? Le devis courant non sauvegardé sera perdu.')) return;
-    // Initialise un devis minimal
-    function _shortId(){ return Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4); }
-    window.devis = { __id:_shortId(), __name:'Nouveau devis', __ts: Date.now(), __client: {
-      nom:'', email:'', tel:'', adresse:'', cp:'', ville:''
-    }};
-    if(typeof saveLocal==='function') saveLocal();
-    // Enchaîne immédiatement vers la saisie client
-    pageClientNewDevis();
-  };
-})();
-
-/* ============================================================
-   §16C.3 • Patch : utiliser en priorité le client du devis dans le PDF
-   - Si chap.16A est chargé, on remplace _getClient16() pour lire devis.__client
-   - Sinon ce patch est inoffensif (aucune erreur)
-   ============================================================ */
-(function preferDevisClientInPDF16c(){
-  var _orig = window._getClient16; // peut être undefined si 16A pas encore chargé
-  window._getClient16 = function(){
-    try{
-      if(window.devis && devis.__client && (devis.__client.nom || devis.__client.adresse || devis.__client.ville)){
-        return devis.__client;
-      }
-    }catch(e){}
-    // fallback : fonction d’origine (16A) ou valeurs vides
-    if(typeof _orig === 'function') return _orig();
-    return { nom:'', email:'', tel:'', adresse:'', cp:'', ville:'' };
-  };
-})();
-</script>
 <!-- =============================
      CHAPITRE 16D : Annuaire Clients + intégration Devis (v16D.1)
      - Stockage local (clients_v1)
@@ -6039,136 +5913,47 @@ Object.assign(window, {
   pageClientNewDevis
 });
 </script>
-
-<!-- =============================
-     CHAPITRE 16E’ — TVA par devis + Liaison Config Entreprise (anti-conflit)
-     - Page "Client + Nom du devis + TVA"
-     - _getCompany16 / _getPrefs16 / _getCGV16 surchargés SANS re-déclarer des const globales
-     ============================= -->
-<style>
-  .dvname-wrap .card{ margin-bottom:12px; }
-  .dvname-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
-  .dvname-field label{ display:block; font-weight:600; margin-bottom:6px; }
-  .muted{ color:var(--muted); }
-</style>
-
 <script>
-(function(){
-  // Clés LS en LOCAL (pas de globales)
-  const LS_ENTREPRISE = 'cfg_entreprise_v1';
-  const LS_PREFS      = 'prefs_devis_fact_v1';
-  const LS_CGV        = 'devis_cgv_v1';
+/* ============================================================
+   16D bis — Page de sélection client simplifiée
+   (remplace toutes les versions précédentes)
+   ============================================================ */
+(function cleanAndSimplifyClientStep(){
 
-  const rd  = (k,d)=>{ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } };
-  const esc = s => String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&gt;','>':'&gt;','"':'&quot;'}[c]));
+  // --- Suppression douce des anciennes définitions ---
+  delete window.pageClientNewDevis;
+  delete window._saveClientTVAName16E;
+  delete window._skipClientTVAName16E;
 
-  // ---------- Surcharges utilitaires (propres) ----------
-  const _oldGetCompany = window._getCompany16;
-  window._getCompany16 = function(){
-    const e = rd(LS_ENTREPRISE, {});
-    if (e && Object.keys(e).length) return e;
-    return (typeof _oldGetCompany==='function') ? _oldGetCompany() : {};
-  };
-
-  const _oldGetPrefs = window._getPrefs16;
-  window._getPrefs16 = function(){
-    const base = (typeof _oldGetPrefs==='function') ? _oldGetPrefs() : rd(LS_PREFS,{});
-    const out  = Object.assign({}, base);
-    try{
-      if (window.devis && devis.__tva){
-        if (typeof devis.__tva.applicable==='boolean') out.tva_applicable = devis.__tva.applicable;
-        if (typeof devis.__tva.taux==='number')        out.taux_tva      = devis.__tva.taux;
-      }
-    }catch(e){}
-    return out;
-  };
-
-  const _oldGetCGV = window._getCGV16;
-  window._getCGV16 = function(){
-    // 1) CGV spécifiques au devis ?
-    try{
-      if (window.devis && typeof devis.__cgv==='string' && devis.__cgv.trim()) return devis.__cgv;
-    }catch(e){}
-    // 2) CGV depuis la config entreprise (plusieurs clés possibles)
-    const ent  = rd(LS_ENTREPRISE,{});
-    const keys = ['cgv','conditions_generales','conditions','cgv_text'];
-    for (let k of keys){ if (ent && typeof ent[k]==='string' && ent[k].trim()) return ent[k]; }
-    // 3) Ancien stockage 16A
-    const old = rd(LS_CGV,'');
-    if (old) return old;
-    // 4) Défaut
-    return 'Conditions générales de vente disponibles sur demande.';
-  };
-
-  // ---------- Page "Client + Nom + TVA" (remplace celle ouverte après Nouveau devis) ----------
-  function field(lbl, id, val){
-    return '<div class="dvname-field"><label>'+esc(lbl)+'</label><input id="'+id+'" value="'+esc(val||'')+'"/></div>';
-  }
-
+  // --- Nouvelle page "choix de client" ---
   window.pageClientNewDevis = function(){
-    const curCli = (window.devis && devis.__client) ? devis.__client : { nom:'', email:'', tel:'', adresse:'', cp:'', ville:'' };
-    const curTVA = (window.devis && devis.__tva) ? devis.__tva : {};
-    const prefs  = rd(LS_PREFS,{});
-    const appDef = (typeof curTVA.applicable==='boolean') ? curTVA.applicable : !!prefs.tva_applicable;
-    const tauxDef= (typeof curTVA.taux==='number') ? curTVA.taux : (typeof prefs.taux_tva==='number' ? prefs.taux_tva : 20);
-    const devName= (window.devis && devis.__name) || 'Nouveau devis';
-
     view(
-      '<div class="dvname-wrap">'
-      +  '<div class="card">'+ (typeof b==='function'? b('Annuler','pageMain()','btn back'):'') +'<h2>Client du devis</h2>'
-      +    '<p class="muted">Renseignez le client, le nom du devis et la TVA applicable. Par défaut, on reprend le paramétrage global.</p>'
+      '<div class="cli-wrap">'
+      +  '<div class="card">'
+      +    (typeof b==='function'? b("Annuler","_abortNewDevis16d()","btn back") : '')
+      +    '<h2>Client du devis</h2>'
+      +    '<p class="cli-note">Souhaitez-vous sélectionner un client existant ou créer un nouveau client ?</p>'
       +  '</div>'
 
-      +  '<div class="card"><h3>Informations client</h3>'
-      +    field('Nom / Société','cli-nom',  curCli.nom)
-      +    field('Email',        'cli-email',curCli.email)
-      +    field('Téléphone',    'cli-tel',  curCli.tel)
-      +    field('Adresse',      'cli-adr',  curCli.adresse)
-      +    field('Code postal',  'cli-cp',   curCli.cp)
-      +    field('Ville',        'cli-ville',curCli.ville)
-      +  '</div>'
-
-      +  '<div class="card"><h3>Nom du devis</h3>'
-      +    field('Titre du devis','dv-name', devName)
-      +    '<p class="muted">Exemples : « Rénovation électrique cuisine », « Mise en conformité T2 ».</p>'
-      +  '</div>'
-
-      +  '<div class="card"><h3>TVA applicable</h3>'
-      +    '<div class="dvname-field"><label><input type="checkbox" id="tva-on" '+(appDef?'checked':'')+'> Appliquer la TVA pour ce devis</label></div>'
-      +    '<div class="dvname-field"><label>Taux de TVA (%)</label><input id="tva-rate" type="number" step="0.1" min="0" value="'+esc(tauxDef)+'"/></div>'
-      +  '</div>'
-
-      +  '<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;">'
-      +    (typeof b==='function' ? b('Enregistrer et continuer','_saveClientTVAName16E()','btn primary')
-                                 : '<button class="btn primary" onclick="_saveClientTVAName16E()">Enregistrer et continuer</button>')
-      +    (typeof b==='function' ? b('Ignorer','_skipClientTVAName16E()','btn')
-                                 : '<button class="btn" onclick="_skipClientTVAName16E()">Ignorer</button>')
+      +  '<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;">'
+      +    b('Choisir un client existant','_openClientSelector16D()','btn primary')
+      +    b('Créer un nouveau client','_openClientCreator16D()','btn')
       +  '</div>'
       +'</div>'
     );
   };
 
-  window._saveClientTVAName16E = function(){
-    if(!window.devis) window.devis = {};
-    devis.__client = {
-      nom: (document.getElementById('cli-nom')||{}).value || '',
-      email: (document.getElementById('cli-email')||{}).value || '',
-      tel: (document.getElementById('cli-tel')||{}).value || '',
-      adresse: (document.getElementById('cli-adr')||{}).value || '',
-      cp: (document.getElementById('cli-cp')||{}).value || '',
-      ville: (document.getElementById('cli-ville')||{}).value || ''
-    };
-    devis.__tva = {
-      applicable: !!(document.getElementById('tva-on')||{}).checked,
-      taux: parseFloat((document.getElementById('tva-rate')||{}).value)||0
-    };
-    devis.__name = (document.getElementById('dv-name')||{}).value || 'Devis';
-    if (typeof saveLocal==='function') saveLocal();
-    if (typeof pageHome==='function') pageHome(); else alert('OK');
+  // --- Ouverture des écrans existants de 16D ---
+  window._openClientSelector16D = function(){
+    // ouvre l’annuaire complet pour choisir un client
+    if(typeof pageClients==='function') pageClients();
+    else alert('Fonction pageClients() introuvable.');
   };
-  window._skipClientTVAName16E = function(){
-    if (typeof pageHome==='function') pageHome(); else alert('OK');
+  window._openClientCreator16D = function(){
+    if(typeof pageClientNew==='function') pageClientNew();
+    else alert('Fonction pageClientNew() introuvable.');
   };
+
 })();
 </script>
 
