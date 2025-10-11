@@ -1888,6 +1888,10 @@ function ventAddEntretien(key){
 
 
 
+  
+
+
+
 
 
 <!-- =============================
@@ -2211,7 +2215,199 @@ Object.assign(window, {
 
 
 
-   
+   <!-- =========================================
+     CHAPITRE 8b : COEFFICIENTS DE POSE — sync + filage
+     - Synchronisé sur POSES (Ajouter une pièce)
+     - Édition & persistance LS
+     - Injection bouton dans Paramétrage
+     - Application automatique dans computePU (intervention = Création)
+     ========================================= -->
+
+<style>
+  .pose-card .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .pose-field{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px}
+  .pose-field label{display:block;font-weight:600;margin-bottom:6px}
+  .pose-note{color:var(--muted);font-size:14px}
+</style>
+
+<script>
+/* =========================================
+   §8b.0 • Stockage & helpers
+   ========================================= */
+const KEY_POSE_COEFFS = 'poseCoeffs_v1';
+
+function _readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function _clone(x){ return JSON.parse(JSON.stringify(x)); }
+
+/* Source de vérité des types de pose = POSES (du module Ajouter une pièce) */
+function _getPoseListFromApp(){
+  // Si l’app définit POSES (cas normal), on s’en sert
+  if (Array.isArray(window.POSES) && window.POSES.length) return _clone(window.POSES);
+  // Fallback très sûr au cas où (n’est normalement jamais utilisé)
+  return ['Apparent','Encastré placo','Encastré maçonnerie','Goulotte'];
+}
+
+/* Map des coefficients alignés 1:1 avec POSES */
+function _ensurePoseCoeffMap(){
+  const poses = _getPoseListFromApp();
+  const cur   = _readJsonLS(KEY_POSE_COEFFS, {});
+  let changed = false;
+
+  // Ajoute les manquants (def = 1.00)
+  poses.forEach(p=>{
+    if(typeof cur[p] !== 'number'){ cur[p] = 1; changed = true; }
+  });
+
+  // Supprime les coefficients d’anciens types de pose qui n’existent plus
+  Object.keys(cur).forEach(k=>{
+    if(poses.indexOf(k)===-1){ delete cur[k]; changed = true; }
+  });
+
+  if(changed) _writeJsonLS(KEY_POSE_COEFFS, cur);
+  return cur;
+}
+
+/* API globale : lire / écrire */
+function getPoseCoeff(name){
+  const map = _ensurePoseCoeffMap();
+  return (typeof map[name] === 'number') ? map[name] : 1;
+}
+function setPoseCoeff(name, value){
+  const v = Math.max(0, parseFloat(value)||1);
+  const map = _ensurePoseCoeffMap();
+  map[name] = v; _writeJsonLS(KEY_POSE_COEFFS, map);
+}
+
+/* =========================================
+   §8b.1 • UI — Édition des coefficients
+   ========================================= */
+function pageParam_CoeffPose(){
+  const poses = _getPoseListFromApp();
+  const map   = _ensurePoseCoeffMap();
+
+  const fields = poses.map(p=>{
+    const id = 'pc_' + p.replace(/\s+/g,'_');
+    return (
+      '<div class="pose-field">'
+      +  '<label>'+p+'</label>'
+      +  '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+map[p]).toFixed(2)+'" />'
+      +  '<div class="pose-note">1.00 = neutre • &gt;1 = + cher • &lt;1 = - cher</div>'
+      +'</div>'
+    );
+  }).join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageParametrageAccueil ? pageParametrageAccueil() : pageMain()','btn back')
+      + '<h2>Coefficients de pose</h2>'
+      + '<p class="pose-note">Ces types de pose sont synchronisés automatiquement avec ceux utilisés dans “Ajouter une pièce”.</p>'
+    + '</div>'
+    + '<div class="card pose-card">'
+      + '<div class="grid">'+fields+'</div>'
+      + '<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;">'
+        + b('💾 Enregistrer','saveParam_CoeffPose()','btn primary')
+        + b('↺ Remettre à 1.00','resetParam_CoeffPose()','btn')
+      + '</div>'
+    + '</div>'
+  );
+}
+
+function saveParam_CoeffPose(){
+  const poses = _getPoseListFromApp();
+  const map = {};
+  poses.forEach(p=>{
+    const id = 'pc_' + p.replace(/\s+/g,'_');
+    const el = document.getElementById(id);
+    map[p] = Math.max(0, parseFloat((el && el.value) || '1') || 1);
+  });
+  _writeJsonLS(KEY_POSE_COEFFS, map);
+  alert('✅ Coefficients enregistrés.');
+}
+function resetParam_CoeffPose(){
+  if(!confirm('Remettre tous les coefficients de pose à 1.00 ?')) return;
+  const poses = _getPoseListFromApp();
+  const map = {}; poses.forEach(p=> map[p]=1);
+  _writeJsonLS(KEY_POSE_COEFFS, map);
+  pageParam_CoeffPose();
+}
+
+/* =========================================
+   §8b.2 • Injection dans Paramétrage (chap.8)
+   - Ajoute un bouton « Coefficients de pose »
+   ========================================= */
+(function injectPoseBtnIntoParametrage(){
+  const orig = window.pageParametrageAccueil;
+  if(typeof orig === 'function'){
+    window.pageParametrageAccueil = function(){
+      orig();
+      const app = document.getElementById('app'); if(!app) return;
+      if(app.innerHTML.indexOf('pageParam_CoeffPose()')===-1){
+        // On insère un bloc discret supplémentaire
+        app.innerHTML = app.innerHTML.replace(
+          /(<\/div>\s*<\/div>\s*$)/,
+          '</div>'
+          + '<div class="card">'
+          +   '<h3>Coefficients de pose</h3>'
+          +   '<p class="pose-note">Personnalisez les multiplicateurs appliqués selon le type de pose (utilisés automatiquement pour les créations).</p>'
+          +   '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+          +     '<button class="btn" onclick="pageParam_CoeffPose()">Ouvrir</button>'
+          +   '</div>'
+          + '</div></div>'
+        );
+      }
+    };
+  }
+})();
+
+/* =========================================
+   §8b.3 • FILAGE : Application dans computePU
+   - Si computePU existe, on le “wrap”
+   - Le coefficient n’est appliqué QUE si intervention === "Création"
+   - La variable `pose` peut être vide pour les autres interventions (ton flux masque le champ)
+   ========================================= */
+(function wirePoseCoeffIntoCompute(){
+  const oldCompute = window.computePU;
+  if(typeof oldCompute === 'function'){
+    window.computePU = function(category, designation, intervention, pose, section){
+      // 1) PU calculé par la logique existante
+      let pu = oldCompute(category, designation, intervention, pose, section);
+      // 2) Applique coeff si Création + pose existant (aligné avec ton UI)
+      if(String(intervention) === 'Création' && pose){
+        const coeff = getPoseCoeff(pose);
+        // On sécurise (>= 0) et on arrondit via roundUp5 si disponible
+        let out = (pu||0) * (coeff || 1);
+        if(typeof window.roundUp5 === 'function') out = roundUp5(out);
+        return out;
+      }
+      return pu;
+    };
+  } else {
+    // Si pas de computePU aujourd’hui, on expose une version minimale (au cas où)
+    window.computePU = function(category, designation, intervention, pose, section){
+      let base = 0; // laisse la logique existante de l’app décider ailleurs
+      if(String(intervention)==='Création' && pose){
+        const coeff = getPoseCoeff(pose);
+        let out = base * (coeff || 1);
+        if(typeof window.roundUp5 === 'function') out = roundUp5(out);
+        return out;
+      }
+      return base;
+    };
+  }
+})();
+
+/* =========================================
+   §8b.4 • Expose (global)
+   ========================================= */
+Object.assign(window,{
+  pageParam_CoeffPose,
+  saveParam_CoeffPose,
+  resetParam_CoeffPose,
+  getPoseCoeff,
+  setPoseCoeff
+});
+</script>
 
 
 
