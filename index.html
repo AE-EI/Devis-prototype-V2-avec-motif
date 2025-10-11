@@ -4399,52 +4399,68 @@ Object.assign(window,{
 });
 </script>
 
-/* ============================================================
-   13.9 • Page "Paramètres" (pageTarifsAccueil)
-   ------------------------------------------------------------
-   Version interne pour MiniDevis V3.x : redirige vers
-   - Catalogue prestation
-   - Préférences devis
-   - Configuration entreprise
-   Sans référence externe.
-   ============================================================ */
-function pageTarifsAccueil(){
-  const html = ''
-  + '<div class="tarifs-wrap">'
-  +   '<div class="card">'
-  +     (typeof b === 'function' ? b("Retour","pageMain()","btn back") : "")
-  +     + '<h2>Tarifs & paramètres</h2>'
-  +     + '<p class="muted">Accès centralisé aux réglages de pose, de TVA et d’entreprise.</p>'
-  +   '</div>'
+<!-- =============================
+     CHAPITRE 13.9 — ACCUEIL TARIFS (remplace 13A)
+     - Page "Paramétrage" (pageTarifsAccueil)
+     - Redirige vers : Catalogue prestation, Préférences, Configuration entreprise
+     - Aucune exécution automatique, pas d'injection dans pageMain()
+     ============================= -->
+<style>
+  .tarifs-wrap .card{ margin-bottom:16px; }
+  .tarifs-wrap .muted{ color:var(--muted); }
+</style>
 
-  +   '<div class="card">'
-  +     '<h3>Catalogue prestation</h3>'
-  +     '<p class="muted">Prises, éclairage, commandes, circuits spécialisés…</p>'
-  +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-  +       b("Ouvrir le catalogue","pageCataloguePrestation()","btn primary")
-  +     + '</div>'
-  +   '</div>'
+<script>
+(function(){
+  // Utilitaires locaux sûrs (sans effets de bord)
+  function has(fn){ return typeof window[fn] === 'function'; }
+  function btn(label, call, cls){
+    if (has('b')) return b(label, call, cls || 'btn'); // réutilise ton builder si présent
+    return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
+  }
 
-  +   '<div class="card">'
-  +     '<h3>Préférences devis & facturation</h3>'
-  +     '<p class="muted">TVA par défaut, devise, numérotation…</p>'
-  +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-  +       b("Ouvrir les préférences","pagePreferences()","btn")
-  +     + '</div>'
-  +   '</div>'
+  // --- Page Paramétrage ---
+  function pageTarifsAccueil(){
+    var html =
+      '<div class="tarifs-wrap">'
+    +   '<div class="card">'
+    +     (has('pageMain') ? btn('Retour','pageMain()','btn back') : '')
+    +     '<h2>Tarifs & paramètres</h2>'
+    +     '<p class="muted">Accès centralisé aux réglages de pose, de TVA et aux informations entreprise.</p>'
+    +   '</div>'
 
-  +   '<div class="card">'
-  +     '<h3>Configuration entreprise</h3>'
-  +     '<p class="muted">Coordonnées, logo, SIREN/TVA, IBAN…</p>'
-  +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-  +       b("Ouvrir la configuration","pageConfigEntreprise()","btn")
-  +     + '</div>'
-  +   '</div>'
-  + '</div>';
+    +   '<div class="card">'
+    +     '<h3>Catalogue prestation</h3>'
+    +     '<p class="muted">Gérez les tarifs de pose (prises, éclairage, commandes, circuits spécialisés…).</p>'
+    +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+    +       btn('Ouvrir le catalogue','pageCataloguePrestation()','btn primary')
+    +     '</div>'
+    +   '</div>'
 
-  if (typeof view === 'function') view(html);
-  else document.body.innerHTML = html; // fallback ultra-sûr
-}
+    +   '<div class="card">'
+    +     '<h3>Préférences devis & facturation</h3>'
+    +     '<p class="muted">Devise, TVA par défaut, numérotation…</p>'
+    +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+    +       btn('Ouvrir les préférences','pagePreferences()','btn')
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div class="card">'
+    +     '<h3>Configuration entreprise</h3>'
+    +     '<p class="muted">Coordonnées, SIREN/TVA, IBAN, assurances, logo…</p>'
+    +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+    +       btn('Ouvrir la configuration','pageConfigEntreprise()','btn')
+    +     '</div>'
+    +   '</div>'
+    + '</div>';
+
+    if (has('view')) view(html); else document.body.innerHTML = html; // fallback
+  }
+
+  // Expose uniquement la page
+  Object.assign(window, { pageTarifsAccueil });
+})();
+</script>
 
 
 
