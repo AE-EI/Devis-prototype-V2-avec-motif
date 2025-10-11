@@ -6199,12 +6199,8 @@ Object.assign(window, {
 });
 </script>
 
- <!-- =============================
-     CHAPITRE 16E — TVA par devis + Liaison Configuration Entreprise (fix)
-     - Saisie TVA lors de "Nouveau devis"
-     - Utilise cfg_entreprise_v1 pour les infos société et CGV
-     - Surcharge propre de _getCompany16 / _getPrefs16 / _getCGV16
-     - Bouton Annuler fiabilisé (pas d'évaluation dynamique de .name)
+<!-- =============================
+     CHAPITRE 16E — TVA par devis + Liaison Configuration Entreprise (version Safari-safe)
      ============================= -->
 <style>
   .dvname-wrap .card{ margin-bottom:12px; }
@@ -6219,10 +6215,20 @@ const KEY_ENTREPRISE_V1 = 'cfg_entreprise_v1';
 const KEY_PREFS_V1      = 'prefs_devis_fact_v1';
 const KEY_DEVIS_CGV     = 'devis_cgv_v1';
 
-function _rdJSON16E(k, d){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } }
-function _esc16E(s){ return String(s||'').replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); }
+function _rdJSON16E(k, d){
+  try{
+    var val = localStorage.getItem(k);
+    if(!val) return d;
+    var parsed = JSON.parse(val);
+    if(parsed===null || parsed===undefined) return d;
+    return parsed;
+  }catch(e){ return d; }
+}
+function _esc16E(s){
+  return String(s||'').replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; });
+}
 
-/* 16E.1 • Sources “officielles” : entreprise & prefs */
+/* 16E.1 • Sources officielles */
 function _readEntreprise16E(){ return _rdJSON16E(KEY_ENTREPRISE_V1, {}); }
 function _readPrefs16E(){ return _rdJSON16E(KEY_PREFS_V1, {}); }
 
@@ -6250,26 +6256,22 @@ function _readPrefs16E(){ return _rdJSON16E(KEY_PREFS_V1, {}); }
 
   var _oldGetCGV = window._getCGV16;
   window._getCGV16 = function(){
-    // 1) CGV spécifiques au devis ?
     try{
       if (window.devis && typeof devis.__cgv === 'string' && devis.__cgv.trim()) return devis.__cgv;
     }catch(e){}
-    // 2) CGV en Configuration entreprise ?
     var ent = _readEntreprise16E();
     var cgvKeys = ['cgv','conditions_generales','conditions','cgv_text'];
     for (var i=0;i<cgvKeys.length;i++){
       var k=cgvKeys[i];
       if (ent && typeof ent[k] === 'string' && ent[k].trim()) return ent[k];
     }
-    // 3) Ancien stockage (chap.16A)
     var old = _rdJSON16E(KEY_DEVIS_CGV, '');
     if (old) return old;
-    // 4) Défault léger
     return 'Conditions générales de vente disponibles sur demande.';
   };
 })();
 
-/* Wrapper Annuler sûr (évite l’évaluation de .name dans un onclick) */
+/* Wrapper Annuler sûr */
 function _abortNewDevis16E(){
   try{
     if (typeof window._abortNewDevis16d==='function') return _abortNewDevis16d();
@@ -6303,34 +6305,27 @@ function _abortNewDevis16E(){
       +  '</div>'
 
       +  '<div class="card"><h3>Informations client</h3>'
-      +    '<div class="dvname-field"><label>Nom / Société</label><input id="cli-nom" value="'+_esc16E(curCli.nom)+'"/></div>'
-      +    '<div class="dvname-field"><label>Email</label><input id="cli-email" value="'+_esc16E(curCli.email)+'"/></div>'
-      +    '<div class="dvname-field"><label>Téléphone</label><input id="cli-tel" value="'+_esc16E(curCli.tel)+'"/></div>'
-      +    '<div class="dvname-field"><label>Adresse</label><input id="cli-adr" value="'+_esc16E(curCli.adresse)+'"/></div>'
-      +    '<div class="dvname-field"><label>Code postal</label><input id="cli-cp" value="'+_esc16E(curCli.cp)+'"/></div>'
-      +    '<div class="dvname-field"><label>Ville</label><input id="cli-ville" value="'+_esc16E(curCli.ville)+'"/></div>'
+      +    field('Nom / Société','cli-nom',curCli.nom)
+      +    +field('Email','cli-email',curCli.email)
+      +    +field('Téléphone','cli-tel',curCli.tel)
+      +    +field('Adresse','cli-adr',curCli.adresse)
+      +    +field('Code postal','cli-cp',curCli.cp)
+      +    +field('Ville','cli-ville',curCli.ville)
       +  '</div>'
 
       +  '<div class="card"><h3>Nom du devis</h3>'
-      +    field('Titre du devis', 'dv-name', devName)
-      +    '<p class="muted">Exemples : « Rénovation électrique cuisine », « Mise en conformité T2 ». '
-      +    'Ce nom apparaît dans le PDF et dans la liste des devis sauvegardés.</p>'
+      +    field('Titre du devis','dv-name',devName)
+      +    '<p class="muted">Exemples : “Rénovation électrique cuisine”, “Mise en conformité T2”.</p>'
       +  '</div>'
 
       +  '<div class="card"><h3>TVA applicable</h3>'
-      +    '<div class="dvname-field">'
-      +      '<label><input type="checkbox" id="tva-on" '+(appDef?'checked':'')+'> Appliquer la TVA pour ce devis</label>'
-      +    '</div>'
-      +    '<div class="dvname-field"><label>Taux de TVA (%)</label>'
-      +      '<input id="tva-rate" type="number" step="0.1" min="0" value="'+_esc16E(tauxDef)+'"/></div>'
-      +    '<p class="muted">Par défaut, on reprend le paramétrage global. Tu peux le surcharger ici pour ce devis.</p>'
+      +    '<div class="dvname-field"><label><input type="checkbox" id="tva-on" '+(appDef?'checked':'')+'> Appliquer la TVA pour ce devis</label></div>'
+      +    '<div class="dvname-field"><label>Taux de TVA (%)</label><input id="tva-rate" type="number" step="0.1" min="0" value="'+_esc16E(tauxDef)+'"/></div>'
       +  '</div>'
 
       +  '<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;">'
-      +    (typeof b==='function' ? b('Enregistrer et continuer','_saveClientTVAName16E()','btn primary')
-                                 : '<button onclick="_saveClientTVAName16E()">Enregistrer et continuer</button>')
-      +    (typeof b==='function' ? b('Ignorer','_skipClientTVAName16E()','btn')
-                                 : '<button onclick="_skipClientTVAName16E()">Ignorer</button>')
+      +    (typeof b==='function' ? b('Enregistrer et continuer','_saveClientTVAName16E()','btn primary') : '<button onclick="_saveClientTVAName16E()">Enregistrer</button>')
+      +    (typeof b==='function' ? b('Ignorer','_skipClientTVAName16E()','btn') : '<button onclick="_skipClientTVAName16E()">Ignorer</button>')
       +  '</div>'
       +'</div>'
     );
