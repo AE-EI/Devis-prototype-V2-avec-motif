@@ -1895,16 +1895,17 @@ function ventAddEntretien(key){
 
 
 <!-- =============================
-     CHAPITRE 8 : PARAMÉTRAGE — V10.0
+     CHAPITRE 8 : PARAMÉTRAGE — V10.2 (propre & unifié)
      Index :
        8.0 • Styles
        8.1 • Storage (Entreprise / Préférences)
        8.2 • Helpers
-       8.3 • Accueil Paramétrage
+       8.3 • Accueil Paramétrage (pageParametrageAccueil)
        8.4 • Configuration entreprise (form)
        8.5 • Préférences devis & facturation (form)
        8.6 • Paramétrage avancé (JSON / développeur)
-       8.7 • Expose (window)
+       8.7 • Coefficients de pose (UI + stockage + computePU)
+       8.8 • Expose (window)
      ============================= -->
 
 <style>
@@ -1917,6 +1918,12 @@ function ventAddEntretien(key){
   .row.gap8{ gap:8px; flex-wrap:wrap; }
   .subcard{ border:1px dashed var(--line); border-radius:10px; padding:10px; background:#fafafa; }
   .mb8{ margin-bottom:8px; }
+
+  /* Coeffs de pose */
+  .pose-card .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .pose-field{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px}
+  .pose-field label{display:block;font-weight:600;margin-bottom:6px}
+  .pose-note{color:var(--muted);font-size:14px}
 </style>
 
 <script>
@@ -1974,35 +1981,35 @@ function setPrefs(obj){
    ============================= */
 function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c])); }
 function _val(id){ var el=document.getElementById(id); return el ? el.value : ''; }
-function _num(id){ var v=parseFloat(_val(id).replace(',','.')); return isNaN(v)?0:v; }
+function _num(id){ var v=parseFloat((_val(id)||'').replace(',','.')); return isNaN(v)?0:v; }
 </script>
 
 <script>
 /* =============================
    8.3 • Accueil Paramétrage
    ============================= */
-function pageTarifsAccueil(){
+function pageParametrageAccueil(){
   view(
     '<div class="param-wrap">'
     +  '<div class="card">'
     +    b('Retour','pageMain()','btn back')
     +    '<h2>Paramétrage</h2>'
-    +    '<p class="muted">Centralisez tous vos réglages : tarifs de prestation, coordonnées entreprise, préférences de devis & facturation, et options avancées.</p>'
+    +    '<p class="muted">Centralisez tous vos réglages : tarifs de prestation, coordonnées entreprise, préférences de devis & facturation, coefficients de pose, et options avancées.</p>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Catalogue prestation</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Gérez les tarifs de pose par famille : Appareillage (Prises, Luminaires, Commandes), Circuit spécialisé, etc. Les modifications s’appliquent à l’application, aux aperçus, aux exports et à la duplication “appliquer nouveaux tarifs”.</div></div>'
+    +    '<div class="subcard mb8"><div class="muted">Gérez les tarifs de pose par famille (Appareillage, Luminaires, Commandes, Circuit spécialisé…). Les modifications s’appliquent à l’application, aux aperçus, aux exports et à la duplication “appliquer nouveaux tarifs”.</div></div>'
     +    '<div class="row gap8">'
-    +      b('Ouvrir le catalogue prestation','pageCataloguePrestation()','btn')
+    +      b('Ouvrir le catalogue prestation','pageCataloguePrestation ? pageCataloguePrestation() : alert(\"Module non chargé.\")','btn')
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
-    +    '<h3>Catalogue fournitures</h3>'
-    +    '<div class="subcard mb8"><div class="muted">À venir : définition des marques, gammes et références avec prix de vente. Servira aux menus Fourniture/Marque/Gamme — déjà prévus côté Prises.</div></div>'
+    +    '<h3>Coefficients de pose</h3>'
+    +    '<div class="subcard mb8"><div class="muted">Personnalisez les multiplicateurs appliqués automatiquement aux <strong>Créations</strong> selon le type de pose (synchronisés avec “Ajouter une pièce”).</div></div>'
     +    '<div class="row gap8">'
-    +      b('Bientôt disponible','alert(\"Le catalogue fournitures sera ajouté ultérieurement.\")','btn')
+    +      b('Ouvrir','pageParam_CoeffPose()','btn')
     +    '</div>'
     +  '</div>'
 
@@ -2042,7 +2049,7 @@ function pageConfigEntreprise(){
   const e = getEntreprise();
   view(
     '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageTarifsAccueil()','btn back')+'<h2>Configuration entreprise</h2></div>'
+    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Configuration entreprise</h2></div>'
     +  '<div class="card"><div class="param-grid">'
     +    '<div class="field"><label>Raison sociale</label><input id="e-rs" value="'+_esc(e.raison_sociale)+'"/></div>'
     +    '<div class="field"><label>SIRET</label><input id="e-siret" value="'+_esc(e.siret)+'"/></div>'
@@ -2060,7 +2067,7 @@ function pageConfigEntreprise(){
   );
 }
 function saveEntreprise(){
-  const out = setEntreprise({
+  setEntreprise({
     raison_sociale: _val('e-rs'),
     siret: _val('e-siret'),
     adresse: _val('e-adr'),
@@ -2068,7 +2075,7 @@ function saveEntreprise(){
     ville: _val('e-ville'),
     email: _val('e-mail'),
     telephone: _val('e-tel'),
-    tva_percent: Math.max(0, parseFloat(_val('e-tva').replace(',','.'))||0)
+    tva_percent: Math.max(0, _num('e-tva'))
   });
   alert('Informations enregistrées.');
   pageConfigEntreprise();
@@ -2083,7 +2090,7 @@ function pagePrefsDevis(){
   const p = getPrefs();
   view(
     '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageTarifsAccueil()','btn back')+'<h2>Préférences devis & facturation</h2></div>'
+    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Préférences devis & facturation</h2></div>'
     +  '<div class="card"><div class="param-grid">'
     +    '<div class="field"><label><input id="pf-sep" type="checkbox" '+(p.mode_separe?'checked':'')+'/> Mode séparé (pose + fournitures)</label></div>'
     +    '<div class="field"><label><input id="pf-ttc" type="checkbox" '+(p.afficher_ttc?'checked':'')+'/> Afficher HT / TTC</label></div>'
@@ -2098,10 +2105,10 @@ function pagePrefsDevis(){
   );
 }
 function savePrefs(){
-  const out = setPrefs({
+  setPrefs({
     mode_separe: !!document.getElementById('pf-sep').checked,
     afficher_ttc: !!document.getElementById('pf-ttc').checked,
-    remise_defaut: Math.max(0, parseFloat(_val('pf-rem').replace(',','.'))||0),
+    remise_defaut: Math.max(0, _num('pf-rem')),
     conditions: _val('pf-cond'),
     mentions: _val('pf-men')
   });
@@ -2115,18 +2122,17 @@ function savePrefs(){
    8.6 • Paramétrage avancé (JSON / développeur)
    ============================= */
 function pageParamAvance(){
-  // On récupère également prestations/coeffs si le Chapitre 13 est chargé
   const packs = {
     entreprise: getEntreprise(),
     preferences: getPrefs(),
     prestations: (typeof getPrestations==='function') ? getPrestations() : '(module non chargé)',
-    coeffs_pose: (typeof getCoeffs==='function') ? getCoeffs() : '(module non chargé)'
+    coeffs_pose: (typeof getPoseCoeffMap==='function') ? getPoseCoeffMap() : '(module non chargé)'
   };
   const pretty = _esc(JSON.stringify(packs, null, 2));
 
   view(
     '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageTarifsAccueil()','btn back')+'<h2>Paramétrage avancé (JSON / développeur)</h2></div>'
+    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Paramétrage avancé (JSON / développeur)</h2></div>'
     +  '<div class="card">'
     +    '<div class="subcard mb8"><div class="muted">Attention : toute erreur de JSON peut casser le chargement. Sauvegardez avant import. Vous pouvez exporter pour backup.</div></div>'
     +    '<div class="row gap8">'
@@ -2144,16 +2150,17 @@ function pageParamAvance(){
     +'</div>'
   );
 }
-function paramAdvExport(){
-  // construit un bundle JSON
+function _bundleAll(){
   const bundle = {
     entreprise: getEntreprise(),
     preferences: getPrefs()
   };
   if(typeof getPrestations==='function') bundle.prestations = getPrestations();
-  if(typeof getCoeffs==='function')      bundle.coeffs_pose = getCoeffs();
-
-  const raw = JSON.stringify(bundle, null, 2);
+  if(typeof getPoseCoeffMap==='function') bundle.coeffs_pose = getPoseCoeffMap();
+  return bundle;
+}
+function paramAdvExport(){
+  const raw = JSON.stringify(_bundleAll(), null, 2);
   const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
   const url  = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download='parametrage_bundle.json'; a.click();
@@ -2170,7 +2177,7 @@ function paramAdvImport(){
         if(data.entreprise) setEntreprise(data.entreprise);
         if(data.preferences) setPrefs(data.preferences);
         if(data.prestations && typeof setPrestations==='function') setPrestations(data.prestations);
-        if(data.coeffs_pose && typeof setCoeffs==='function') setCoeffs(data.coeffs_pose);
+        if(data.coeffs_pose && typeof setPoseCoeffMap==='function') setPoseCoeffMap(data.coeffs_pose);
         alert('Configuration importée.');
         pageParamAvance();
       }catch(e){ alert('Import impossible : '+e.message); }
@@ -2186,7 +2193,7 @@ function paramAdvApply(){
     if(data.entreprise) setEntreprise(data.entreprise);
     if(data.preferences) setPrefs(data.preferences);
     if(data.prestations && typeof setPrestations==='function') setPrestations(data.prestations);
-    if(data.coeffs_pose && typeof setCoeffs==='function') setCoeffs(data.coeffs_pose);
+    if(data.coeffs_pose && typeof setPoseCoeffMap==='function') setPoseCoeffMap(data.coeffs_pose);
     alert('Configuration appliquée.');
     pageParamAvance();
   }catch(e){
@@ -2197,284 +2204,118 @@ function paramAdvApply(){
 
 <script>
 /* =============================
-   8.7 • Expose (window)
+   8.7 • Coefficients de pose (UI + stockage + computePU)
    ============================= */
-Object.assign(window, {
-  pageTarifsAccueil,
-  pageConfigEntreprise,
-  pagePrefsDevis,
-  pageParamAvance
-});
-</script>
-
-  
-  
-  
-  
-
-
-
-
-   <!-- =========================================
-     CHAPITRE 8b : COEFFICIENTS DE POSE — sync + filage
-     - Synchronisé sur POSES (Ajouter une pièce)
-     - Édition & persistance LS
-     - Injection bouton dans Paramétrage
-     - Application automatique dans computePU (intervention = Création)
-     ========================================= -->
-
-<style>
-  .pose-card .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-  .pose-field{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px}
-  .pose-field label{display:block;font-weight:600;margin-bottom:6px}
-  .pose-note{color:var(--muted);font-size:14px}
-</style>
-
-<script>
-/* =========================================
-   §8b.0 • Stockage & helpers
-   ========================================= */
 const KEY_POSE_COEFFS = 'poseCoeffs_v1';
+function _readJsonLS8(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _writeJsonLS8(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
-function _readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-function _writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
-function _clone(x){ return JSON.parse(JSON.stringify(x)); }
-
-/* Source de vérité des types de pose = POSES (du module Ajouter une pièce) */
 function _getPoseListFromApp(){
-  // Si l’app définit POSES (cas normal), on s’en sert
-  if (Array.isArray(window.POSES) && window.POSES.length) return _clone(window.POSES);
-  // Fallback très sûr au cas où (n’est normalement jamais utilisé)
+  if (Array.isArray(window.POSES) && window.POSES.length) return JSON.parse(JSON.stringify(window.POSES));
   return ['Apparent','Encastré placo','Encastré maçonnerie','Goulotte'];
 }
-
-/* Map des coefficients alignés 1:1 avec POSES */
-function _ensurePoseCoeffMap(){
+function getPoseCoeffMap(){
   const poses = _getPoseListFromApp();
-  const cur   = _readJsonLS(KEY_POSE_COEFFS, {});
+  const cur   = _readJsonLS8(KEY_POSE_COEFFS, {});
   let changed = false;
-
-  // Ajoute les manquants (def = 1.00)
-  poses.forEach(p=>{
-    if(typeof cur[p] !== 'number'){ cur[p] = 1; changed = true; }
-  });
-
-  // Supprime les coefficients d’anciens types de pose qui n’existent plus
-  Object.keys(cur).forEach(k=>{
-    if(poses.indexOf(k)===-1){ delete cur[k]; changed = true; }
-  });
-
-  if(changed) _writeJsonLS(KEY_POSE_COEFFS, cur);
+  poses.forEach(p=>{ if(typeof cur[p] !== 'number'){ cur[p]=1; changed=true; }});
+  Object.keys(cur).forEach(k=>{ if(poses.indexOf(k)===-1){ delete cur[k]; changed=true; }});
+  if(changed) _writeJsonLS8(KEY_POSE_COEFFS, cur);
   return cur;
 }
-
-/* API globale : lire / écrire */
-function getPoseCoeff(name){
-  const map = _ensurePoseCoeffMap();
-  return (typeof map[name] === 'number') ? map[name] : 1;
+function setPoseCoeffMap(map){
+  const clean = {};
+  Object.keys(map||{}).forEach(k=>{ const v=+map[k]; clean[k]=isNaN(v)?1:Math.max(0,v); });
+  _writeJsonLS8(KEY_POSE_COEFFS, clean);
 }
+function getPoseCoeff(name){ const map=getPoseCoeffMap(); return (typeof map[name]==='number')? map[name]:1; }
 function setPoseCoeff(name, value){
-  const v = Math.max(0, parseFloat(value)||1);
-  const map = _ensurePoseCoeffMap();
-  map[name] = v; _writeJsonLS(KEY_POSE_COEFFS, map);
+  const map=getPoseCoeffMap(); map[name]=Math.max(0, +value||1); _writeJsonLS8(KEY_POSE_COEFFS, map);
 }
 
-/* =========================================
-   §8b.1 • UI — Édition des coefficients
-   ========================================= */
 function pageParam_CoeffPose(){
   const poses = _getPoseListFromApp();
-  const map   = _ensurePoseCoeffMap();
-
+  const map   = getPoseCoeffMap();
   const fields = poses.map(p=>{
-    const id = 'pc_' + p.replace(/\s+/g,'_');
-    return (
-      '<div class="pose-field">'
-      +  '<label>'+p+'</label>'
-      +  '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+map[p]).toFixed(2)+'" />'
-      +  '<div class="pose-note">1.00 = neutre • &gt;1 = + cher • &lt;1 = - cher</div>'
-      +'</div>'
-    );
+    const id='pc_'+p.replace(/\s+/g,'_');
+    return '<div class="pose-field">'
+         +   '<label>'+_esc(p)+'</label>'
+         +   '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+map[p]).toFixed(2)+'" />'
+         +   '<div class="pose-note">1.00 = neutre • &gt;1 = + cher • &lt;1 = - cher</div>'
+         + '</div>';
   }).join('');
-
   view(
-    '<div class="card">'
-      + b('Retour','pageParametrageAccueil ? pageParametrageAccueil() : pageMain()','btn back')
-      + '<h2>Coefficients de pose</h2>'
-      + '<p class="pose-note">Ces types de pose sont synchronisés automatiquement avec ceux utilisés dans “Ajouter une pièce”.</p>'
-    + '</div>'
-    + '<div class="card pose-card">'
-      + '<div class="grid">'+fields+'</div>'
-      + '<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;">'
-        + b('💾 Enregistrer','saveParam_CoeffPose()','btn primary')
-        + b('↺ Remettre à 1.00','resetParam_CoeffPose()','btn')
-      + '</div>'
-    + '</div>'
+    '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Coefficients de pose</h2>'
+    +'<p class="pose-note">Synchronisés automatiquement avec les types de pose utilisés dans “Ajouter une pièce”.</p></div>'
+    +'<div class="card pose-card"><div class="grid">'+fields+'</div>'
+    +'<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;">'
+      + b('💾 Enregistrer','saveParam_CoeffPose()','btn primary')
+      + b('↺ Remettre à 1.00','resetParam_CoeffPose()','btn')
+    +'</div></div>'
   );
 }
-
 function saveParam_CoeffPose(){
-  const poses = _getPoseListFromApp();
-  const map = {};
+  const poses=_getPoseListFromApp(); const map={};
   poses.forEach(p=>{
-    const id = 'pc_' + p.replace(/\s+/g,'_');
-    const el = document.getElementById(id);
-    map[p] = Math.max(0, parseFloat((el && el.value) || '1') || 1);
+    const id='pc_'+p.replace(/\s+/g,'_'); const el=document.getElementById(id);
+    map[p]=Math.max(0, parseFloat((el&&el.value)||'1')||1);
   });
-  _writeJsonLS(KEY_POSE_COEFFS, map);
+  setPoseCoeffMap(map);
   alert('✅ Coefficients enregistrés.');
 }
 function resetParam_CoeffPose(){
   if(!confirm('Remettre tous les coefficients de pose à 1.00 ?')) return;
-  const poses = _getPoseListFromApp();
-  const map = {}; poses.forEach(p=> map[p]=1);
-  _writeJsonLS(KEY_POSE_COEFFS, map);
-  pageParam_CoeffPose();
+  const poses=_getPoseListFromApp(); const map={}; poses.forEach(p=>map[p]=1);
+  setPoseCoeffMap(map); pageParam_CoeffPose();
 }
 
-/* =========================================
-   §8b.2 • Injection dans Paramétrage (chap.8)
-   - Ajoute un bouton « Coefficients de pose »
-   ========================================= */
-(function injectPoseBtnIntoParametrage(){
-  const orig = window.pageParametrageAccueil;
-  if(typeof orig === 'function'){
-    window.pageParametrageAccueil = function(){
-      orig();
-      const app = document.getElementById('app'); if(!app) return;
-      if(app.innerHTML.indexOf('pageParam_CoeffPose()')===-1){
-        // On insère un bloc discret supplémentaire
-        app.innerHTML = app.innerHTML.replace(
-          /(<\/div>\s*<\/div>\s*$)/,
-          '</div>'
-          + '<div class="card">'
-          +   '<h3>Coefficients de pose</h3>'
-          +   '<p class="pose-note">Personnalisez les multiplicateurs appliqués selon le type de pose (utilisés automatiquement pour les créations).</p>'
-          +   '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-          +     '<button class="btn" onclick="pageParam_CoeffPose()">Ouvrir</button>'
-          +   '</div>'
-          + '</div></div>'
-        );
-      }
-    };
-  }
-})();
-
-/* =========================================
-   §8b.3 • FILAGE : Application dans computePU
-   - Si computePU existe, on le “wrap”
-   - Le coefficient n’est appliqué QUE si intervention === "Création"
-   - La variable `pose` peut être vide pour les autres interventions (ton flux masque le champ)
-   ========================================= */
-(function wirePoseCoeffIntoCompute(){
+/* Wrap computePU une seule fois */
+(function wirePoseIntoCompute(){
   const oldCompute = window.computePU;
-  if(typeof oldCompute === 'function'){
-    window.computePU = function(category, designation, intervention, pose, section){
-      // 1) PU calculé par la logique existante
-      let pu = oldCompute(category, designation, intervention, pose, section);
-      // 2) Applique coeff si Création + pose existant (aligné avec ton UI)
-      if(String(intervention) === 'Création' && pose){
-        const coeff = getPoseCoeff(pose);
-        // On sécurise (>= 0) et on arrondit via roundUp5 si disponible
-        let out = (pu||0) * (coeff || 1);
-        if(typeof window.roundUp5 === 'function') out = roundUp5(out);
-        return out;
-      }
-      return pu;
-    };
-  } else {
-    // Si pas de computePU aujourd’hui, on expose une version minimale (au cas où)
-    window.computePU = function(category, designation, intervention, pose, section){
-      let base = 0; // laisse la logique existante de l’app décider ailleurs
-      if(String(intervention)==='Création' && pose){
-        const coeff = getPoseCoeff(pose);
-        let out = base * (coeff || 1);
-        if(typeof window.roundUp5 === 'function') out = roundUp5(out);
-        return out;
-      }
-      return base;
-    };
-  }
-})();
-
-/* =========================================
-   §8b.4 • Expose (global)
-   ========================================= */
-Object.assign(window,{
-  pageParam_CoeffPose,
-  saveParam_CoeffPose,
-  resetParam_CoeffPose,
-  getPoseCoeff,
-  setPoseCoeff
-});
-</script>
-
-<!-- =============================
-     CHAPITRE 8E : COEFFS DE POSE → moteur de calcul
-     - Lecture/synchro des coefficients (LS)
-     - Surcharge propre de computePU() pour appliquer le coeff
-     - Fallback si computePU/TARIFS_BASE n’existent pas
-     ============================= -->
-<script>
-/* 8E.0 • Stockage & helpers */
-const KEY_COEFFS_POSE = 'coeffs_pose_v1';
-
-function _rdJSON8e(k, d){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } }
-function _wrJSON8e(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
-
-/* Renvoie l’objet des coefficients, en s’assurant que
-   tous les types présents dans POSES existent (sinon 1.00) */
-function getCoeffsPose8e(){
-  const cur = _rdJSON8e(KEY_COEFFS_POSE, {});
-  const poses = (Array.isArray(window.POSES) && window.POSES.length) ? window.POSES : [
-    'encastré maçonnerie','encastré cloison sèche','apparent moulure','apparent goulotte',
-    'apparent extérieur','saillie','faux-plafond','dalle béton','combles/percement'
-  ];
-  poses.forEach(p=>{ if(typeof cur[p] !== 'number') cur[p] = 1.00; });
-  return cur;
-}
-function setCoeffsPose8e(obj){ _wrJSON8e(KEY_COEFFS_POSE, obj || {}); }
-
-/* 8E.1 • Lookup de tarif “base” (fallback si pas d’ancienne computePU) */
-function _lookupBaseTarif8e(cat, desig, interv){
-  const TB = (typeof window.TARIFS_BASE === 'object') ? window.TARIFS_BASE : {};
-  function pick(obj, k){ return (obj && typeof obj==='object') ? obj[k] : undefined; }
-  let ref;
-  if(cat==='Prises'){ ref = pick(TB.prises, desig); }
-  else if(cat==='Éclairage/Luminaires' || cat==='Éclairage / Luminaires'){ ref = pick(TB.eclairage, desig); }
-  else if(cat==='Éclairage/Commandes' || cat==='Éclairage / Commandes'){ ref = pick(TB.eclairage, desig); }
-  else if(cat==='Circuit spécialisé' || cat==='Circuit specialise'){ ref = pick(TB.circuit_specialise, desig); }
-  return (ref && typeof ref==='object') ? (+ref[interv] || 0) : 0;
-}
-
-/* 8E.2 • Surcharge propre de computePU
-   - On conserve l’ancienne logique si elle existe (base)
-   - Puis on applique le coefficient de pose UNIQUEMENT pour “Création” */
-(function patchComputePU8e(){
-  const _old = window.computePU; // peut être undefined
-  window.computePU = function(cat, desig, interv, pose, section){
-    // 1) base (ancienne computePU si présente, sinon lookup dans TARIFS_BASE)
+  window.computePU = function(category, designation, intervention, pose, section){
     let base = 0;
-    if (typeof _old === 'function') {
-      base = +_old(cat, desig, interv, pose, section) || 0;
-    } else {
-      base = _lookupBaseTarif8e(cat, desig, interv) || 0;
+    if (typeof oldCompute==='function') base = +oldCompute(category, designation, intervention, pose, section) || 0;
+    else {
+      // Fallback minimal si computePU n’existait pas
+      const TB = (typeof window.TARIFS_BASE === 'object') ? window.TARIFS_BASE : {};
+      function pick(obj,k){ return (obj&&typeof obj==='object')? obj[k]:undefined; }
+      let ref;
+      if(category==='Prises'){ ref = pick(TB.prises, designation); }
+      else if(category==='Éclairage/Luminaires' || category==='Éclairage / Luminaires'){ ref = pick(TB.eclairage, designation); }
+      else if(category==='Éclairage/Commandes' || category==='Éclairage / Commandes'){ ref = pick(TB.eclairage, designation); }
+      else if(category==='Circuit spécialisé' || category==='Circuit specialise'){ ref = pick(TB.circuit_specialise, designation); }
+      base = (ref && typeof ref==='object') ? (+ref[intervention]||0) : 0;
     }
-
-    // 2) coefficient : uniquement pour la Création
-    let k = 1;
-    if (String(interv) === 'Création' && pose) {
-      const coeffs = getCoeffsPose8e();
-      k = (+coeffs[pose] || 1);
+    if (String(intervention)==='Création' && pose){
+      const k = getPoseCoeff(pose) || 1;
+      let out = base * k;
+      if(typeof window.roundUp5==='function') out = roundUp5(out);
+      return out;
     }
-
-    // 3) renvoi (arrondi 2 déc.)
-    const out = Math.round((base * k) * 100) / 100;
-    return out;
+    return base;
   };
 })();
 </script>
 
+<script>
+/* =============================
+   8.8 • Expose (window)
+   ============================= */
+Object.assign(window, {
+  pageParametrageAccueil,
+  pageConfigEntreprise,
+  pagePrefsDevis,
+  pageParamAvance,
+  // Coeffs de pose
+  pageParam_CoeffPose,
+  saveParam_CoeffPose,
+  resetParam_CoeffPose,
+  getPoseCoeffMap,
+  setPoseCoeffMap,
+  getPoseCoeff,
+  setPoseCoeff
+});
+</script>
 
 
 
