@@ -6489,4 +6489,62 @@ Object.assign(window, {
   };
 })();
 </script>
-  
+
+  <script>
+/* ============================================================
+   Patch "à la source" — garder UNIQUEMENT le bouton noir :
+   🧭 duplicateDevisWithNewTarifsV10()
+   ============================================================ */
+(function keepOnlyBlackDuplicate(){
+  /* 1) Neutraliser les anciennes actions (source logique) */
+  window.repriceCurrentDevisV10                = function(){ /* désactivé */ };
+  window.duplicateDevisWithCurrentTarifs       = function(){ /* désactivé */ };
+  window.duplicateDevisWithCurrentTarifs_REPRICE = function(){ /* désactivé */ };
+
+  /* 2) Surcouche propre des pages pour empêcher toute réinjection
+        et ne laisser que le bouton noir de §15.4 */
+  function stripUnwantedButtons(){
+    var app = document.getElementById('app'); if(!app) return;
+
+    // Supprime les 3 CTA que l’on retire “à la source d’UI”
+    var killers = [
+      'repriceCurrentDevisV10()',
+      'duplicateDevisWithCurrentTarifs_REPRICE()',
+      'duplicateDevisWithCurrentTarifs()'
+    ];
+    app.querySelectorAll('button').forEach(function(btn){
+      var oc = (btn.getAttribute('onclick')||'').trim();
+      if (killers.some(function(s){ return oc.indexOf(s) !== -1; })){
+        btn.remove();
+      }
+    });
+
+    // Enlève les .row devenues vides (propre visuel)
+    app.querySelectorAll('.row').forEach(function(row){
+      if(!row.querySelector('button')) row.remove();
+    });
+  }
+
+  function wrapOnce(name){
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    // Évite sur-emballage
+    if (orig.__onlyBlackWrapped) return;
+
+    function wrapped(){
+      orig.apply(this, arguments);
+      // À ce niveau, d’anciens injecteurs (15.0/15.2) auraient pu tenter d’ajouter leurs boutons;
+      // on supprime leur UI et on conserve uniquement le bouton noir (15.4).
+      stripUnwantedButtons();
+    }
+    wrapped.__onlyBlackWrapped = true;
+    window[name] = wrapped;
+  }
+
+  wrapOnce('pageEstimatif');
+  wrapOnce('pageTotaux');
+
+  // 3) Nettoyage immédiat si la page est déjà rendue
+  setTimeout(stripUnwantedButtons, 0);
+})();
+</script>
