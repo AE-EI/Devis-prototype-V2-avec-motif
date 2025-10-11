@@ -2409,7 +2409,71 @@ Object.assign(window,{
 });
 </script>
 
+<!-- =============================
+     CHAPITRE 8E : COEFFS DE POSE → moteur de calcul
+     - Lecture/synchro des coefficients (LS)
+     - Surcharge propre de computePU() pour appliquer le coeff
+     - Fallback si computePU/TARIFS_BASE n’existent pas
+     ============================= -->
+<script>
+/* 8E.0 • Stockage & helpers */
+const KEY_COEFFS_POSE = 'coeffs_pose_v1';
 
+function _rdJSON8e(k, d){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } }
+function _wrJSON8e(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+/* Renvoie l’objet des coefficients, en s’assurant que
+   tous les types présents dans POSES existent (sinon 1.00) */
+function getCoeffsPose8e(){
+  const cur = _rdJSON8e(KEY_COEFFS_POSE, {});
+  const poses = (Array.isArray(window.POSES) && window.POSES.length) ? window.POSES : [
+    'encastré maçonnerie','encastré cloison sèche','apparent moulure','apparent goulotte',
+    'apparent extérieur','saillie','faux-plafond','dalle béton','combles/percement'
+  ];
+  poses.forEach(p=>{ if(typeof cur[p] !== 'number') cur[p] = 1.00; });
+  return cur;
+}
+function setCoeffsPose8e(obj){ _wrJSON8e(KEY_COEFFS_POSE, obj || {}); }
+
+/* 8E.1 • Lookup de tarif “base” (fallback si pas d’ancienne computePU) */
+function _lookupBaseTarif8e(cat, desig, interv){
+  const TB = (typeof window.TARIFS_BASE === 'object') ? window.TARIFS_BASE : {};
+  function pick(obj, k){ return (obj && typeof obj==='object') ? obj[k] : undefined; }
+  let ref;
+  if(cat==='Prises'){ ref = pick(TB.prises, desig); }
+  else if(cat==='Éclairage/Luminaires' || cat==='Éclairage / Luminaires'){ ref = pick(TB.eclairage, desig); }
+  else if(cat==='Éclairage/Commandes' || cat==='Éclairage / Commandes'){ ref = pick(TB.eclairage, desig); }
+  else if(cat==='Circuit spécialisé' || cat==='Circuit specialise'){ ref = pick(TB.circuit_specialise, desig); }
+  return (ref && typeof ref==='object') ? (+ref[interv] || 0) : 0;
+}
+
+/* 8E.2 • Surcharge propre de computePU
+   - On conserve l’ancienne logique si elle existe (base)
+   - Puis on applique le coefficient de pose UNIQUEMENT pour “Création” */
+(function patchComputePU8e(){
+  const _old = window.computePU; // peut être undefined
+  window.computePU = function(cat, desig, interv, pose, section){
+    // 1) base (ancienne computePU si présente, sinon lookup dans TARIFS_BASE)
+    let base = 0;
+    if (typeof _old === 'function') {
+      base = +_old(cat, desig, interv, pose, section) || 0;
+    } else {
+      base = _lookupBaseTarif8e(cat, desig, interv) || 0;
+    }
+
+    // 2) coefficient : uniquement pour la Création
+    let k = 1;
+    if (String(interv) === 'Création' && pose) {
+      const coeffs = getCoeffsPose8e();
+      k = (+coeffs[pose] || 1);
+    }
+
+    // 3) renvoi (arrondi 2 déc.)
+    const out = Math.round((base * k) * 100) / 100;
+    return out;
+  };
+})();
+</script>
 
 
 
