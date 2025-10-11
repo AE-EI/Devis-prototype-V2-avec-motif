@@ -1895,17 +1895,16 @@ function ventAddEntretien(key){
 
 
 <!-- =============================
-     CHAPITRE 8 : PARAMÉTRAGE — V10.2 (propre & unifié)
+     CHAPITRE 8 : PARAMÉTRAGE — V10.2 (complet)
      Index :
        8.0 • Styles
-       8.1 • Storage (Entreprise / Préférences)
-       8.2 • Helpers
-       8.3 • Accueil Paramétrage (pageParametrageAccueil)
-       8.4 • Configuration entreprise (form)
-       8.5 • Préférences devis & facturation (form)
-       8.6 • Paramétrage avancé (JSON / développeur)
-       8.7 • Coefficients de pose (UI + stockage + computePU)
-       8.8 • Expose (window)
+       8.1 • Storage (Entreprise / Préférences) + Helpers
+       8.2 • Accueil Paramétrage
+       8.3 • Configuration entreprise (form)
+       8.4 • Préférences devis & facturation (form)
+       8.5 • Paramétrage avancé (JSON / développeur)
+       8.6 • Coefficients de pose (UI + sync POSES + moteur)
+       8.7 • Expose (window) + Alias sûrs
      ============================= -->
 
 <style>
@@ -1919,7 +1918,7 @@ function ventAddEntretien(key){
   .subcard{ border:1px dashed var(--line); border-radius:10px; padding:10px; background:#fafafa; }
   .mb8{ margin-bottom:8px; }
 
-  /* Coeffs de pose */
+  /* 8.6 — Coefficients de pose */
   .pose-card .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
   .pose-field{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px}
   .pose-field label{display:block;font-weight:600;margin-bottom:6px}
@@ -1928,11 +1927,17 @@ function ventAddEntretien(key){
 
 <script>
 /* =============================
-   8.1 • Storage keys & defaults
+   8.1 • Storage keys & helpers (sûrs)
    ============================= */
-const KEY_ENTREPRISE_V1 = 'cfg_entreprise_v1';
-const KEY_PREFS_V1      = 'prefs_devis_fact_v1';
+/* Clés : utilise celles déjà présentes sinon crée-les (évite toute redéclaration) */
+window.KEY_ENTREPRISE_V1 = window.KEY_ENTREPRISE_V1 || 'cfg_entreprise_v1';
+window.KEY_PREFS_V1      = window.KEY_PREFS_V1      || 'prefs_devis_fact_v1';
 
+/* Helpers JSON LS */
+function _readJSON(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _writeJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+/* Defaults */
 function _entrepriseDefaults(){
   return {
     raison_sociale: '',
@@ -1952,89 +1957,89 @@ function _prefsDefaults(){
     remise_defaut: 0,           // % remise par défaut
     conditions: '',             // conditions de règlement / délais
     mentions: ''                // mentions légales/garanties
+
+    // (facultatif si tu l’utilises) numerotation_prefix / numerotation_courante
   };
 }
 
+/* API Entreprise / Préfs */
 function getEntreprise(){
-  try{ return JSON.parse(localStorage.getItem(KEY_ENTREPRISE_V1)||'null') || _entrepriseDefaults(); }
+  try{ return _readJSON(window.KEY_ENTREPRISE_V1, null) || _entrepriseDefaults(); }
   catch(e){ return _entrepriseDefaults(); }
 }
 function setEntreprise(obj){
   const cur = getEntreprise();
   const out = Object.assign({}, cur, obj||{});
-  try{ localStorage.setItem(KEY_ENTREPRISE_V1, JSON.stringify(out)); }catch(e){}
+  _writeJSON(window.KEY_ENTREPRISE_V1, out);
   return out;
 }
 function getPrefs(){
-  try{ return JSON.parse(localStorage.getItem(KEY_PREFS_V1)||'null') || _prefsDefaults(); }
+  try{ return _readJSON(window.KEY_PREFS_V1, null) || _prefsDefaults(); }
   catch(e){ return _prefsDefaults(); }
 }
 function setPrefs(obj){
   const cur = getPrefs();
   const out = Object.assign({}, cur, obj||{});
-  try{ localStorage.setItem(KEY_PREFS_V1, JSON.stringify(out)); }catch(e){}
+  _writeJSON(window.KEY_PREFS_V1, out);
   return out;
 }
 
-/* =============================
-   8.2 • Helpers
-   ============================= */
+/* Utils UI */
 function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c])); }
 function _val(id){ var el=document.getElementById(id); return el ? el.value : ''; }
-function _num(id){ var v=parseFloat((_val(id)||'').replace(',','.')); return isNaN(v)?0:v; }
 </script>
 
 <script>
 /* =============================
-   8.3 • Accueil Paramétrage
+   8.2 • Accueil Paramétrage
    ============================= */
-function pageParametrageAccueil(){
+function pageTarifsAccueil(){
   view(
     '<div class="param-wrap">'
     +  '<div class="card">'
-    +    b('Retour','pageMain()','btn back')
+    +    (typeof b==='function'? b('Retour','pageMain()','btn back') : '')
     +    '<h2>Paramétrage</h2>'
-    +    '<p class="muted">Centralisez tous vos réglages : tarifs de prestation, coordonnées entreprise, préférences de devis & facturation, coefficients de pose, et options avancées.</p>'
+    +    '<p class="muted">Centralisez tous vos réglages : tarifs de prestation, coordonnées entreprise, préférences de devis & facturation, et options avancées.</p>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Catalogue prestation</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Gérez les tarifs de pose par famille (Appareillage, Luminaires, Commandes, Circuit spécialisé…). Les modifications s’appliquent à l’application, aux aperçus, aux exports et à la duplication “appliquer nouveaux tarifs”.</div></div>'
+    +    '<div class="subcard mb8"><div class="muted">Gérez les tarifs de pose par famille : Appareillage (Prises, Luminaires, Commandes), Circuit spécialisé, etc. Les modifications s’appliquent à l’app, aux aperçus et exports.</div></div>'
     +    '<div class="row gap8">'
-    +      b('Ouvrir le catalogue prestation','pageCataloguePrestation ? pageCataloguePrestation() : alert(\"Module non chargé.\")','btn')
+    +      b('Ouvrir le catalogue prestation','pageCataloguePrestation && pageCataloguePrestation()','btn')
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
-    +    '<h3>Coefficients de pose</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Personnalisez les multiplicateurs appliqués automatiquement aux <strong>Créations</strong> selon le type de pose (synchronisés avec “Ajouter une pièce”).</div></div>'
+    +    '<h3>Catalogue fournitures</h3>'
+    +    '<div class="subcard mb8"><div class="muted">À venir : définition des marques, gammes et références avec prix de vente. Servira aux menus Fourniture/Marque/Gamme — déjà prévus côté Prises.</div></div>'
     +    '<div class="row gap8">'
-    +      b('Ouvrir','pageParam_CoeffPose()','btn')
+    +      b('Bientôt disponible','alert(\"Le catalogue fournitures sera ajouté ultérieurement.\")','btn')
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Configuration entreprise</h3>'
     +    '<div class="subcard mb8"><div class="muted">Renseignez vos informations légales et de contact. Elles s’afficheront dans l’en-tête et les exports.</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pageConfigEntreprise()','btn')
-    +    '</div>'
+    +    '<div class="row gap8">'+ b('Ouvrir','pageConfigEntreprise()','btn') +'</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Préférences devis & facturation</h3>'
     +    '<div class="subcard mb8"><div class="muted">Mode séparé (pose vs fournitures), affichage HT/TTC, remise par défaut et textes (conditions, mentions).</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pagePrefsDevis()','btn')
-    +    '</div>'
+    +    '<div class="row gap8">'+ b('Ouvrir','pagePrefsDevis()','btn') +'</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Coefficients de pose</h3>'
+    +    '<div class="subcard mb8"><div class="muted">Personnalisez les multiplicateurs appliqués selon le type de pose (utilisés automatiquement pour les <em>Créations</em>).</div></div>'
+    +    '<div class="row gap8">'+ b('Ouvrir','pageParam_CoeffPose()','btn') +'</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Paramétrage avancé (JSON / développeur)</h3>'
     +    '<div class="subcard mb8"><div class="muted">Exporter / importer / éditer les blocs de configuration (entreprise, préférences, prestations, coefficients) en JSON.</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pageParamAvance()','btn')
-    +    '</div>'
+    +    '<div class="row gap8">'+ b('Ouvrir','pageParamAvance()','btn') +'</div>'
     +  '</div>'
     +'</div>'
   );
@@ -2043,13 +2048,16 @@ function pageParametrageAccueil(){
 
 <script>
 /* =============================
-   8.4 • Configuration entreprise
+   8.3 • Configuration entreprise
    ============================= */
 function pageConfigEntreprise(){
   const e = getEntreprise();
   view(
     '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Configuration entreprise</h2></div>'
+    +  '<div class="card">'
+    +     ((typeof b==='function')? b('Retour','(typeof pageTarifsAccueil===\\'function\\')?pageTarifsAccueil():pageMain()','btn back') : '')
+    +     '<h2>Configuration entreprise</h2>'
+    +  '</div>'
     +  '<div class="card"><div class="param-grid">'
     +    '<div class="field"><label>Raison sociale</label><input id="e-rs" value="'+_esc(e.raison_sociale)+'"/></div>'
     +    '<div class="field"><label>SIRET</label><input id="e-siret" value="'+_esc(e.siret)+'"/></div>'
@@ -2075,7 +2083,7 @@ function saveEntreprise(){
     ville: _val('e-ville'),
     email: _val('e-mail'),
     telephone: _val('e-tel'),
-    tva_percent: Math.max(0, _num('e-tva'))
+    tva_percent: Math.max(0, parseFloat((_val('e-tva')||'').replace(',','.'))||0)
   });
   alert('Informations enregistrées.');
   pageConfigEntreprise();
@@ -2084,13 +2092,16 @@ function saveEntreprise(){
 
 <script>
 /* =============================
-   8.5 • Préférences devis & facturation
+   8.4 • Préférences devis & facturation
    ============================= */
 function pagePrefsDevis(){
   const p = getPrefs();
   view(
     '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Préférences devis & facturation</h2></div>'
+    +  '<div class="card">'
+    +     ((typeof b==='function')? b('Retour','(typeof pageTarifsAccueil===\\'function\\')?pageTarifsAccueil():pageMain()','btn back') : '')
+    +     '<h2>Préférences devis & facturation</h2>'
+    +  '</div>'
     +  '<div class="card"><div class="param-grid">'
     +    '<div class="field"><label><input id="pf-sep" type="checkbox" '+(p.mode_separe?'checked':'')+'/> Mode séparé (pose + fournitures)</label></div>'
     +    '<div class="field"><label><input id="pf-ttc" type="checkbox" '+(p.afficher_ttc?'checked':'')+'/> Afficher HT / TTC</label></div>'
@@ -2106,11 +2117,11 @@ function pagePrefsDevis(){
 }
 function savePrefs(){
   setPrefs({
-    mode_separe: !!document.getElementById('pf-sep').checked,
-    afficher_ttc: !!document.getElementById('pf-ttc').checked,
-    remise_defaut: Math.max(0, _num('pf-rem')),
-    conditions: _val('pf-cond'),
-    mentions: _val('pf-men')
+    mode_separe: !!(document.getElementById('pf-sep')||{}).checked,
+    afficher_ttc: !!(document.getElementById('pf-ttc')||{}).checked,
+    remise_defaut: Math.max(0, parseFloat((document.getElementById('pf-rem')||{}).value||'0')||0),
+    conditions: (document.getElementById('pf-cond')||{}).value||'',
+    mentions: (document.getElementById('pf-men')||{}).value||''
   });
   alert('Préférences enregistrées.');
   pagePrefsDevis();
@@ -2119,9 +2130,10 @@ function savePrefs(){
 
 <script>
 /* =============================
-   8.6 • Paramétrage avancé (JSON / développeur)
+   8.5 • Paramétrage avancé (JSON / développeur)
    ============================= */
 function pageParamAvance(){
+  // On récupère aussi prestations/coeffs si le Chapitre correspondant est chargé
   const packs = {
     entreprise: getEntreprise(),
     preferences: getPrefs(),
@@ -2132,9 +2144,12 @@ function pageParamAvance(){
 
   view(
     '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Paramétrage avancé (JSON / développeur)</h2></div>'
     +  '<div class="card">'
-    +    '<div class="subcard mb8"><div class="muted">Attention : toute erreur de JSON peut casser le chargement. Sauvegardez avant import. Vous pouvez exporter pour backup.</div></div>'
+    +     ((typeof b==='function')? b('Retour','(typeof pageTarifsAccueil===\\'function\\')?pageTarifsAccueil():pageMain()','btn back') : '')
+    +     '<h2>Paramétrage avancé (JSON / développeur)</h2>'
+    +  '</div>'
+    +  '<div class="card">'
+    +    '<div class="subcard mb8"><div class="muted">Attention : une erreur JSON peut casser le chargement. Sauvegardez avant import. Vous pouvez exporter pour backup.</div></div>'
     +    '<div class="row gap8">'
     +      b('Exporter la configuration','paramAdvExport()','btn')
     +      b('Importer une configuration','paramAdvImport()','btn')
@@ -2150,17 +2165,15 @@ function pageParamAvance(){
     +'</div>'
   );
 }
-function _bundleAll(){
+function paramAdvExport(){
   const bundle = {
     entreprise: getEntreprise(),
     preferences: getPrefs()
   };
   if(typeof getPrestations==='function') bundle.prestations = getPrestations();
   if(typeof getPoseCoeffMap==='function') bundle.coeffs_pose = getPoseCoeffMap();
-  return bundle;
-}
-function paramAdvExport(){
-  const raw = JSON.stringify(_bundleAll(), null, 2);
+
+  const raw = JSON.stringify(bundle, null, 2);
   const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
   const url  = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download='parametrage_bundle.json'; a.click();
@@ -2204,105 +2217,120 @@ function paramAdvApply(){
 
 <script>
 /* =============================
-   8.7 • Coefficients de pose (UI + stockage + computePU)
+   8.6 • Coefficients de pose — UI + sync + moteur
    ============================= */
 const KEY_POSE_COEFFS = 'poseCoeffs_v1';
-function _readJsonLS8(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-function _writeJsonLS8(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
+/* Accès/Sync */
 function _getPoseListFromApp(){
   if (Array.isArray(window.POSES) && window.POSES.length) return JSON.parse(JSON.stringify(window.POSES));
+  // Fallback si POSES n'est pas chargé
   return ['Apparent','Encastré placo','Encastré maçonnerie','Goulotte'];
 }
-function getPoseCoeffMap(){
+function _ensurePoseCoeffMap(){
   const poses = _getPoseListFromApp();
-  const cur   = _readJsonLS8(KEY_POSE_COEFFS, {});
+  const cur   = _readJSON(KEY_POSE_COEFFS, {}) || {};
   let changed = false;
-  poses.forEach(p=>{ if(typeof cur[p] !== 'number'){ cur[p]=1; changed=true; }});
-  Object.keys(cur).forEach(k=>{ if(poses.indexOf(k)===-1){ delete cur[k]; changed=true; }});
-  if(changed) _writeJsonLS8(KEY_POSE_COEFFS, cur);
+
+  poses.forEach(p=>{ if(typeof cur[p] !== 'number'){ cur[p] = 1; changed = true; } });
+  Object.keys(cur).forEach(k=>{ if(poses.indexOf(k)===-1){ delete cur[k]; changed = true; } });
+  if(changed) _writeJSON(KEY_POSE_COEFFS, cur);
   return cur;
 }
-function setPoseCoeffMap(map){
-  const clean = {};
-  Object.keys(map||{}).forEach(k=>{ const v=+map[k]; clean[k]=isNaN(v)?1:Math.max(0,v); });
-  _writeJsonLS8(KEY_POSE_COEFFS, clean);
+function getPoseCoeff(name){
+  const map = _ensurePoseCoeffMap();
+  return (typeof map[name] === 'number') ? map[name] : 1;
 }
-function getPoseCoeff(name){ const map=getPoseCoeffMap(); return (typeof map[name]==='number')? map[name]:1; }
 function setPoseCoeff(name, value){
-  const map=getPoseCoeffMap(); map[name]=Math.max(0, +value||1); _writeJsonLS8(KEY_POSE_COEFFS, map);
+  const v = Math.max(0, parseFloat(value)||1);
+  const map = _ensurePoseCoeffMap();
+  map[name] = v; _writeJSON(KEY_POSE_COEFFS, map);
 }
+/* Map complète (pour export JSON) */
+function getPoseCoeffMap(){ return _ensurePoseCoeffMap(); }
+function setPoseCoeffMap(obj){ _writeJSON(KEY_POSE_COEFFS, obj||{}); }
 
+/* UI */
 function pageParam_CoeffPose(){
   const poses = _getPoseListFromApp();
-  const map   = getPoseCoeffMap();
+  const map   = _ensurePoseCoeffMap();
+
   const fields = poses.map(p=>{
-    const id='pc_'+p.replace(/\s+/g,'_');
-    return '<div class="pose-field">'
-         +   '<label>'+_esc(p)+'</label>'
-         +   '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+map[p]).toFixed(2)+'" />'
-         +   '<div class="pose-note">1.00 = neutre • &gt;1 = + cher • &lt;1 = - cher</div>'
-         + '</div>';
+    const id = 'pc_' + p.replace(/\s+/g,'_');
+    return (
+      '<div class="pose-field">'
+      +  '<label>'+_esc(p)+'</label>'
+      +  '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+map[p]).toFixed(2)+'" />'
+      +  '<div class="pose-note">1.00 = neutre • &gt;1 = + cher • &lt;1 = - cher</div>'
+      +'</div>'
+    );
   }).join('');
+
+  const backCall = '(typeof pageTarifsAccueil===\\'function\\')?pageTarifsAccueil():((typeof pageParametrageAccueil===\\'function\\')?pageParametrageAccueil():pageMain())';
+
   view(
-    '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Coefficients de pose</h2>'
-    +'<p class="pose-note">Synchronisés automatiquement avec les types de pose utilisés dans “Ajouter une pièce”.</p></div>'
-    +'<div class="card pose-card"><div class="grid">'+fields+'</div>'
-    +'<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;">'
-      + b('💾 Enregistrer','saveParam_CoeffPose()','btn primary')
-      + b('↺ Remettre à 1.00','resetParam_CoeffPose()','btn')
-    +'</div></div>'
+    '<div class="param-wrap">'
+    +  '<div class="card">'
+    +    b('Retour', backCall, 'btn back')
+    +    '<h2>Coefficients de pose</h2>'
+    +    '<p class="pose-note">Synchronisés automatiquement avec les types utilisés dans “Ajouter une pièce”.</p>'
+    +  '</div>'
+    +  '<div class="card pose-card">'
+    +    '<div class="grid">'+fields+'</div>'
+    +    '<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;">'
+    +      b('💾 Enregistrer','saveParam_CoeffPose()','btn primary')
+    +      b('↺ Remettre à 1.00','resetParam_CoeffPose()','btn')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
   );
 }
 function saveParam_CoeffPose(){
-  const poses=_getPoseListFromApp(); const map={};
+  const poses = _getPoseListFromApp();
+  const map = {};
   poses.forEach(p=>{
-    const id='pc_'+p.replace(/\s+/g,'_'); const el=document.getElementById(id);
-    map[p]=Math.max(0, parseFloat((el&&el.value)||'1')||1);
+    const id = 'pc_' + p.replace(/\s+/g,'_');
+    const el = document.getElementById(id);
+    map[p] = Math.max(0, parseFloat((el && el.value) || '1') || 1);
   });
-  setPoseCoeffMap(map);
+  _writeJSON(KEY_POSE_COEFFS, map);
   alert('✅ Coefficients enregistrés.');
 }
 function resetParam_CoeffPose(){
   if(!confirm('Remettre tous les coefficients de pose à 1.00 ?')) return;
-  const poses=_getPoseListFromApp(); const map={}; poses.forEach(p=>map[p]=1);
-  setPoseCoeffMap(map); pageParam_CoeffPose();
+  const poses = _getPoseListFromApp();
+  const map = {}; poses.forEach(p=> map[p]=1);
+  _writeJSON(KEY_POSE_COEFFS, map);
+  pageParam_CoeffPose();
 }
 
-/* Wrap computePU une seule fois */
-(function wirePoseIntoCompute(){
+/* Moteur : applique le coeff de pose une seule fois, sans double patch */
+(function wirePoseCoeffIntoCompute(){
+  if (window.__poseCoeffPatched) return; // évite double-wrap
   const oldCompute = window.computePU;
   window.computePU = function(category, designation, intervention, pose, section){
-    let base = 0;
-    if (typeof oldCompute==='function') base = +oldCompute(category, designation, intervention, pose, section) || 0;
-    else {
-      // Fallback minimal si computePU n’existait pas
-      const TB = (typeof window.TARIFS_BASE === 'object') ? window.TARIFS_BASE : {};
-      function pick(obj,k){ return (obj&&typeof obj==='object')? obj[k]:undefined; }
-      let ref;
-      if(category==='Prises'){ ref = pick(TB.prises, designation); }
-      else if(category==='Éclairage/Luminaires' || category==='Éclairage / Luminaires'){ ref = pick(TB.eclairage, designation); }
-      else if(category==='Éclairage/Commandes' || category==='Éclairage / Commandes'){ ref = pick(TB.eclairage, designation); }
-      else if(category==='Circuit spécialisé' || category==='Circuit specialise'){ ref = pick(TB.circuit_specialise, designation); }
-      base = (ref && typeof ref==='object') ? (+ref[intervention]||0) : 0;
+    // 1) PU de base
+    let pu = 0;
+    if (typeof oldCompute === 'function') pu = +oldCompute(category, designation, intervention, pose, section) || 0;
+
+    // 2) Coeff seulement pour Création + pose renseignée
+    if(String(intervention)==='Création' && pose){
+      const coeff = getPoseCoeff(pose);
+      pu = (+pu || 0) * (+coeff || 1);
+      if (typeof window.roundUp5 === 'function') pu = roundUp5(pu);
     }
-    if (String(intervention)==='Création' && pose){
-      const k = getPoseCoeff(pose) || 1;
-      let out = base * k;
-      if(typeof window.roundUp5==='function') out = roundUp5(out);
-      return out;
-    }
-    return base;
+    return pu;
   };
+  window.__poseCoeffPatched = true;
 })();
 </script>
 
 <script>
 /* =============================
-   8.8 • Expose (window)
+   8.7 • Expose (window) + Alias sûrs
    ============================= */
 Object.assign(window, {
-  pageParametrageAccueil,
+  pageTarifsAccueil,
   pageConfigEntreprise,
   pagePrefsDevis,
   pageParamAvance,
@@ -2310,13 +2338,24 @@ Object.assign(window, {
   pageParam_CoeffPose,
   saveParam_CoeffPose,
   resetParam_CoeffPose,
-  getPoseCoeffMap,
-  setPoseCoeffMap,
   getPoseCoeff,
-  setPoseCoeff
+  setPoseCoeff,
+  getPoseCoeffMap,
+  setPoseCoeffMap
 });
-</script>
 
+/* Alias sûrs (si d’autres chapitres appellent pageParametrageAccueil) */
+(function(){
+  if (typeof window.pageParametrageAccueil !== 'function' &&
+      typeof window.pageTarifsAccueil === 'function'){
+    window.pageParametrageAccueil = window.pageTarifsAccueil;
+  }
+  if (typeof window.pageTarifsAccueil !== 'function' &&
+      typeof window.pageParametrageAccueil === 'function'){
+    window.pageTarifsAccueil = window.pageParametrageAccueil;
+  }
+})();
+</script>
 
 
 
