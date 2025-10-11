@@ -4462,9 +4462,63 @@ Object.assign(window,{
 })();
 </script>
 
+  
 
 
 
+<!-- 13.SHIM — ré-expose Catalogue prestation si absent -->
+<script>
+(function(){
+  // Si la fonction n'est pas exposée, on fournit un fallback propre
+  if (typeof window.pageCataloguePrestation !== 'function') {
+    window.pageCataloguePrestation = function(){
+      // Si les sous-pages existent, on affiche un accueil minimal qui y renvoie
+      var has = fn => typeof window[fn] === 'function';
+      if (has('pageCatPresta_Prise') || has('pageCatPresta_Luminaires') || has('pageCatPresta_Commandes') || has('pageCatPresta_CS') || has('pageCatPresta_Coeffs')) {
+        var btn = function(label, call, cls){
+          if (typeof window.b === 'function') return b(label, call, cls||'btn');
+          return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
+        };
+        var html = ''
+          + '<div class="presta-wrap">'
+          +   '<div class="card">'
+          +     (has('pageTarifsAccueil') ? btn('Retour','pageTarifsAccueil()','btn back')
+                : (has('pageMain') ? btn('Retour','pageMain()','btn back') : ''))
+          +     '<h2>Catalogue prestation</h2>'
+          +     '<p class="muted">Choisissez une section. Les coefficients de pose ne concernent que l’appareillage (Création).</p>'
+          +   '</div>'
+          +   '<div class="card">'
+          +     '<h3>Appareillage</h3>'
+          +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+          +       (has('pageCatPresta_Prise')       ? btn('Prises','pageCatPresta_Prise()') : '')
+          +       (has('pageCatPresta_Luminaires')  ? btn('Éclairage — Luminaires','pageCatPresta_Luminaires()') : '')
+          +       (has('pageCatPresta_Commandes')   ? btn('Éclairage — Commandes','pageCatPresta_Commandes()') : '')
+          +       (has('pageCatPresta_CS')          ? btn('Circuit spécialisé','pageCatPresta_CS()') : '')
+          +     '</div>'
+          +   '</div>'
+          +   '<div class="card">'
+          +     '<h3>Coefficients de pose</h3>'
+          +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+          +       (has('pageCatPresta_Coeffs') ? btn('Ouvrir','pageCatPresta_Coeffs()') : '')
+          +     '</div>'
+          +     '<p class="muted">Appliqués aux interventions “Création” de l’appareillage (prises, luminaires, commandes, circuits spé.).</p>'
+          +   '</div>'
+          + '</div>';
+        if (typeof window.view === 'function') view(html);
+        else (document.getElementById('app')||document.body).innerHTML = html;
+      } else {
+        // Rien n’existe : prévenir clairement
+        alert('Catalogue prestation indisponible : le Chapitre 13 (pages de détail) n’est pas chargé.');
+      }
+    };
+  }
+
+  // Petit filet de sécurité : si roundUp5 n’existe plus, on fournit un fallback
+  if (typeof window.roundUp5 !== 'function') {
+    window.roundUp5 = function(x){ x = +x||0; return Math.ceil(x/5)*5; };
+  }
+})();
+</script>
 
 
 
