@@ -5302,5 +5302,402 @@ Object.assign(window, {
   duplicateDevisWithNewTarifsV10
 });
 </script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- =============================
+     CHAPITRE 16A : GÉNÉRATION DE DEVIS (UI & Données)
+     - Fiche client (LS)
+     - CGV éditables (LS)
+     - Page de préparation
+     - Aucune modification destructive
+     ============================= -->
+
+<style>
+  .dv-wrap .card{ margin-bottom:16px; }
+  .dv-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .dv-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .dv-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .dv-note{ color:var(--muted); font-size:14px; }
+  .dv-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+</style>
+
+<script>
+/* =========================
+   §16A.0 • Clés LS + helpers
+   ========================= */
+const KEY_DEVIS_CGV = 'devis_cgv_v1';
+const KEY_DEVIS_LASTCLIENT = 'devis_last_client_v1';
+
+function _rdJSON16(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _wrJSON16(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+function _getCompany16(){ try{ return JSON.parse(localStorage.getItem('companyConfig_v1')||'null') || {}; }catch(e){ return {}; } }
+function _getPrefs16(){ try{ return JSON.parse(localStorage.getItem('appPrefs_v1')||'null') || {}; }catch(e){ return {}; } }
+
+function _todayFR16(){
+  try{ return new Date().toLocaleDateString('fr-FR', {year:'numeric',month:'2-digit',day:'2-digit'}); }
+  catch(e){ return new Date().toLocaleDateString(); }
+}
+function _pad4(n){ return String(n).padStart(4,'0'); }
+function _esc16(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _euro16(n){
+  if (typeof euro === 'function') return euro(n);
+  const v = +(n||0);
+  return v.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2})+' €';
+}
+
+/* =========================
+   §16A.1 • Données Client + CGV
+   ========================= */
+function _getClient16(){
+  return _rdJSON16(KEY_DEVIS_LASTCLIENT, { nom:'', adresse:'', cp:'', ville:'', email:'', tel:'' });
+}
+function _setClient16(obj){ _wrJSON16(KEY_DEVIS_LASTCLIENT, obj||{}); }
+
+function _getCGV16(){
+  return _rdJSON16(KEY_DEVIS_CGV,
+`Conditions générales de vente
+- Validité du devis : 30 jours.
+- Délai de paiement : 30 jours fin de mois par virement.
+- Les travaux seront réalisés selon les règles de l’art.
+- Toute modification hors devis fera l’objet d’un avenant.
+- Les fournitures et la pose sont garanties selon les conditions légales.`);
+}
+function _setCGV16(txt){ _wrJSON16(KEY_DEVIS_CGV, String(txt||'')); }
+
+/* =========================
+   §16A.2 • UI : Préparation devis
+   ========================= */
+function pageDevisPDF16(){
+  const cli   = _getClient16();
+  const cgv   = _getCGV16();
+  const prefs = _getPrefs16();
+
+  const devName   = (window.devis && devis.__name) ? devis.__name : 'Devis';
+  const prefix    = (prefs.numerotation_prefix || 'DEV-');
+  const numCourant= Math.max(1, parseInt(prefs.numerotation_courante||1,10));
+  const ref       = prefix + _pad4(numCourant);
+
+  view(
+    '<div class="dv-wrap">'
+    +  '<div class="card">'
+    +     (typeof b==='function' ? b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back') : '')
+    +     '<h2>Préparer le devis (PDF — tout compris)</h2>'
+    +     '<p class="dv-note">Chaque ligne regroupe fourniture et pose en un prix global.</p>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Client</h3>'
+    +    '<div class="dv-grid">'
+    +      '<div class="dv-field"><label>Nom / Société</label><input id="dv-cli-nom" value="'+_esc16(cli.nom)+'" /></div>'
+    +      '<div class="dv-field"><label>Email</label><input id="dv-cli-email" value="'+_esc16(cli.email)+'" /></div>'
+    +      '<div class="dv-field"><label>Téléphone</label><input id="dv-cli-tel" value="'+_esc16(cli.tel)+'" /></div>'
+    +      '<div class="dv-field"><label>Adresse</label><input id="dv-cli-adr" value="'+_esc16(cli.adresse)+'" /></div>'
+    +      '<div class="dv-field"><label>Code postal</label><input id="dv-cli-cp" value="'+_esc16(cli.cp)+'" /></div>'
+    +      '<div class="dv-field"><label>Ville</label><input id="dv-cli-ville" value="'+_esc16(cli.ville)+'" /></div>'
+    +    '</div>'
+    +    '<div class="dv-actions">'
+    +      (typeof b==='function' ? b('Enregistrer le client','_dvSaveClient16()','btn primary') : '<button onclick="_dvSaveClient16()">Enregistrer le client</button>')
+    +      '<span class="dv-note">Référence devis : '+_esc16(ref)+' — Date : '+_esc16(_todayFR16())+'</span>'
+    +    '</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Conditions générales (CGV)</h3>'
+    +    '<textarea id="dv-cgv" rows="10" style="width:100%;">'+_esc16(cgv)+'</textarea>'
+    +    '<div class="dv-actions">'
+    +      (typeof b==='function' ? b('Enregistrer les CGV','_dvSaveCGV16()','btn') : '<button onclick="_dvSaveCGV16()">Enregistrer les CGV</button>')
+    +    '</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Génération</h3>'
+    +    '<p class="dv-note">Ouvre un aperçu imprimable. Utilisez ensuite « Enregistrer en PDF » du navigateur.</p>'
+    +    '<div class="dv-actions">'
+    +      (typeof b==='function' ? b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary') : '<button onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+
+function _dvSaveClient16(){
+  const cli = {
+    nom: (document.getElementById('dv-cli-nom')||{}).value || '',
+    email: (document.getElementById('dv-cli-email')||{}).value || '',
+    tel: (document.getElementById('dv-cli-tel')||{}).value || '',
+    adresse: (document.getElementById('dv-cli-adr')||{}).value || '',
+    cp: (document.getElementById('dv-cli-cp')||{}).value || '',
+    ville: (document.getElementById('dv-cli-ville')||{}).value || ''
+  };
+  _setClient16(cli);%
+  alert('Client enregistré.');
+}
+function _dvSaveCGV16(){
+  const txt = (document.getElementById('dv-cgv')||{}).value || '';
+  _setCGV16(txt);
+  alert('CGV enregistrées.');
+}
+
+/* =========================
+   §16A.3 • Expose (global)
+   ========================= */
+Object.assign(window, {
+  pageDevisPDF16
+});
+</script>
+  
+<!-- =============================
+     CHAPITRE 16B : GÉNÉRATION DE DEVIS (Rendu & Intégration)
+     - Collecte des lignes existantes
+     - Rendu HTML imprimable (fourniture+pose combinées)
+     - Boutons ajoutés à Estimatif & Totaux
+     ============================= -->
+<script>
+/* =========================
+   §16B.0 • Fallbacks calcul/tri
+   ========================= */
+function _groupDevis16(){
+  if (typeof groupDevis === 'function') return groupDevis();
+  const g = {'Devis':{}};
+  for (const k in devis){ if(k.indexOf('__')===0) continue; g['Devis'][k] = devis[k]; }
+  return g;
+}
+function _pieceLabel16(key){
+  if (typeof pieceDisplayLabel === 'function') return pieceDisplayLabel(key);
+  return key;
+}
+function _sortedItems16(key, items){
+  if (typeof sortedItemsForPiece === 'function') return sortedItemsForPiece(key, items);
+  return Array.isArray(items) ? items.slice() : [];
+}
+
+/* =========================
+   §16B.1 • Collecte / formatage
+   ========================= */
+function _companyBlockHTML16(c){
+  const rs = (c.raison_sociale || c.nom_commercial || '').trim();
+  const adr = [c.adresse, c.code_postal, c.ville].filter(Boolean).join(' ');
+  const lines = [];
+  if(rs) lines.push('<strong>'+_esc16(rs)+'</strong>');
+  if(adr) lines.push(_esc16(adr));
+  if(c.pays) lines.push(_esc16(c.pays));
+  if(c.telephone) lines.push('Tél : '+_esc16(c.telephone));
+  if(c.email) lines.push('Email : '+_esc16(c.email));
+  if(c.site) lines.push(_esc16(c.site));
+  if(c.siren) lines.push('SIREN : '+_esc16(c.siren));
+  if(c.tva_intracom) lines.push('TVA : '+_esc16(c.tva_intracom));
+  return lines.join('<br>');
+}
+function _clientBlockHTML16(cli){
+  const lines = [];
+  if(cli.nom) lines.push('<strong>'+_esc16(cli.nom)+'</strong>');
+  if(cli.adresse) lines.push(_esc16(cli.adresse));
+  const cpv = [cli.cp, cli.ville].filter(Boolean).join(' ');
+  if(cpv) lines.push(_esc16(cpv));
+  if(cli.tel) lines.push('Tél : '+_esc16(cli.tel));
+  if(cli.email) lines.push('Email : '+_esc16(cli.email));
+  return lines.join('<br>');
+}
+function _collectLines16(){
+  const grouped = _groupDevis16();
+  const out = [];
+  let totalGlobal = 0;
+
+  for (const grp in grouped){
+    for (const key in grouped[grp]){
+      const sec = grouped[grp][key]; if(!sec || !sec.items || !sec.items.length) continue;
+      const items = _sortedItems16(key, sec.items);
+      items.forEach(it=>{
+        const q = +it.qty || 0;
+        const pu= +it.prixU || 0;
+        const t = q*pu;
+        totalGlobal += t;
+
+        const left = it.intervention ? (it.intervention+' — ') : '';
+        const pose = (it.intervention==='Création' && it.pose) ? (' — '+String(it.pose).toLowerCase()) : '';
+        const des  = left + (it.designation||'Élément') + pose;
+
+        out.push({ piece:key, designation:des, qty:q, pu:pu, total:t });
+      });
+    }
+  }
+  return {lines: out, total: totalGlobal};
+}
+
+/* =========================
+   §16B.2 • Rendu HTML imprimable
+   ========================= */
+function _buildPrintableHTML16(){
+  const prefs   = _getPrefs16();
+  const company = _getCompany16();
+  const cli     = _getClient16();
+  const cgv     = _getCGV16();
+
+  const prefix  = (prefs.numerotation_prefix || 'DEV-');
+  const num     = Math.max(1, parseInt(prefs.numerotation_courante||1,10));
+  const ref     = prefix + _pad4(num);
+
+  const devName = (window.devis && devis.__name) ? devis.__name : 'Devis';
+  const pack    = _collectLines16();
+
+  // Regrouper par pièce
+  const byPiece = {};
+  pack.lines.forEach(L=>{
+    const p = _pieceLabel16(L.piece);
+    if(!byPiece[p]) byPiece[p] = [];
+    byPiece[p].push(L);
+  });
+
+  let sectionsHTML = '';
+  Object.keys(byPiece).forEach(pieceLabel=>{
+    const rows = byPiece[pieceLabel].map(L=>{
+      return '<tr>'
+        + '<td>'+_esc16(L.designation)+'</td>'
+        + '<td style="text-align:right">'+L.qty+'</td>'
+        + '<td style="text-align:right">'+_euro16(L.pu)+'</td>'
+        + '<td style="text-align:right">'+_euro16(L.total)+'</td>'
+      + '</tr>';
+    }).join('');
+    const subtotal = byPiece[pieceLabel].reduce((s,x)=>s+x.total,0);
+    sectionsHTML +=
+      '<h3 style="margin:18px 0 6px 0;">'+_esc16(pieceLabel)+'</h3>'
+      + '<table class="dv-table"><thead><tr>'
+      +   '<th>Désignation</th><th style="width:70px;text-align:right">Qté</th><th style="width:110px;text-align:right">PU</th><th style="width:130px;text-align:right">Total</th>'
+      + '</tr></thead><tbody>'+rows+'</tbody>'
+      + '<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td>'
+      + '<td style="text-align:right"><strong>'+_euro16(subtotal)+'</strong></td></tr></tfoot>'
+      + '</table>';
+  });
+
+  // TVA (si activée)
+  const tvaOn    = !!prefs.tva_applicable;
+  const taux     = Math.max(0, +prefs.taux_tva || 20);
+  const totalHT  = pack.total;
+  const totalTVA = tvaOn ? totalHT * (taux/100) : 0;
+  const totalTTC = totalHT + totalTVA;
+
+  const logoHTML = (company.logo_dataurl)
+    ? '<img src="'+company.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>'
+    : '';
+
+  const html =
+'<!doctype html><html lang="fr"><head><meta charset="utf-8"/><title>'+_esc16(devName)+' — '+_esc16(ref)+'</title>'
++'<style>'
++'body{ font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; color:#222; margin:0; background:#fff; }'
++'.sheet{ width:210mm; margin:0 auto; padding:18mm 16mm; }'
++'h1,h2,h3{ margin:0 0 6px 0; }'
++'.row{ display:flex; justify-content:space-between; gap:16px; }'
++'.box{ border:1px solid #ddd; border-radius:8px; padding:10px; background:#fafafa; }'
++'.muted{ color:#666; }'
++'.dv-table{ width:100%; border-collapse:collapse; margin:6px 0 12px; }'
++'.dv-table th, .dv-table td{ border:1px solid #ddd; padding:6px 8px; text-align:left; vertical-align:top; }'
++'.totals{ margin-top:8px; width:100%; }'
++'.totals td{ padding:6px 8px; }'
++'@media print{ .no-print{ display:none !important; } .sheet{ box-shadow:none; margin:0; } }'
++'</style></head><body>'
++'<div class="sheet">'
++  '<div class="row">'
++    '<div style="flex:1 1 auto">'
++      '<div>'+logoHTML+'</div>'
++      '<div style="margin-top:8px" class="muted">'+_companyBlockHTML16(company)+'</div>'
++    '</div>'
++    '<div class="box" style="min-width:280px;">'
++      '<h2>Devis</h2>'
++      '<div>Référence : <strong>'+_esc16(ref)+'</strong></div>'
++      '<div>Date : '+_esc16(_todayFR16())+'</div>'
++      '<div style="margin-top:6px;">Destinataire :</div>'
++      '<div>'+_clientBlockHTML16(cli)+'</div>'
++    '</div>'
++  '</div>'
++  '<div style="margin-top:14px;">'
++    '<h1 style="font-size:20px;">'+_esc16(devName)+'</h1>'
++    '<div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div>'
++  '</div>'
++  '<div style="margin-top:10px;">'+(sectionsHTML || '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
++  '<table class="totals" style="margin-top:6px;">'
++    '<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px; text-align:right;"><strong>'+_euro16(totalHT)+'</strong></td></tr>'
++    +(tvaOn ? ('<tr><td style="text-align:right">TVA ('+_esc16(String(taux))+'%)</td><td style="text-align:right">'+_euro16(totalTVA)+'</td></tr>') : '')
++    '<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+_euro16(totalTTC)+'</strong></td></tr>'
++  '</table>'
++  '<div style="margin-top:16px;">'
++    '<h3>Conditions générales</h3>'
++    '<div class="box" style="white-space:pre-wrap;">'+_esc16(_getCGV16())+'</div>'
++  '</div>'
++  '<div class="no-print" style="margin-top:14px; display:flex; gap:8px;">'
++    '<button onclick="window.print()">Imprimer / Enregistrer en PDF</button>'
++    '<button onclick="window.close()">Fermer</button>'
++  '</div>'
++'</div></body></html>';
+  return html;
+}
+
+function buildDevisPDF16(){
+  try{
+    const html = _buildPrintableHTML16();
+    const w = window.open('', '_blank');
+    if(!w){ alert('Impossible d’ouvrir l’aperçu. Autorisez les popups.'); return; }
+    w.document.open('text/html');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 300);
+  }catch(err){
+    alert('Erreur génération PDF : '+(err && err.message ? err.message : String(err)));
+  }
+}
+
+/* =========================
+   §16B.3 • Intégration UI (boutons)
+   ========================= */
+(function injectButtons16(){
+  function appendButtons(){
+    const app = document.getElementById('app'); if(!app) return;
+    if(app.innerHTML.indexOf('buildDevisPDF16()')!==-1) return; // déjà injecté
+    // Ajoute une carte dédiée en bas de page (robuste, sans regex fragiles)
+    app.innerHTML +=
+      '<div class="card" style="margin-top:12px;">'
+      +  '<h3>Génération de devis (PDF)</h3>'
+      +  '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +    '<button class="btn" onclick="pageDevisPDF16()">Préparer le devis (PDF)</button>'
+      +    '<button class="btn primary" onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>'
+      +  '</div>'
+      +'</div>';
+  }
+  const origEst = window.pageEstimatif;
+  if (typeof origEst === 'function'){
+    window.pageEstimatif = function(){ origEst(); appendButtons(); };
+  }
+  const origTot = window.pageTotaux;
+  if (typeof origTot === 'function'){
+    window.pageTotaux = function(){ origTot(); appendButtons(); };
+  }
+})();
+
+/* =========================
+   §16B.4 • Expose (global)
+   ========================= */
+Object.assign(window, {
+  buildDevisPDF16
+});
+</script>
+  
+
+
   
 
