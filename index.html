@@ -4427,4 +4427,203 @@ function duplicateDevisWithCurrentTarifs_REPRICE(){
 })();
 </script>
 
+
+
+
+
+
+
   
+
+
+<!-- =============================
+     CHAPITRE 15 : MOTEUR TARIFAIRE & DUPLICATION (V10.x)
+     - Recalcule le devis courant selon les tarifs en vigueur (Chap.13)
+     - Duplique un devis en appliquant les nouveaux tarifs
+     - Injection de 2 boutons dans Estimatif + Totaux
+     ============================= -->
+<script>
+/* ============================================================
+   §15.0 • Dépendances attendues (déjà présentes dans l’app)
+   - devis : objet de travail courant
+   - saveLocal(), loadLocal()
+   - saved devis utils (Chap.4) : saveCurrentDevis(), export/import existent déjà
+   - TARIFS_BASE : alimenté par Chapitre 13 (pageCataloguePrestation/applyPrestToApp)
+   - COEFFS_POSE / TARIFS_COEFS : si utiles plus tard
+   ============================================================ */
+
+/* ============================================================
+   §15.1 • Résolution de tarif (désignation + intervention)
+   - On cherche d’abord dans PRISES, puis ECLAIRAGE, puis CIRCUIT_SPÉ
+   - On gère quelques synonymes d’interventions historiques
+   ============================================================ */
+(function(){
+  const SYN_INTERV = {
+    // normalisation d’interventions historiques vers nos clés actuelles
+    "Remplacement": "Remplacement appareillage",
+    "Remplacement luminaire (ancien)": "Remplacement luminaire",
+    "Recablage avec remplacement appareillage": "Recâblage avec remplacement appareillage",
+    "Recablage sans remplacement appareillage": "Recâblage sans remplacement appareillage",
+    "Recablage avec remplacement luminaire": "Recâblage avec remplacement luminaire",
+    "Recablage sans remplacement luminaire": "Recâblage sans remplacement luminaire"
+  };
+
+  function _normIntervention(interv){
+    if(!interv) return "Création";
+    const k = String(interv).trim();
+    return SYN_INTERV[k] || k;
+  }
+
+  function _findTarif(designation, intervention){
+    if(!window.TARIFS_BASE) return null;
+    const inter = _normIntervention(intervention);
+    const name  = String(designation||'').trim();
+
+    // 1) PRISES
+    const tP = (TARIFS_BASE.prises && TARIFS_BASE.prises[name]);
+    if(tP && tP[inter] != null) return +tP[inter];
+
+    // 2) ÉCLAIRAGE
+    const tE = (TARIFS_BASE.eclairage && TARIFS_BASE.eclairage[name]);
+    if(tE && tE[inter] != null) return +tE[inter];
+
+    // 3) CIRCUITS SPÉCIALISÉS
+    const tC = (TARIFS_BASE.circuit_specialise && TARIFS_BASE.circuit_specialise[name]);
+    if(tC && tC[inter] != null) return +tC[inter];
+
+    // 4) fallback : si l’intervention n’existe pas mais qu’il y a “Création” on la prend
+    if(tP && tP["Création"] != null) return +tP["Création"];
+    if(tE && tE["Création"] != null) return +tE["Création"];
+    if(tC && tC["Création"] != null) return +tC["Création"];
+
+    return null;
+  }
+
+  window.__tarifResolverV10 = { _findTarif, _normIntervention };
+})();
+
+/* ============================================================
+   §15.2 • Repricing d’un devis (objet) en place
+   - options:
+       {applyCoeffs: false} -> réservé pour futur (on garde off par défaut)
+   ============================================================ */
+function repriceDevisObjectV10(draft, options){
+  if(!draft || typeof draft!=='object') return { changed:0, total:0 };
+  const { _findTarif, _normIntervention } = window.__tarifResolverV10 || {};
+  if(!_findTarif) return { changed:0, total:0 };
+
+  let changed = 0, total = 0;
+
+  for(const key in draft){
+    if(key.indexOf('__')===0) continue;
+    const section = draft[key]; if(!section || !Array.isArray(section.items)) continue;
+
+    section.items.forEach(it=>{
+      const q = +it.qty || 0;
+      const oldPU = +it.prixU || 0;
+
+      const designation  = it.designation || '';
+      const intervention = _normIntervention(it.intervention || '');
+
+      const newPU = _findTarif(designation, intervention);
+      if(newPU != null && newPU >= 0){
+        if(newPU !== oldPU){
+          it.prixU = +newPU;
+          changed++;
+        }
+        total += (+newPU) * q;
+      }else{
+        total += oldPU * q; // on garde le PU existant si non reconnu
+      }
+    });
+  }
+  return { changed, total };
+}
+
+/* ============================================================
+   §15.3 • Actions : Recalculer (devis courant) & Dupliquer
+   ============================================================ */
+function repriceCurrentDevisV10(){
+  if(!window.devis){ alert('Aucun devis chargé.'); return; }
+  const res = repriceDevisObjectV10(window.devis, {applyCoeffs:false});
+  if(typeof saveLocal==='function') saveLocal();
+  alert('✅ Tarifs recalculés.\nLignes modifiées : '+res.changed);
+  // rafraîchir l’écran courant si besoin
+  if(typeof pageEstimatif==='function'){
+    try{ pageEstimatif(); }catch(e){}
+  }
+}
+
+function duplicateDevisWithNewTarifsV10(){
+  if(!window.devis){ alert('Aucun devis chargé.'); return; }
+
+  // clone profond
+  const dup = JSON.parse(JSON.stringify(window.devis));
+  // renommer
+  const base = (dup.__name || 'Devis');
+  dup.__name = base.replace(/\s*\(.*\)\s*$/,'') + ' (recalcul tarifs)';
+
+  const res = repriceDevisObjectV10(dup, {applyCoeffs:false});
+
+  // sauvegarde dans la liste des devis sauvegardés (Chap.4)
+  try{
+    // helpers du Chap.4
+    if(typeof window.ensureSavedList==='function'){
+      window.ensureSavedList();
+    }
+    // structure : savedDevisList [{id, name, ts, data}]
+    const key = 'savedDevisList_v2';
+    const list = JSON.parse(localStorage.getItem(key)||'[]');
+    const id   = 'dv_'+Date.now();
+    list.push({ id, name: dup.__name||'Devis', ts: Date.now(), data: dup });
+    localStorage.setItem(key, JSON.stringify(list));
+    alert('✅ Duplicata créé avec nouveaux tarifs.\nLignes modifiées : '+res.changed+'\nRetrouve-le dans “Mes devis sauvegardés”.');
+  }catch(e){
+    console.error(e);
+    alert('Le duplicata n’a pas pu être sauvegardé.');
+  }
+}
+
+/* ============================================================
+   §15.4 • Injection des boutons (Estimatif & Totaux)
+   ============================================================ */
+(function injectButtons15(){
+  const addButtons = (html)=>{
+    if(html.indexOf('repriceCurrentDevisV10()')!==-1) return html; // déjà injecté
+    return html.replace(
+      /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
+      '$1'
+      + '<div class="row" style="margin-top:10px;">'
+      +   '<button class="btn" onclick="repriceCurrentDevisV10()">🔄 Recalculer tarifs (devis courant)</button>'
+      +   '<button class="btn primary" onclick="duplicateDevisWithNewTarifsV10()">🧭 Dupliquer avec nouveaux tarifs</button>'
+      + '</div>'
+    );
+  };
+
+  if(typeof window.pageEstimatif === 'function'){
+    const orig = window.pageEstimatif;
+    window.pageEstimatif = function(){
+      orig();
+      const app = document.getElementById('app'); if(app) app.innerHTML = addButtons(app.innerHTML);
+    };
+  }
+  if(typeof window.pageTotaux === 'function'){
+    const orig2 = window.pageTotaux;
+    window.pageTotaux = function(){
+      orig2();
+      const app = document.getElementById('app'); if(app) app.innerHTML = addButtons(app.innerHTML);
+    };
+  }
+})();
+
+/* ============================================================
+   §15.5 • Expose
+   ============================================================ */
+Object.assign(window, {
+  repriceDevisObjectV10,
+  repriceCurrentDevisV10,
+  duplicateDevisWithNewTarifsV10
+});
+</script>
+  
+
