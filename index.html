@@ -5698,6 +5698,132 @@ Object.assign(window, {
 </script>
   
 
+<!-- =============================
+     CHAPITRE 16C : Saisie client à la création du devis
+     - Ajoute une page "Client du devis" immédiatement après "Nouveau devis"
+     - Sauvegarde dans devis.__client (persisté via saveLocal)
+     - Patch léger : _getClient16() (chap.16A) lit en priorité devis.__client
+     - Intégration non destructive (remplace actionNouveauDevis avec même UX)
+     ============================= -->
 
+<style>
+  .cli-wrap .card{ margin-bottom:16px; }
+  .cli-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .cli-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .cli-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .cli-note{ color:var(--muted); font-size:14px; }
+  .cli-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+</style>
+
+<script>
+/* ============================================================
+   §16C.0 • Helpers locaux
+   ============================================================ */
+function _esc16c(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============================================================
+   §16C.1 • Page de saisie client (routée juste après "Nouveau devis")
+   ============================================================ */
+function pageClientNewDevis(){
+  // Valeurs existantes si on revient (ou si duplicata)
+  var cur = (window.devis && devis.__client) ? devis.__client : {
+    nom:'', email:'', tel:'', adresse:'', cp:'', ville:''
+  };
+
+  view(
+    '<div class="cli-wrap">'
+    +  '<div class="card">'
+    +    (typeof b==='function' ? b('Annuler','_abortNewDevis16c()','btn back') : '')
+    +    '<h2>Informations client du devis</h2>'
+    +    '<p class="cli-note">Ces informations seront affichées sur le devis (PDF) et mémorisées dans ce devis.</p>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<div class="cli-grid">'
+    +      '<div class="cli-field"><label>Nom / Société</label><input id="cli-nom" value="'+_esc16c(cur.nom)+'"/></div>'
+    +      '<div class="cli-field"><label>Email</label><input id="cli-email" value="'+_esc16c(cur.email)+'"/></div>'
+    +      '<div class="cli-field"><label>Téléphone</label><input id="cli-tel" value="'+_esc16c(cur.tel)+'"/></div>'
+    +      '<div class="cli-field" style="grid-column:1/-1;"><label>Adresse</label><input id="cli-adr" value="'+_esc16c(cur.adresse)+'"/></div>'
+    +      '<div class="cli-field"><label>Code postal</label><input id="cli-cp" value="'+_esc16c(cur.cp)+'"/></div>'
+    +      '<div class="cli-field"><label>Ville</label><input id="cli-ville" value="'+_esc16c(cur.ville)+'"/></div>'
+    +    '</div>'
+    +    '<div class="cli-actions">'
+    +      (typeof b==='function' ? b('Enregistrer et continuer','_saveClientNewDevis16c()','btn primary') : '<button onclick="_saveClientNewDevis16c()">Enregistrer et continuer</button>')
+    +      (typeof b==='function' ? b('Ignorer pour l’instant','_skipClientNewDevis16c()','btn') : '<button onclick="_skipClientNewDevis16c()">Ignorer pour l’instant</button>')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+
+/* Enregistrer client dans devis + retour workflow normal */
+function _saveClientNewDevis16c(){
+  if(!window.devis) window.devis = {};
+  devis.__client = {
+    nom: (document.getElementById('cli-nom')||{}).value || '',
+    email: (document.getElementById('cli-email')||{}).value || '',
+    tel: (document.getElementById('cli-tel')||{}).value || '',
+    adresse: (document.getElementById('cli-adr')||{}).value || '',
+    cp: (document.getElementById('cli-cp')||{}).value || '',
+    ville: (document.getElementById('cli-ville')||{}).value || ''
+  };
+  if(typeof saveLocal==='function') saveLocal();
+  // On enchaîne vers l’accueil des pièces
+  if(typeof pageHome==='function') pageHome(); else alert('Client enregistré.');
+}
+function _skipClientNewDevis16c(){
+  // Sans enregistrer (ou si déjà prérempli), on enchaîne
+  if(typeof pageHome==='function') pageHome(); else alert('OK.');
+}
+function _abortNewDevis16c(){
+  // Annuler la création du devis si l’utilisateur le souhaite
+  if(confirm('Annuler ce nouveau devis ?')){
+    // On vide le devis courant pour revenir à l’accueil
+    window.devis = {};
+    if(typeof saveLocal==='function') saveLocal();
+    if(typeof pageMain==='function') pageMain();
+  }
+}
+
+/* ============================================================
+   §16C.2 • Remplacement non destructif de actionNouveauDevis()
+   - Conserve le confirm d’origine
+   - Initialise le devis courant puis ouvre pageClientNewDevis()
+   ============================================================ */
+(function overrideNewDevis16c(){
+  var _oldNew = window.actionNouveauDevis;
+  window.actionNouveauDevis = function(){
+    // On garde le comportement UX d’origine
+    if(!confirm('Créer un nouveau devis ? Le devis courant non sauvegardé sera perdu.')) return;
+    // Initialise un devis minimal
+    function _shortId(){ return Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4); }
+    window.devis = { __id:_shortId(), __name:'Nouveau devis', __ts: Date.now(), __client: {
+      nom:'', email:'', tel:'', adresse:'', cp:'', ville:''
+    }};
+    if(typeof saveLocal==='function') saveLocal();
+    // Enchaîne immédiatement vers la saisie client
+    pageClientNewDevis();
+  };
+})();
+
+/* ============================================================
+   §16C.3 • Patch : utiliser en priorité le client du devis dans le PDF
+   - Si chap.16A est chargé, on remplace _getClient16() pour lire devis.__client
+   - Sinon ce patch est inoffensif (aucune erreur)
+   ============================================================ */
+(function preferDevisClientInPDF16c(){
+  var _orig = window._getClient16; // peut être undefined si 16A pas encore chargé
+  window._getClient16 = function(){
+    try{
+      if(window.devis && devis.__client && (devis.__client.nom || devis.__client.adresse || devis.__client.ville)){
+        return devis.__client;
+      }
+    }catch(e){}
+    // fallback : fonction d’origine (16A) ou valeurs vides
+    if(typeof _orig === 'function') return _orig();
+    return { nom:'', email:'', tel:'', adresse:'', cp:'', ville:'' };
+  };
+})();
+</script>
   
 
