@@ -6413,3 +6413,135 @@ Object.assign(window, {
   setTimeout(stripUnwantedButtons, 0);
 })();
 </script>
+
+
+  <!-- ===========================================================
+     CHAPITRE 16H — Nouveau devis : Client + Nom + TVA (unifiée)
+     =========================================================== -->
+<style>
+  .cli-wrap .card{margin-bottom:16px;}
+  .cli-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}
+  .cli-field label{display:block;font-weight:600;margin-bottom:6px;}
+  .cli-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+</style>
+
+<script>
+(function(){
+  const {_rd,_wr,_esc} = window.__ch16__ || {
+    _rd:(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??d}catch(e){return d}},
+    _wr:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},
+    _esc:s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+  };
+
+  /* Helpers client */
+  function _clients(){ return _rd(KEY_CLIENTS_V1, []); }
+  function _saveClient(c){
+    const L=_clients(); 
+    if(!c.id) c.id=Math.random().toString(36).slice(2,8);
+    const i=L.findIndex(x=>x.id===c.id);
+    if(i>=0)L[i]=c;else L.unshift(c);
+    _wr(KEY_CLIENTS_V1,L);
+    return c;
+  }
+
+  /* Page 1 : Choix ou création de client */
+  window.pageClientNewDevis = function(){
+    const list=_clients();
+    const cur=(window.devis && devis.__client)?devis.__client:{nom:'',email:'',tel:'',adresse:'',cp:'',ville:''};
+
+    view(
+      '<div class="cli-wrap">'
+      + '<div class="card">'+(typeof b==='function'?b('Annuler','pageMain()','btn back'):'')+'<h2>Nouveau devis — Client</h2></div>'
+      + '<div class="card"><h3>Client existant</h3>'
+      + (list.length ? list.map(c=>(
+            '<div class="cli-list-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--line);border-radius:8px;">'
+          + '<div><strong>'+_esc(c.nom)+'</strong><br><span class="muted">'+_esc(c.ville||'')+'</span></div>'
+          + '<button class="btn" onclick="_useExistingClient16H(\''+_esc(c.id)+'\')">Sélectionner</button>'
+          + '</div>'
+        )).join('') : '<p class="muted">Aucun client enregistré.</p>')
+      + '</div>'
+
+      + '<div class="card"><h3>Créer un nouveau client</h3>'
+      + '<div class="cli-grid">'
+      + '<div class="cli-field"><label>Nom / Société</label><input id="ncli-nom" value="'+_esc(cur.nom)+'"/></div>'
+      + '<div class="cli-field"><label>Email</label><input id="ncli-email" value="'+_esc(cur.email)+'"/></div>'
+      + '<div class="cli-field"><label>Téléphone</label><input id="ncli-tel" value="'+_esc(cur.tel)+'"/></div>'
+      + '<div class="cli-field fullrow"><label>Adresse</label><input id="ncli-adr" value="'+_esc(cur.adresse)+'"/></div>'
+      + '<div class="cli-field"><label>Code postal</label><input id="ncli-cp" value="'+_esc(cur.cp)+'"/></div>'
+      + '<div class="cli-field"><label>Ville</label><input id="ncli-ville" value="'+_esc(cur.ville)+'"/></div>'
+      + '</div>'
+      + '<div class="cli-actions"><button class="btn primary" onclick="_saveNewClient16H()">Enregistrer et continuer</button></div>'
+      + '</div>'
+      + '</div>'
+    );
+  };
+
+  window._useExistingClient16H = function(id){
+    const c=_clients().find(x=>x.id===id);
+    if(!c){ alert('Client introuvable.'); return; }
+    if(!window.devis) window.devis={};
+    devis.__client={ nom:c.nom,email:c.email,tel:c.tel,adresse:c.adresse,cp:c.cp,ville:c.ville,__client_id:c.id };
+    if(typeof saveLocal==='function') saveLocal();
+    pageNomTVA16H();
+  };
+
+  window._saveNewClient16H = function(){
+    const c={
+      nom:_v('ncli-nom'), email:_v('ncli-email'), tel:_v('ncli-tel'),
+      adresse:_v('ncli-adr'), cp:_v('ncli-cp'), ville:_v('ncli-ville')
+    };
+    const saved=_saveClient(c);
+    if(!window.devis) window.devis={};
+    devis.__client=saved;
+    if(typeof saveLocal==='function') saveLocal();
+    pageNomTVA16H();
+    function _v(id){var e=document.getElementById(id);return e?e.value:'';}
+  };
+
+  /* Page 2 : Nom du devis + TVA (avec valeurs par défaut des préférences) */
+  window.pageNomTVA16H = function(){
+    const prefs=_rd(KEY_PREFS_V1,{tva_applicable:true,taux_tva:20});
+    const cur=(window.devis && devis.__tva)?devis.__tva:{};
+    const tvaOn=(typeof cur.applicable==='boolean')?cur.applicable:!!prefs.tva_applicable;
+    const taux=(typeof cur.taux==='number')?cur.taux:+prefs.taux_tva||20;
+    const name=(window.devis && devis.__name)?devis.__name:'Nouveau devis';
+
+    view(
+      '<div class="cli-wrap">'
+      + '<div class="card">'+(typeof b==='function'?b('Retour','pageClientNewDevis()','btn back'):'')+'<h2>Nouveau devis — Nom & TVA</h2></div>'
+      + '<div class="card"><h3>Nom du devis</h3><input id="dv-name" value="'+_esc(name)+'"/></div>'
+      + '<div class="card"><h3>TVA</h3>'
+      + '<label><input type="checkbox" id="tva-on" '+(tvaOn?'checked':'')+'> Appliquer la TVA</label>'
+      + '<div style="margin-top:8px;"><label>Taux (%)</label> <input id="tva-rate" type="number" min="0" step="0.1" value="'+_esc(taux)+'"/></div>'
+      + '</div>'
+      + '<div class="card"><div class="cli-actions">'
+      + '<button class="btn primary" onclick="_saveTVA16H()">Valider</button>'
+      + '<button class="btn" onclick="pageMain()">Annuler</button>'
+      + '</div></div>'
+      + '</div>'
+    );
+  };
+
+  window._saveTVA16H = function(){
+    if(!window.devis) window.devis={};
+    devis.__name=(document.getElementById('dv-name')||{}).value||'Devis';
+    devis.__tva={
+      applicable:!!(document.getElementById('tva-on')||{}).checked,
+      taux:parseFloat((document.getElementById('tva-rate')||{}).value)||0
+    };
+    if(typeof saveLocal==='function') saveLocal();
+    pageMain();
+  };
+
+  /* Sécurisation : on redéfinit actionNouveauDevis pour lancer ce flux */
+  (function(){
+    const old = window.actionNouveauDevis;
+    window.actionNouveauDevis = function(){
+      if(!confirm('Créer un nouveau devis ? Le devis actuel sera remplacé.')) return;
+      window.devis={__id:Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4),__client:{},__tva:{}};
+      if(typeof saveLocal==='function') saveLocal();
+      pageClientNewDevis();
+    };
+  })();
+})();
+</script>
