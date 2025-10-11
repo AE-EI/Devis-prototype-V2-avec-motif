@@ -1891,116 +1891,316 @@ function ventAddEntretien(key){
 
 
 
-<!-- ================================
-     CHAPITRE 8 : PARAMÉTRAGE — V10.1
-     ================================ -->
+<!-- =============================
+     CHAPITRE 8 : PARAMÉTRAGE — V10.0
+     Index :
+       8.0 • Styles
+       8.1 • Storage (Entreprise / Préférences)
+       8.2 • Helpers
+       8.3 • Accueil Paramétrage
+       8.4 • Configuration entreprise (form)
+       8.5 • Préférences devis & facturation (form)
+       8.6 • Paramétrage avancé (JSON / développeur)
+       8.7 • Expose (window)
+     ============================= -->
+
+<style>
+  /* 8.0 — Styles */
+  .param-wrap .card{ margin-bottom:24px; }
+  .param-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .muted{ color:var(--muted); }
+  .row.gap8{ gap:8px; flex-wrap:wrap; }
+  .subcard{ border:1px dashed var(--line); border-radius:10px; padding:10px; background:#fafafa; }
+  .mb8{ margin-bottom:8px; }
+</style>
+
 <script>
-/* ----------------------------------
-   §8.0 • Accueil du paramétrage
-   ---------------------------------- */
-function pageParametrageAccueil(){
+/* =============================
+   8.1 • Storage keys & defaults
+   ============================= */
+const KEY_ENTREPRISE_V1 = 'cfg_entreprise_v1';
+const KEY_PREFS_V1      = 'prefs_devis_fact_v1';
+
+function _entrepriseDefaults(){
+  return {
+    raison_sociale: '',
+    siret: '',
+    adresse: '',
+    cp: '',
+    ville: '',
+    email: '',
+    telephone: '',
+    tva_percent: 20
+  };
+}
+function _prefsDefaults(){
+  return {
+    mode_separe: true,          // afficher Pose + Fourniture séparées
+    afficher_ttc: true,         // montrer HT/TTC dans exports/aperçu
+    remise_defaut: 0,           // % remise par défaut
+    conditions: '',             // conditions de règlement / délais
+    mentions: ''                // mentions légales/garanties
+  };
+}
+
+function getEntreprise(){
+  try{ return JSON.parse(localStorage.getItem(KEY_ENTREPRISE_V1)||'null') || _entrepriseDefaults(); }
+  catch(e){ return _entrepriseDefaults(); }
+}
+function setEntreprise(obj){
+  const cur = getEntreprise();
+  const out = Object.assign({}, cur, obj||{});
+  try{ localStorage.setItem(KEY_ENTREPRISE_V1, JSON.stringify(out)); }catch(e){}
+  return out;
+}
+function getPrefs(){
+  try{ return JSON.parse(localStorage.getItem(KEY_PREFS_V1)||'null') || _prefsDefaults(); }
+  catch(e){ return _prefsDefaults(); }
+}
+function setPrefs(obj){
+  const cur = getPrefs();
+  const out = Object.assign({}, cur, obj||{});
+  try{ localStorage.setItem(KEY_PREFS_V1, JSON.stringify(out)); }catch(e){}
+  return out;
+}
+
+/* =============================
+   8.2 • Helpers
+   ============================= */
+function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c])); }
+function _val(id){ var el=document.getElementById(id); return el ? el.value : ''; }
+function _num(id){ var v=parseFloat(_val(id).replace(',','.')); return isNaN(v)?0:v; }
+</script>
+
+<script>
+/* =============================
+   8.3 • Accueil Paramétrage
+   ============================= */
+function pageTarifsAccueil(){
   view(
-    '<div class="card">'
-      + b('Retour','pageMain()','btn back')
-      + '<h2>Paramétrage</h2>'
-      + '<p class="muted">Personnalise les tarifs, les catalogues et les préférences de l’application.</p>'
-    + '</div>'
+    '<div class="param-wrap">'
+    +  '<div class="card">'
+    +    b('Retour','pageMain()','btn back')
+    +    '<h2>Paramétrage</h2>'
+    +    '<p class="muted">Centralisez tous vos réglages : tarifs de prestation, coordonnées entreprise, préférences de devis & facturation, et options avancées.</p>'
+    +  '</div>'
 
-    /* ------- Bloc 1 : Catalogue prestation ------- */
-    + '<div class="card">'
-      + '<h3>Catalogue prestation</h3>'
-      + '<p class="muted">Gère les tarifs de pose (appareillage, etc.). Les valeurs sont utilisées dans les écrans, les aperçus et les exports, et dans la duplication de devis “appliquer nouveaux tarifs”.</p>'
-      + '<div class="row" style="gap:8px;margin-top:8px;">'
-        + b('Ouvrir le catalogue prestation','openCataloguePrestation()','btn')
-      + '</div>'
-    + '</div>'
+    +  '<div class="card">'
+    +    '<h3>Catalogue prestation</h3>'
+    +    '<div class="subcard mb8"><div class="muted">Gérez les tarifs de pose par famille : Appareillage (Prises, Luminaires, Commandes), Circuit spécialisé, etc. Les modifications s’appliquent à l’application, aux aperçus, aux exports et à la duplication “appliquer nouveaux tarifs”.</div></div>'
+    +    '<div class="row gap8">'
+    +      b('Ouvrir le catalogue prestation','pageCataloguePrestation()','btn')
+    +    '</div>'
+    +  '</div>'
 
-    /* ------- Bloc 2 : Catalogue fourniture ------- */
-    + '<div class="card">'
-      + '<h3>Catalogue fourniture</h3>'
-      + '<p class="muted">Gère les types de fournitures (matériel) liés aux menus et tarifs. Sert pour enrichir les désignations et prix de fournitures.</p>'
-      + '<div class="row" style="gap:8px;margin-top:8px;">'
-        + b('Ouvrir le catalogue fourniture','openCatalogueFourniture()','btn')
-      + '</div>'
-    + '</div>'
+    +  '<div class="card">'
+    +    '<h3>Catalogue fournitures</h3>'
+    +    '<div class="subcard mb8"><div class="muted">À venir : définition des marques, gammes et références avec prix de vente. Servira aux menus Fourniture/Marque/Gamme — déjà prévus côté Prises.</div></div>'
+    +    '<div class="row gap8">'
+    +      b('Bientôt disponible','alert(\"Le catalogue fournitures sera ajouté ultérieurement.\")','btn')
+    +    '</div>'
+    +  '</div>'
 
-    /* ------- Bloc 3 : Configuration entreprise ------- */
-    + '<div class="card">'
-      + '<h3>Configuration entreprise</h3>'
-      + '<p class="muted">Coordonnées, SIRET/SIREN, TVA, mentions, logo… Ces informations sont utilisées dans les exports.</p>'
-      + '<div class="row" style="gap:8px;margin-top:8px;">'
-        + b('Ouvrir la configuration','openCompanyConfig()','btn')
-      + '</div>'
-    + '</div>'
+    +  '<div class="card">'
+    +    '<h3>Configuration entreprise</h3>'
+    +    '<div class="subcard mb8"><div class="muted">Renseignez vos informations légales et de contact. Elles s’afficheront dans l’en-tête et les exports.</div></div>'
+    +    '<div class="row gap8">'
+    +      b('Ouvrir','pageConfigEntreprise()','btn')
+    +    '</div>'
+    +  '</div>'
 
-    /* ------- Bloc 4 : Préférences devis et facturation ------- */
-    + '<div class="card">'
-      + '<h3>Préférences devis et facturation</h3>'
-      + '<p class="muted">Mode de facturation (tout compris / séparé), devise, TVA, numérotation, etc.</p>'
-      + '<div class="row" style="gap:8px;margin-top:8px;">'
-        + b('Ouvrir les préférences','openPreferences()','btn')
-      + '</div>'
-    + '</div>'
+    +  '<div class="card">'
+    +    '<h3>Préférences devis & facturation</h3>'
+    +    '<div class="subcard mb8"><div class="muted">Mode séparé (pose vs fournitures), affichage HT/TTC, remise par défaut et textes (conditions, mentions).</div></div>'
+    +    '<div class="row gap8">'
+    +      b('Ouvrir','pagePrefsDevis()','btn')
+    +    '</div>'
+    +  '</div>'
 
-    /* ------- Bloc 5 : Paramétrage avancé ------- */
-    + '<div class="card">'
-      + '<h3>Paramétrage avancé (JSON / développeur)</h3>'
-      + '<p class="muted">Accès direct aux données stockées localement (import/export, reset). Pour utilisateurs avancés.</p>'
-      + '<div class="row" style="gap:8px;margin-top:8px;">'
-        + b('Ouvrir','openParamJSON()','btn')
-      + '</div>'
-    + '</div>'
+    +  '<div class="card">'
+    +    '<h3>Paramétrage avancé (JSON / développeur)</h3>'
+    +    '<div class="subcard mb8"><div class="muted">Exporter / importer / éditer les blocs de configuration (entreprise, préférences, prestations, coefficients) en JSON.</div></div>'
+    +    '<div class="row gap8">'
+    +      b('Ouvrir','pageParamAvance()','btn')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
   );
 }
+</script>
 
-/* ----------------------------------
-   §8.1 • Actions (sécurisées)
-   ---------------------------------- */
-function openCataloguePrestation(){
-  // Chapitre 13 (nouveau) expose pageCataloguePrestation
-  if (typeof pageCataloguePrestation === 'function'){ pageCataloguePrestation(); return; }
-  alert('Le module “Catalogue prestation” n’est pas chargé. Vérifie que le Chapitre 13 (prestation) est bien inclus et qu’il expose pageCataloguePrestation().');
+<script>
+/* =============================
+   8.4 • Configuration entreprise
+   ============================= */
+function pageConfigEntreprise(){
+  const e = getEntreprise();
+  view(
+    '<div class="param-wrap">'
+    +  '<div class="card">'+b('Retour','pageTarifsAccueil()','btn back')+'<h2>Configuration entreprise</h2></div>'
+    +  '<div class="card"><div class="param-grid">'
+    +    '<div class="field"><label>Raison sociale</label><input id="e-rs" value="'+_esc(e.raison_sociale)+'"/></div>'
+    +    '<div class="field"><label>SIRET</label><input id="e-siret" value="'+_esc(e.siret)+'"/></div>'
+    +    '<div class="field"><label>Adresse</label><input id="e-adr" value="'+_esc(e.adresse)+'"/></div>'
+    +    '<div class="field"><label>Code postal</label><input id="e-cp" value="'+_esc(e.cp)+'"/></div>'
+    +    '<div class="field"><label>Ville</label><input id="e-ville" value="'+_esc(e.ville)+'"/></div>'
+    +    '<div class="field"><label>Email</label><input id="e-mail" value="'+_esc(e.email)+'"/></div>'
+    +    '<div class="field"><label>Téléphone</label><input id="e-tel" value="'+_esc(e.telephone)+'"/></div>'
+    +    '<div class="field"><label>TVA (%)</label><input id="e-tva" type="number" inputmode="decimal" step="0.1" value="'+(+e.tva_percent||0)+'"/></div>'
+    +  '</div>'
+    +  '<div class="row gap8" style="margin-top:10px;">'
+    +    b('Enregistrer','saveEntreprise()','btn primary')
+    +  '</div></div>'
+    +'</div>'
+  );
 }
-function openCatalogueFourniture(){
-  // Compat : anciens modules pouvaient s’appeler pageCatalogue() ou pageCatalogueFourniture()
-  if (typeof pageCatalogueFourniture === 'function'){ pageCatalogueFourniture(); return; }
-  if (typeof pageCatalogue === 'function'){ pageCatalogue(); return; }
-  alert('Le module “Catalogue fourniture” n’est pas chargé. Vérifie que le Chapitre 13 (catalogue matériel/fourniture) est bien inclus.');
+function saveEntreprise(){
+  const out = setEntreprise({
+    raison_sociale: _val('e-rs'),
+    siret: _val('e-siret'),
+    adresse: _val('e-adr'),
+    cp: _val('e-cp'),
+    ville: _val('e-ville'),
+    email: _val('e-mail'),
+    telephone: _val('e-tel'),
+    tva_percent: Math.max(0, parseFloat(_val('e-tva').replace(',','.'))||0)
+  });
+  alert('Informations enregistrées.');
+  pageConfigEntreprise();
 }
-function openCompanyConfig(){
-  if (typeof pageConfigEntreprise === 'function'){ pageConfigEntreprise(); return; }
-  alert('La page “Configuration entreprise” n’est pas disponible dans ce build.');
-}
-function openPreferences(){
-  if (typeof pagePreferences === 'function'){ pagePreferences(); return; }
-  alert('La page “Préférences devis et facturation” n’est pas disponible dans ce build.');
-}
-function openParamJSON(){
-  if (typeof openParamJSON === 'function'){ openParamJSON(); return; }
-  if (typeof pageParamJSON === 'function'){ pageParamJSON(); return; }
-  alert('La page “Paramétrage avancé (JSON)” n’est pas disponible dans ce build.');
-}
+</script>
 
-/* ----------------------------------
-   §8.2 • Compat & expose
-   ---------------------------------- */
-// Compatibilité : certains anciens menus appellent encore pageTarifsAccueil()
-if (typeof window.pageTarifsAccueil !== 'function'){
-  window.pageTarifsAccueil = pageParametrageAccueil;
-} else {
-  // on remplace par un wrapper pour garder les injections éventuelles faites ailleurs
-  const _old = window.pageTarifsAccueil;
-  window.pageTarifsAccueil = function(){ pageParametrageAccueil(); };
+<script>
+/* =============================
+   8.5 • Préférences devis & facturation
+   ============================= */
+function pagePrefsDevis(){
+  const p = getPrefs();
+  view(
+    '<div class="param-wrap">'
+    +  '<div class="card">'+b('Retour','pageTarifsAccueil()','btn back')+'<h2>Préférences devis & facturation</h2></div>'
+    +  '<div class="card"><div class="param-grid">'
+    +    '<div class="field"><label><input id="pf-sep" type="checkbox" '+(p.mode_separe?'checked':'')+'/> Mode séparé (pose + fournitures)</label></div>'
+    +    '<div class="field"><label><input id="pf-ttc" type="checkbox" '+(p.afficher_ttc?'checked':'')+'/> Afficher HT / TTC</label></div>'
+    +    '<div class="field"><label>Remise par défaut (%)</label><input id="pf-rem" type="number" step="0.1" inputmode="decimal" value="'+(+p.remise_defaut||0)+'"/></div>'
+    +  '</div>'
+    +  '<div class="field" style="margin-top:10px;"><label>Conditions</label><textarea id="pf-cond" rows="4">'+_esc(p.conditions)+'</textarea></div>'
+    +  '<div class="field" style="margin-top:10px;"><label>Mentions</label><textarea id="pf-men" rows="4">'+_esc(p.mentions)+'</textarea></div>'
+    +  '<div class="row gap8" style="margin-top:10px;">'
+    +    b('Enregistrer','savePrefs()','btn primary')
+    +  '</div></div>'
+    +'</div>'
+  );
 }
+function savePrefs(){
+  const out = setPrefs({
+    mode_separe: !!document.getElementById('pf-sep').checked,
+    afficher_ttc: !!document.getElementById('pf-ttc').checked,
+    remise_defaut: Math.max(0, parseFloat(_val('pf-rem').replace(',','.'))||0),
+    conditions: _val('pf-cond'),
+    mentions: _val('pf-men')
+  });
+  alert('Préférences enregistrées.');
+  pagePrefsDevis();
+}
+</script>
 
-// Expose explicitement
+<script>
+/* =============================
+   8.6 • Paramétrage avancé (JSON / développeur)
+   ============================= */
+function pageParamAvance(){
+  // On récupère également prestations/coeffs si le Chapitre 13 est chargé
+  const packs = {
+    entreprise: getEntreprise(),
+    preferences: getPrefs(),
+    prestations: (typeof getPrestations==='function') ? getPrestations() : '(module non chargé)',
+    coeffs_pose: (typeof getCoeffs==='function') ? getCoeffs() : '(module non chargé)'
+  };
+  const pretty = _esc(JSON.stringify(packs, null, 2));
+
+  view(
+    '<div class="param-wrap">'
+    +  '<div class="card">'+b('Retour','pageTarifsAccueil()','btn back')+'<h2>Paramétrage avancé (JSON / développeur)</h2></div>'
+    +  '<div class="card">'
+    +    '<div class="subcard mb8"><div class="muted">Attention : toute erreur de JSON peut casser le chargement. Sauvegardez avant import. Vous pouvez exporter pour backup.</div></div>'
+    +    '<div class="row gap8">'
+    +      b('Exporter la configuration','paramAdvExport()','btn')
+    +      b('Importer une configuration','paramAdvImport()','btn')
+    +    '</div>'
+    +  '</div>'
+    +  '<div class="card">'
+    +    '<h3>Visualisation</h3>'
+    +    '<textarea id="adv-json" rows="18" style="width:100%; font-family:monospace;">'+pretty+'</textarea>'
+    +    '<div class="row gap8" style="margin-top:10px;">'
+    +      b('Écraser depuis l’éditeur','paramAdvApply()','btn')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+function paramAdvExport(){
+  // construit un bundle JSON
+  const bundle = {
+    entreprise: getEntreprise(),
+    preferences: getPrefs()
+  };
+  if(typeof getPrestations==='function') bundle.prestations = getPrestations();
+  if(typeof getCoeffs==='function')      bundle.coeffs_pose = getCoeffs();
+
+  const raw = JSON.stringify(bundle, null, 2);
+  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='parametrage_bundle.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+function paramAdvImport(){
+  const input = document.createElement('input'); input.type='file'; input.accept='application/json';
+  input.onchange = function(){
+    const f = input.files && input.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = function(){
+      try{
+        const data = JSON.parse(rd.result||'{}');
+        if(data.entreprise) setEntreprise(data.entreprise);
+        if(data.preferences) setPrefs(data.preferences);
+        if(data.prestations && typeof setPrestations==='function') setPrestations(data.prestations);
+        if(data.coeffs_pose && typeof setCoeffs==='function') setCoeffs(data.coeffs_pose);
+        alert('Configuration importée.');
+        pageParamAvance();
+      }catch(e){ alert('Import impossible : '+e.message); }
+    };
+    rd.readAsText(f,'utf-8');
+  };
+  input.click();
+}
+function paramAdvApply(){
+  const txt = (document.getElementById('adv-json')||{}).value||'';
+  try{
+    const data = JSON.parse(txt);
+    if(data.entreprise) setEntreprise(data.entreprise);
+    if(data.preferences) setPrefs(data.preferences);
+    if(data.prestations && typeof setPrestations==='function') setPrestations(data.prestations);
+    if(data.coeffs_pose && typeof setCoeffs==='function') setCoeffs(data.coeffs_pose);
+    alert('Configuration appliquée.');
+    pageParamAvance();
+  }catch(e){
+    alert('JSON invalide : '+e.message);
+  }
+}
+</script>
+
+<script>
+/* =============================
+   8.7 • Expose (window)
+   ============================= */
 Object.assign(window, {
-  pageParametrageAccueil,
-  openCataloguePrestation,
-  openCatalogueFourniture,
-  openCompanyConfig,
-  openPreferences,
-  openParamJSON
+  pageTarifsAccueil,
+  pageConfigEntreprise,
+  pagePrefsDevis,
+  pageParamAvance
 });
 </script>
 
