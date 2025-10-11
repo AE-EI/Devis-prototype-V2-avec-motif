@@ -3693,22 +3693,16 @@ Object.assign(window, {
 
 
 
-  
-
-<!-- =============================
-     CHAPITRE 13 : CATALOGUE PRESTATION — V10.0
+  <!-- =============================
+     CHAPITRE 13 : CATALOGUE PRESTATION — V10.1
      Index :
        13.0 • Styles
        13.1 • Stockage & Defaults (prestations + coefficients)
-       13.2 • Helpers (IO, UI)
-       13.3 • Runtime : registre + computePU (exposé global)
-       13.4 • Accueil "Catalogue prestation"
-       13.5 • Appareillage (Prises / Luminaires / Commandes / Circuit spécialisé)
-             - Prises : 4 interventions (créa + remplacements/recâblages)
-             - Luminaires : Point de centre, Applique, Alimentation ligne de spot (base + par spot)
-             - Commandes : Allumage simple/double, Va-et-vient, Variateur, Bouton poussoir
-             - Circuit spécialisé : types par section (1.5 / 2.5 / 6 / 10 mm²) avec 4 interventions
-       13.6 • Coefficients de pose
+       13.2 • Helpers (IO, UI, pose types)
+       13.3 • Runtime : computePU + applyPrestToApp (expose TARIFS_BASE, COEFF_POSE)
+       13.4 • Accueil "Catalogue prestation" (boutons Appareillage + Coeffs à cet endroit seulement)
+       13.5 • Éditeurs Appareillage (Prises / Luminaires / Commandes / Circuit spécialisé)
+       13.6 • Éditeur Coefficients de pose (lié aux POSE_TYPES)
        13.7 • Import / Export / Reset
        13.8 • Expose (window)
      ============================= -->
@@ -3739,10 +3733,8 @@ const KEY_COEFFS13   = 'coeff_pose_v1';
 
 function _prestaDefaults(){
   return {
-    // Catégorie : Appareillage
     appareillage: {
       prises: {
-        // Un "type" principal "Prise" avec 4 interventions paramétrables
         baseTypes: [ "Prise" ],
         tarifs: {
           "Prise": {
@@ -3752,8 +3744,7 @@ function _prestaDefaults(){
             "Recâblage sans remplacement appareillage": 30
           }
         },
-        // possibilité d'ajouter d'autres "types" (affichés dans la liste Prises si besoin)
-        customTypes: [] // ex: ["Sortie de câble", ...] -> héritent d’un bloc de tarifs cloné au départ
+        customTypes: []
       },
       luminaires: {
         baseTypes: [ "Point de centre", "Applique", "Alimentation ligne de spot" ],
@@ -3770,12 +3761,9 @@ function _prestaDefaults(){
             "Recâblage avec remplacement luminaire": 50,
             "Recâblage sans remplacement luminaire": 35
           },
-          // Alimentation ligne de spot : on enregistre deux paramètres
-          // base_ligne : prix d'alim. de la ligne
-          // par_spot   : ajout par spot
           "__spot_line__": { base_ligne: 60, par_spot: 15 }
         },
-        customTypes: [] // facultatif
+        customTypes: []
       },
       commandes: {
         baseTypes: [ "Allumage simple", "Allumage double", "Va-et-vient", "Variateur", "Bouton poussoir" ],
@@ -3814,7 +3802,12 @@ function _prestaDefaults(){
         customTypes: []
       },
       circuit_spec: {
-        baseTypes: [ "Circuit spécialisé 1,5 mm²", "Circuit spécialisé 2,5 mm²", "Circuit spécialisé 6 mm²", "Circuit spécialisé 10 mm²" ],
+        baseTypes: [
+          "Circuit spécialisé 1,5 mm²",
+          "Circuit spécialisé 2,5 mm²",
+          "Circuit spécialisé 6 mm²",
+          "Circuit spécialisé 10 mm²"
+        ],
         tarifs: {
           "Circuit spécialisé 1,5 mm²": {
             "Création": 140,
@@ -3844,22 +3837,20 @@ function _prestaDefaults(){
         customTypes: []
       }
     },
-    // Sections vides (prêtes pour plus tard)
     tableau: { note:"À paramétrer ultérieurement." },
     ventilation: { note:"À paramétrer ultérieurement." },
     mise_terre: { note:"À paramétrer ultérieurement." }
   };
 }
-function _coeffDefaults(){
-  // Coefficients multiplicatifs par type de pose
-  // (utilisés par computePU si pertinents)
-  return {
-    "Encastré maçonnerie": 1.00,
-    "Encastré placo": 1.00,
-    "Saillie": 1.00,
-    "Apparent": 1.00
-  };
-}
+
+/* ============================================================
+   13.2 • Helpers (IO, UI, pose types)
+   ============================================================ */
+const _esc = s => String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const _num = n => Math.max(0, +n||0);
+const _clone = x => JSON.parse(JSON.stringify(x||null));
+const _rowNum = (meta,val)=>'<div class="field"><label>'+_esc(meta.label)+'</label><input id="'+meta.id+'" type="number" step="1" inputmode="decimal" value="'+_num(val)+'"/></div>';
+const _saveNum = id => { const el=document.getElementById(id); return el? _num(el.value) : 0; };
 
 function getPrestations(){
   try{ return JSON.parse(localStorage.getItem(KEY_PRESTA13)||'null') || _prestaDefaults(); }
@@ -3867,34 +3858,37 @@ function getPrestations(){
 }
 function setPrestations(obj){
   try{ localStorage.setItem(KEY_PRESTA13, JSON.stringify(obj||_prestaDefaults())); }catch(e){}
+  applyPrestToApp(); // sync TARIFS_BASE
 }
+
+/* — Liste de pose : si window.POSE_TYPES existe, on l’utilise — */
+function _poseTypes(){
+  if (Array.isArray(window.POSE_TYPES) && window.POSE_TYPES.length){
+    return window.POSE_TYPES.slice();
+  }
+  // Fallback propre si l’app ne fournit pas POSE_TYPES
+  return ["Encastré maçonnerie","Encastré placo","Saillie","Apparent"];
+}
+
+/* Coefficients : toujours alignés sur _poseTypes() */
 function getCoeffs(){
-  try{ return JSON.parse(localStorage.getItem(KEY_COEFFS13)||'null') || _coeffDefaults(); }
-  catch(e){ return _coeffDefaults(); }
+  let store;
+  try{ store = JSON.parse(localStorage.getItem(KEY_COEFFS13)||'null') || {}; }catch(e){ store={}; }
+  const types = _poseTypes();
+  const out = {};
+  types.forEach(t=>{ out[t] = +store[t] > 0 ? +store[t] : 1; });
+  return out;
 }
 function setCoeffs(obj){
-  try{ localStorage.setItem(KEY_COEFFS13, JSON.stringify(obj||_coeffDefaults())); }catch(e){}
+  // On ne persiste que les types autorisés par _poseTypes()
+  const types=_poseTypes(); const clean={};
+  types.forEach(t=>{ clean[t] = (+obj[t] > 0 ? +obj[t] : 1); });
+  try{ localStorage.setItem(KEY_COEFFS13, JSON.stringify(clean)); }catch(e){}
+  applyPrestToApp(); // sync COEFF_POSE
 }
 
 /* ============================================================
-   13.2 • Helpers
-   ============================================================ */
-function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c])); }
-function _num(n){ return Math.max(0, +n||0); }
-function _clone(x){ return JSON.parse(JSON.stringify(x)); }
-function _rowNum(id, val){ return '<div class="field"><label>'+_esc(id.label)+'</label><input id="'+id.id+'" type="number" inputmode="decimal" step="1" value="'+_num(val)+'"/></div>'; }
-function _saveNum(id){ var el=document.getElementById(id); return el? _num(el.value) : 0; }
-
-/* ============================================================
-   13.3 • Runtime : Registre & computePU
-   ------------------------------------------------------------
-   - computePU(cat, desig, interv, pose, section, extras)
-     * cat : "Prises", "Éclairage/Luminaires", "Éclairage/Commandes", "Circuit spécialisé"
-     * desig : nom du type (ou libellé saisi)
-     * interv : intervention sélectionnée
-     * pose : type de pose (optionnel si ≠ Création)
-     * section : section câble (CS)
-     * extras : { spots: <int> } pour "Alimentation ligne de spot"
+   13.3 • Runtime : computePU + applyPrestToApp
    ============================================================ */
 function mapCatKey(cat){
   if(cat==='Prises') return ['appareillage','prises'];
@@ -3905,74 +3899,108 @@ function mapCatKey(cat){
 }
 
 function computePU(cat, desig, interv, pose, section, extras){
-  var pr = getPrestations();
-  var ck = mapCatKey(cat);
+  const pr = getPrestations();
+  const coeffs = getCoeffs();
+  const ck = mapCatKey(cat);
   if(!ck) return 0;
 
-  // Luminaires — "Alimentation ligne de spot"
-  if(cat==='Éclairage/Luminaires' && String(desig).toLowerCase().indexOf('alimentation ligne de spot')===0){
-    var LS = pr.appareillage.luminaires.tarifs["__spot_line__"] || {base_ligne:0, par_spot:0};
-    var nb = Math.max(1, (extras && +extras.spots) || 1);
-    var base = _num(LS.base_ligne) + _num(LS.par_spot) * nb;
-    var coef = (getCoeffs()[pose] || 1);
+  // Luminaires — Alimentation ligne de spot
+  if(cat==='Éclairage/Luminaires' && /^Alimentation ligne de spot/i.test(String(desig||''))){
+    const SP = pr.appareillage.luminaires.tarifs["__spot_line__"] || {base_ligne:0, par_spot:0};
+    const nb = Math.max(1, (extras && +extras.spots) || 1);
+    const base = _num(SP.base_ligne) + _num(SP.par_spot)*nb;
+    const coef = (interv==='Création' && pose) ? (coeffs[pose]||1) : 1;
     return roundUp5(base * coef);
   }
 
-  // Circuit spécialisé — si libellé "Circuit spécialisé" simple, choisir par section
+  // Circuit spécialisé — normalise désignation avec section si fournie
   if(cat==='Circuit spécialisé' && /^Circuit spécialisé/i.test(desig||'') && section){
     desig = 'Circuit spécialisé ' + String(section);
   }
 
-  var bloc = pr[ck[0]][ck[1]];
-  var tarifs = (bloc.tarifs && bloc.tarifs[desig]) ? bloc.tarifs[desig] : null;
+  const bloc = pr[ck[0]][ck[1]];
+  let tarifs = (bloc.tarifs && bloc.tarifs[desig]) ? bloc.tarifs[desig] : null;
   if(!tarifs){
-    // si type perso absent → fallback à "Prise" pour Prises, au 1er type sinon
     if(cat==='Prises') tarifs = bloc.tarifs["Prise"];
     else {
-      var f = (bloc.baseTypes && bloc.baseTypes[0]) || Object.keys(bloc.tarifs||{})[0];
+      const f = (bloc.baseTypes && bloc.baseTypes[0]) || Object.keys(bloc.tarifs||{})[0];
       tarifs = bloc.tarifs[f] || {};
     }
   }
-  var base = _num(tarifs[interv]) || 0;
-  var coef = (interv==='Création' && pose) ? (getCoeffs()[pose]||1) : 1;
+  const base = _num(tarifs[interv]) || 0;
+  const coef = (interv==='Création' && pose) ? (coeffs[pose]||1) : 1;
   return roundUp5(base * coef);
 }
-// expose
 window.computePU = computePU;
+
+/* — Construit TARIFS_BASE (pour le reprice V10.x) + synchronise COEFF_POSE — */
+function applyPrestToApp(){
+  const pr = getPrestations();
+  const coeffs = getCoeffs();
+
+  const TB = { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
+
+  // Prises
+  const P = pr.appareillage.prises;
+  const pTypes = (P.baseTypes||[]).concat(P.customTypes||[]);
+  pTypes.forEach(name=>{ TB.prises[name] = _clone(P.tarifs[name]||{}); });
+
+  // Luminaires
+  const L = pr.appareillage.luminaires;
+  const lTypes = (L.baseTypes||[]).filter(n=>n!=="Alimentation ligne de spot").concat(L.customTypes||[]);
+  lTypes.forEach(name=>{ TB.eclairage[name] = _clone(L.tarifs[name]||{}); });
+  // Alimentation ligne de spot : on enregistre un “prix création de base” comme repère (sans nb spots)
+  if (L.tarifs["__spot_line__"]) {
+    TB.eclairage["Alimentation ligne de spot"] = {
+      "Création": _num(L.tarifs["__spot_line__"].base_ligne) // le moteur computePU ajoute “par spot”
+    };
+  }
+
+  // Commandes
+  const C = pr.appareillage.commandes;
+  const cTypes = (C.baseTypes||[]).concat(C.customTypes||[]);
+  cTypes.forEach(name=>{ TB.eclairage[name] = _clone(C.tarifs[name]||{}); });
+
+  // Circuits spécialisés (par libellé complet)
+  const CS = pr.appareillage.circuit_spec;
+  const csTypes = (CS.baseTypes||[]).concat(CS.customTypes||[]);
+  csTypes.forEach(name=>{ TB.circuit_specialise[name] = _clone(CS.tarifs[name]||{}); });
+
+  // Expose globaux attendus par Chap.15
+  window.TARIFS_BASE = TB;
+  window.COEFF_POSE  = coeffs;
+  try{ if (typeof saveLocal==='function') saveLocal(); }catch(e){}
+}
+
+/* Appel initial (au chargement du fichier) */
+try{ applyPrestToApp(); }catch(e){}
 
 /* ============================================================
    13.4 • Accueil "Catalogue prestation"
    ============================================================ */
 function pageCataloguePrestation(){
-  const p = getPrestations();
   view(
     '<div class="presta-wrap">'
     +  '<div class="card">'
-    +    b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+    +    (typeof b==='function'? b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back') : '')
     +    '<h2>Catalogue prestation</h2>'
-    +    '<p class="muted">Paramétrez les tarifs de pose utilisés dans l’application. Les changements impactent l’aperçu, l’estimatif, les exports et la duplication “appliquer nouveaux tarifs”.</p>'
+    +    '<p class="muted">Tarifs de pose et coefficients (appareillages). Toute modification impacte l’estimatif, les exports et la duplication “nouveaux tarifs”.</p>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Appareillage</h3>'
-    +    '<div class="subcard mb8"><div class="h-note">Prises, éclairage (luminaires et commandes), circuits spécialisés. Chaque section ci-dessous ouvre son éditeur complet.</div></div>'
+    +    '<div class="subcard mb8"><div class="h-note">Prises, éclairage (luminaires & commandes), circuits spécialisés.</div></div>'
     +    '<div class="row gap8">'
     +      b('Prises','pageCatPresta_Prise()','btn')
     +      b('Éclairage — Luminaires','pageCatPresta_Luminaires()','btn')
     +      b('Éclairage — Commandes','pageCatPresta_Commandes()','btn')
     +      b('Circuit spécialisé','pageCatPresta_CS()','btn')
+    +      b('Coefficients de pose (appareillage)','pageCatPresta_Coeffs()','btn')  <!-- ✅ uniquement ici -->
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
-    +    '<h3>Coefficients de pose</h3>'
-    +    '<div class="subcard mb8"><div class="h-note">Ajuste les coefficients multiplicatifs par type de pose (appliqués surtout aux interventions “Création”).</div></div>'
-    +    '<div class="row gap8">'+ b('Ouvrir','pageCatPresta_Coeffs()','btn') +'</div>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<h3>Tableau • Ventilation • Mise à la terre</h3>'
-    +    '<div class="subcard mb8"><div class="h-note">Sections prêtes pour de futurs réglages (actuellement vides).</div></div>'
+    +    '<h3>Autres familles</h3>'
     +    '<div class="row gap8">'
     +      b('Tableau (à venir)','alert(\'Section Tableau : à définir plus tard.\')','btn')
     +      b('Ventilation (à venir)','alert(\'Section Ventilation : à définir plus tard.\')','btn')
@@ -3982,7 +4010,6 @@ function pageCataloguePrestation(){
 
     +  '<div class="card">'
     +    '<h3>Import / Export</h3>'
-    +    '<div class="subcard mb8"><div class="h-note">Sauvegarde ou partage de vos réglages de prestations et coefficients.</div></div>'
     +    '<div class="row gap8">'
     +      b('Export JSON','presta13Export()','btn')
     +      b('Import JSON','presta13Import()','btn')
@@ -3995,7 +4022,7 @@ function pageCataloguePrestation(){
 
 /* ============================================================
    13.5 • Éditeurs : Appareillage
-   ------------------------------------------------------------ */
+   ============================================================ */
 
 /* ---- 13.5.1 Prises ---- */
 function pageCatPresta_Prise(){
@@ -4033,15 +4060,14 @@ function pageCatPresta_Prise(){
     +      '<input id="pr-add-name" placeholder="ex : Sortie de câble" />'
     +      + b('Ajouter','catPrAdd()','btn')
     +    '</div>'
-    +    '<div class="h-note" style="margin-top:6px;">Les nouveaux types héritent des tarifs actuels de “Prise” au moment de l’ajout (modifiable ensuite).</div>'
+    +    '<div class="h-note" style="margin-top:6px;">Les nouveaux types héritent des tarifs actuels de “Prise”.</div>'
     +  '</div>'
     +'</div>'
   );
 
   window.catPrAdd = function(){
     const name = (document.getElementById('pr-add-name').value||'').trim(); if(!name) return;
-    const all = getPrestations();
-    const P2 = all.appareillage.prises;
+    const all = getPrestations(); const P2 = all.appareillage.prises;
     if(!P2.tarifs[name]){
       P2.customTypes.push(name);
       P2.tarifs[name] = _clone(P2.tarifs["Prise"]||{});
@@ -4127,7 +4153,6 @@ function pageCatPresta_Luminaires(){
     const all = getPrestations(); const L2 = all.appareillage.luminaires;
     if(!L2.tarifs[name]){
       L2.customTypes.push(name);
-      // hérite des tarifs de "Point de centre"
       L2.tarifs[name] = _clone(L2.tarifs["Point de centre"]||{});
       setPrestations(all);
     }
@@ -4296,29 +4321,27 @@ function pageCatPresta_CS(){
 }
 
 /* ============================================================
-   13.6 • Coefficients de pose
+   13.6 • Coefficients de pose (alignés sur POSE_TYPES)
    ============================================================ */
 function pageCatPresta_Coeffs(){
   const C = getCoeffs();
-  function f(k){ return '<div class="field"><label>'+_esc(k)+'</label><input id="cf-'+_esc(k)+'" type="number" step="0.01" inputmode="decimal" value="'+(+C[k]||1)+'"/></div>'; }
+  const keys = _poseTypes();
+  const row = k => '<div class="field"><label>'+_esc(k)+'</label><input id="cf-'+_esc(k)+'" type="number" step="0.01" inputmode="decimal" value="'+(+C[k]||1)+'"/></div>';
 
-  const keys = Object.keys(C);
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Coefficients de pose</h2></div>'
-    +  '<div class="card"><div class="presta-grid">'
-    +    keys.map(f).join('')
+    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Coefficients de pose — Appareillage</h2></div>'
+    +  '<div class="card"><div class="presta-grid">'+ keys.map(row).join('') +'</div>'
+    +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','coeffSaveAll()','btn') +'</div>'
+    +  '<div class="h-note" style="margin-top:6px;">Les coefficients s’appliquent aux interventions “Création” des familles d’appareillage et sont pris en compte dans l’estimatif, l’export et la duplication “nouveaux tarifs”.</div>'
     +  '</div>'
-    +  '<div class="row gap8" style="margin-top:8px;">'
-    +    b('Enregistrer','coeffSaveAll()','btn')
-    +  '</div></div>'
     +'</div>'
   );
 
   window.coeffSaveAll = function(){
-    const C2 = {};
-    keys.forEach(k=>{ var el=document.getElementById('cf-'+k); C2[k]= Math.max(0, parseFloat(el.value)||1); });
-    setCoeffs(C2); alert('Coefficients enregistrés.');
+    const out={}; keys.forEach(k=>{ const el=document.getElementById('cf-'+k); out[k]= Math.max(0, parseFloat(el.value)||1); });
+    setCoeffs(out);
+    alert('Coefficients enregistrés.');
   };
 }
 
@@ -4341,7 +4364,8 @@ function presta13Import(){
         const obj = JSON.parse(rd.result||'{}');
         if(obj.prestations) setPrestations(obj.prestations);
         if(obj.coeffs) setCoeffs(obj.coeffs);
-        alert('Catalogue prestation importé.'); pageCataloguePrestation();
+        alert('Catalogue prestation importé.');
+        pageCataloguePrestation();
       }catch(e){ alert('Import impossible : '+e.message); }
     };
     rd.readAsText(f,'utf-8');
@@ -4352,7 +4376,9 @@ function presta13Reset(){
   if(!confirm('Réinitialiser le catalogue prestation et les coefficients ?')) return;
   localStorage.removeItem(KEY_PRESTA13);
   localStorage.removeItem(KEY_COEFFS13);
-  alert('Catalogue réinitialisé.'); pageCataloguePrestation();
+  applyPrestToApp();
+  alert('Catalogue réinitialisé.');
+  pageCataloguePrestation();
 }
 
 /* ============================================================
@@ -4368,22 +4394,13 @@ Object.assign(window,{
   presta13Export,
   presta13Import,
   presta13Reset,
-  computePU // déjà exposé ci-dessus
+  computePU,
+  applyPrestToApp
 });
 </script>
 
-
-  
-
 <!-- =============================
-     CHAPITRE 13A — ACCUEIL TARIFS (compat V1)
-     - Restaure pageTarifsAccueil()
-     - Pointe vers les écrans actuels :
-       • Catalogue prestation (chap.13)
-       • Coefficients de pose
-       • Préférences devis & facturation
-       • Configuration entreprise
-     - Sans dépendances exotiques, safe si certaines pages manquent
+     CHAPITRE 13A — ACCUEIL TARIFS (compat V1, nettoyé)
      ============================= -->
 <style>
   .tarifs-wrap .card{ margin-bottom:16px; }
@@ -4393,45 +4410,34 @@ Object.assign(window,{
 <script>
 (function(){
   function has(fn){ return typeof window[fn] === 'function'; }
-  function btn(label, call, cls){ 
+  function btn(label, call, cls){
     if (typeof b === 'function') return b(label, call, cls||'btn');
-    return '<button class="'+(cls||'')+'" onclick="'+call+'">'+label+'</button>';
-  }
-  function goOrWarn(fnName, fallback){
-    if (has(fnName)) return window[fnName]();
-    if (fallback && has(fallback)) return window[fallback]();
-    alert('Cette section n’est pas disponible.');
+    return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
   }
 
-  function pageTarifsAccueil(){
+  window.pageTarifsAccueil = function(){
     var html = ''
     + '<div class="tarifs-wrap">'
     +   '<div class="card">'
     +     (has('pageMain') ? btn('Retour','pageMain()','btn back') : '')
     +     '<h2>Tarifs & paramètres</h2>'
-    +     '<p class="muted">Accès centralisé aux réglages de pose, coefficients, préférences et informations entreprise.</p>'
+    +     '<p class="muted">Accès centralisé aux réglages.</p>'
     +   '</div>'
-
     +   '<div class="card">'
     +     '<h3>Catalogue prestation</h3>'
-    +     '<p class="muted">Gérez les tarifs de pose (prises, éclairage, commandes, circuits spécialisés…)</p>'
+    +     '<p class="muted">Prises, éclairage, commandes, circuits spécialisés…</p>'
     +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +       btn('Ouvrir le catalogue','pageCataloguePrestation()','btn primary')
-    +       btn('Coefficients de pose','pageCatPresta_Coeffs()','btn')
+    +       btn('Ouvrir le catalogue','pageCataloguePrestation()','btn primary')'
     +     '</div>'
     +   '</div>'
-
     +   '<div class="card">'
     +     '<h3>Préférences devis & facturation</h3>'
-    +     '<p class="muted">Devise, TVA par défaut, numérotation…</p>'
     +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +       btn('Ouvrir les préférences','pagePreferences()','btn')
+    +       btn('Ouvrir les préférences','pagePreferences()','btn') 
     +     '</div>'
     +   '</div>'
-
     +   '<div class="card">'
     +     '<h3>Configuration entreprise</h3>'
-    +     '<p class="muted">Coordonnées, SIREN/TVA, IBAN, assurances, logo…</p>'
     +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
     +       btn('Ouvrir la configuration','pageConfigEntreprise()','btn')
     +     '</div>'
@@ -4439,13 +4445,12 @@ Object.assign(window,{
     + '</div>';
 
     if (typeof view === 'function') view(html);
-    else document.body.innerHTML = html; // fallback ultra-sûr
-  }
-
-  // Expose
-  Object.assign(window, { pageTarifsAccueil });
+    else document.body.innerHTML = html;
+  };
 })();
 </script>
+
+
 
 
 
