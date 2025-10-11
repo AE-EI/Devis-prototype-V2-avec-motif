@@ -5825,5 +5825,369 @@ function _abortNewDevis16c(){
   };
 })();
 </script>
+  <!-- =============================
+     CHAPITRE 16D : Annuaire Clients + intégration Devis
+     - Stockage local (clients_v1)
+     - Pages : Liste, Nouveau, Édition, Détail minimal
+     - Intégration "Nouveau devis" : choisir client existant OU créer client
+     - Auto-enregistrement dans l'annuaire quand on saisit un client pour un devis
+     - Bouton "Clients" injecté dans le menu principal
+     ============================= -->
+
+<style>
+  .cli-wrap .card{ margin-bottom:16px; }
+  .cli-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .cli-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .cli-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .cli-note{ color:var(--muted); font-size:14px; }
+  .cli-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .cli-list-item{ display:flex; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .cli-list-item .meta{ font-size:13px; color:var(--muted); }
+  .cli-toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .cli-tabs{ display:flex; gap:6px; margin:8px 0; flex-wrap:wrap; }
+  .cli-tab{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 10px; cursor:pointer; }
+  .cli-tab.active{ background:#f0f6ff; border-color:#90caf9; }
+  .muted{ color:var(--muted); }
+  .fullrow{ grid-column:1/-1; }
+</style>
+
+<script>
+/* ============================================================
+   §16D.0 • Stockage & helpers
+   ============================================================ */
+const KEY_CLIENTS_V1 = 'clients_v1';
+
+function _readLS16d(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
+function _writeLS16d(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function _clientsGet(){ return _readLS16d(KEY_CLIENTS_V1, []); }
+function _clientsSet(list){ _writeLS16d(KEY_CLIENTS_V1, Array.isArray(list)? list : []); }
+function _esc16d(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _shortId16d(){ return Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4); }
+function _nowISO(){ return new Date().toISOString(); }
+
+function _clientUpsert(obj){
+  const list=_clientsGet();
+  if(!obj.id) obj.id=_shortId16d();
+  obj.updated_at=_nowISO();
+  if(!obj.created_at) obj.created_at=_nowISO();
+  const idx=list.findIndex(x=>x.id===obj.id);
+  if(idx>=0) list[idx]=obj; else list.unshift(obj);
+  _clientsSet(list);
+  return obj;
+}
+function _clientDelete(id){
+  _clientsSet(_clientsGet().filter(x=>x.id!==id));
+}
+function _clientById(id){
+  return _clientsGet().find(x=>x.id===id) || null;
+}
+
+/* ============================================================
+   §16D.1 • Pages Annuaire : Liste / Nouveau / Édition
+   ============================================================ */
+function pageClients(){
+  const list = _clientsGet();
+  const q = ''; // (évolutif : on peut ajouter un champ de recherche)
+  const rows = list.length ? list.map(c=>{
+    const line1 = '<strong>'+_esc16d(c.nom||'')+'</strong>';
+    const line2 = [
+      (c.adresse||'').trim(),
+      [c.cp||'', c.ville||''].filter(Boolean).join(' ')
+    ].filter(Boolean).join(' — ');
+    const meta  = [ (c.email||''),(c.tel||'') ].filter(Boolean).join(' • ');
+    return (
+      '<div class="cli-list-item">'
+      +  '<div style="flex:1 1 auto;">'
+      +    line1 + (line2?'<div class="meta">'+_esc16d(line2)+'</div>':'')
+      +    (meta?'<div class="meta">'+_esc16d(meta)+'</div>':'')
+      +  '</div>'
+      +  b('Ouvrir','pageClientEdit('+JSON.stringify(c.id)+')','btn')
+      +  b('Supprimer','clientDeleteUI('+JSON.stringify(c.id)+')','btn')
+      +  (window.devis ? b('Affecter au devis','attachClientToCurrent('+JSON.stringify(c.id)+')','btn') : '')
+      +'</div>'
+    );
+  }).join('') : '<p class="muted">Aucun client enregistré pour le moment.</p>';
+
+  view(
+    '<div class="cli-wrap">'
+    +  '<div class="card">'
+    +    (typeof b==='function' ? b('Retour','pageMain()','btn back') : '')
+    +    '<h2>Clients</h2>'
+    +    '<div class="cli-toolbar">'
+    +      b('Créer un client','pageClientNew()','btn primary')
+    +    '</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Annuaire</h3>'
+    +    rows
+    +  '</div>'
+    +'</div>'
+  );
+}
+function clientDeleteUI(id){
+  const c=_clientById(id);
+  if(!c) return;
+  if(confirm('Supprimer le client « '+(c.nom||'')+' » ?')){
+    _clientDelete(id);
+    pageClients();
+  }
+}
+
+function pageClientNew(prefill){
+  const c = Object.assign({
+    id:'', nom:'', email:'', tel:'', adresse:'', cp:'', ville:'', notes:''
+  }, prefill||{});
+  view(_clientFormHTML(c, 'Créer un client', '_clientSaveNew()','pageClients()'));
+}
+function pageClientEdit(id){
+  const c=_clientById(id); if(!c){ alert('Introuvable.'); return pageClients(); }
+  view(_clientFormHTML(c, 'Modifier le client', '_clientSaveEdit('+JSON.stringify(id)+')','pageClients()'));
+}
+
+function _clientFormHTML(c, title, onSave, onCancel){
+  return (
+    '<div class="cli-wrap">'
+    +  '<div class="card">'
+    +    b('Retour', onCancel, 'btn back')
+    +    '<h2>'+_esc16d(title)+'</h2>'
+    +    '<p class="cli-note">Les champs marqués peuvent rester vides si non pertinents.</p>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<div class="cli-grid">'
+    +      '<div class="cli-field"><label>Nom / Société</label><input id="cli-nom" value="'+_esc16d(c.nom)+'"/></div>'
+    +      '<div class="cli-field"><label>Email</label><input id="cli-email" value="'+_esc16d(c.email)+'"/></div>'
+    +      '<div class="cli-field"><label>Téléphone</label><input id="cli-tel" value="'+_esc16d(c.tel)+'"/></div>'
+    +      '<div class="cli-field fullrow"><label>Adresse</label><input id="cli-adr" value="'+_esc16d(c.adresse)+'"/></div>'
+    +      '<div class="cli-field"><label>Code postal</label><input id="cli-cp" value="'+_esc16d(c.cp)+'"/></div>'
+    +      '<div class="cli-field"><label>Ville</label><input id="cli-ville" value="'+_esc16d(c.ville)+'"/></div>'
+    +      '<div class="cli-field fullrow"><label>Notes</label><textarea id="cli-notes" rows="4">'+_esc16d(c.notes||'')+'</textarea></div>'
+    +    '</div>'
+    +    '<div class="cli-actions">'
+    +      b('💾 Enregistrer', onSave, 'btn primary')
+    +      b('Annuler', onCancel, 'btn')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+function _readClientForm(){
+  return {
+    id:'',
+    nom:(document.getElementById('cli-nom')||{}).value||'',
+    email:(document.getElementById('cli-email')||{}).value||'',
+    tel:(document.getElementById('cli-tel')||{}).value||'',
+    adresse:(document.getElementById('cli-adr')||{}).value||'',
+    cp:(document.getElementById('cli-cp')||{}).value||'',
+    ville:(document.getElementById('cli-ville')||{}).value||'',
+    notes:(document.getElementById('cli-notes')||{}).value||''
+  };
+}
+function _clientSaveNew(){
+  const data=_readClientForm();
+  _clientUpsert(data);
+  alert('✅ Client créé.');
+  pageClients();
+}
+function _clientSaveEdit(id){
+  const old=_clientById(id)||{id:id};
+  const data=Object.assign({}, old, _readClientForm(), {id:id});
+  _clientUpsert(data);
+  alert('✅ Client mis à jour.');
+  pageClients();
+}
+
+/* ============================================================
+   §16D.2 • Intégration à "Nouveau devis" :
+            choisir un client existant OU créer un client
+   - Remplace pageClientNewDevis() si elle existe (chap.16C),
+     sinon fournit un écran d’étape client pour le workflow
+   - Enregistre automatiquement le client saisi dans l'annuaire
+   ============================================================ */
+
+/* Vue combinée : 2 onglets (Existant / Nouveau) */
+function pageClientNewDevis(){
+  // S'il existe déjà un client (retour arrière), on préremplit le formulaire "Nouveau"
+  var cur = (window.devis && devis.__client) ? devis.__client : {
+    nom:'', email:'', tel:'', adresse:'', cp:'', ville:'', notes:''
+  };
+  var list = _clientsGet();
+
+  function listHTML(){
+    if(!list.length) return '<p class="muted">Aucun client enregistré.</p>';
+    return list.map(c=>{
+      const line2 = [
+        (c.adresse||'').trim(),
+        [c.cp||'', c.ville||''].filter(Boolean).join(' ')
+      ].filter(Boolean).join(' — ');
+      const meta  = [ (c.email||''),(c.tel||'') ].filter(Boolean).join(' • ');
+      return (
+        '<div class="cli-list-item">'
+        +  '<div style="flex:1 1 auto;">'
+        +    '<strong>'+_esc16d(c.nom||'')+'</strong>'
+        +    (line2?'<div class="meta">'+_esc16d(line2)+'</div>':'')
+        +    (meta?'<div class="meta">'+_esc16d(meta)+'</div>':'')
+        +  '</div>'
+        +  b('Sélectionner ce client','_selectClientForDevis('+JSON.stringify(c.id)+')','btn primary')
+        +  b('Éditer','pageClientEdit('+JSON.stringify(c.id)+')','btn')
+        +'</div>'
+      );
+    }).join('');
+  }
+
+  view(
+    '<div class="cli-wrap">'
+    +  '<div class="card">'
+    +    (typeof b==='function' ? b('Annuler','_abortNewDevis16d()','btn back') : '')
+    +    '<h2>Client du devis</h2>'
+    +    '<p class="cli-note">Choisissez un client existant ou créez-en un nouveau. Le client sera associé au devis et mémorisé dans l’annuaire.</p>'
+    +    '<div class="cli-tabs">'
+    +      '<span class="cli-tab active" id="tab-exist">Client existant</span>'
+    +      '<span class="cli-tab" id="tab-new">Nouveau client</span>'
+    +    '</div>'
+    +  '</div>'
+
+    +  '<div class="card" id="pane-exist">'
+    +    '<h3>Clients enregistrés</h3>'
+    +    listHTML()
+    +  '</div>'
+
+    +  '<div class="card" id="pane-new" style="display:none;">'
+    +    '<h3>Nouveau client</h3>'
+    +    '<div class="cli-grid">'
+    +      '<div class="cli-field"><label>Nom / Société</label><input id="ncli-nom" value="'+_esc16d(cur.nom)+'"/></div>'
+    +      '<div class="cli-field"><label>Email</label><input id="ncli-email" value="'+_esc16d(cur.email)+'"/></div>'
+    +      '<div class="cli-field"><label>Téléphone</label><input id="ncli-tel" value="'+_esc16d(cur.tel)+'"/></div>'
+    +      '<div class="cli-field fullrow"><label>Adresse</label><input id="ncli-adr" value="'+_esc16d(cur.adresse)+'"/></div>'
+    +      '<div class="cli-field"><label>Code postal</label><input id="ncli-cp" value="'+_esc16d(cur.cp)+'"/></div>'
+    +      '<div class="cli-field"><label>Ville</label><input id="ncli-ville" value="'+_esc16d(cur.ville)+'"/></div>'
+    +      '<div class="cli-field fullrow"><label>Notes</label><textarea id="ncli-notes" rows="3">'+_esc16d(cur.notes||'')+'</textarea></div>'
+    +    '</div>'
+    +    '<div class="cli-actions">'
+    +      b('Enregistrer ce client et continuer','_saveNewClientAndAttach()','btn primary')
+    +      b('Ignorer pour l’instant','_skipClientNewDevis16d()','btn')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+
+  // Onglets
+  var te = document.getElementById('tab-exist');
+  var tn = document.getElementById('tab-new');
+  te && te.addEventListener('click', function(){
+    te.classList.add('active'); tn.classList.remove('active');
+    document.getElementById('pane-exist').style.display='';
+    document.getElementById('pane-new').style.display='none';
+  });
+  tn && tn.addEventListener('click', function(){
+    tn.classList.add('active'); te.classList.remove('active');
+    document.getElementById('pane-exist').style.display=''; // on montre les deux panes pour éviter pertes
+    document.getElementById('pane-exist').style.display='none';
+    document.getElementById('pane-new').style.display='';
+  });
+}
+
+/* Sélection client existant → associe au devis courant */
+function _selectClientForDevis(id){
+  const c=_clientById(id); if(!c){ alert('Introuvable.'); return; }
+  if(!window.devis) window.devis = {};
+  devis.__client = {
+    nom:c.nom||'', email:c.email||'', tel:c.tel||'',
+    adresse:c.adresse||'', cp:c.cp||'', ville:c.ville||'', notes:c.notes||'',
+    __client_id:id
+  };
+  if(typeof saveLocal==='function') saveLocal();
+  if(typeof pageHome==='function') pageHome(); else alert('Client associé au devis.');
+}
+
+/* Création client depuis l'étape devis → enregistre dans l'annuaire + attache */
+function _saveNewClientAndAttach(){
+  if(!window.devis) window.devis = {};
+  const c = {
+    nom:(document.getElementById('ncli-nom')||{}).value||'',
+    email:(document.getElementById('ncli-email')||{}).value||'',
+    tel:(document.getElementById('ncli-tel')||{}).value||'',
+    adresse:(document.getElementById('ncli-adr')||{}).value||'',
+    cp:(document.getElementById('ncli-cp')||{}).value||'',
+    ville:(document.getElementById('ncli-ville')||{}).value||'',
+    notes:(document.getElementById('ncli-notes')||{}).value||''
+  };
+  const saved=_clientUpsert(c);
+  devis.__client = {
+    nom:saved.nom||'', email:saved.email||'', tel:saved.tel||'',
+    adresse:saved.adresse||'', cp:saved.cp||'', ville:saved.ville||'', notes:saved.notes||'',
+    __client_id:saved.id
+  };
+  if(typeof saveLocal==='function') saveLocal();
+  if(typeof pageHome==='function') pageHome(); else alert('Client enregistré et associé.');
+}
+function _skipClientNewDevis16d(){
+  if(typeof pageHome==='function') pageHome(); else alert('OK.');
+}
+function _abortNewDevis16d(){
+  if(confirm('Annuler ce nouveau devis ?')){
+    window.devis = {};
+    if(typeof saveLocal==='function') saveLocal();
+    if(typeof pageMain==='function') pageMain();
+  }
+}
+
+/* ============================================================
+   §16D.3 • Override léger de actionNouveauDevis pour enchaîner vers la page client
+   - Si déjà override par 16C, notre pageClientNewDevis (plus riche) prend le relais
+   ============================================================ */
+(function overrideNewDevis16d(){
+  var _oldNew = window.actionNouveauDevis;
+  window.actionNouveauDevis = function(){
+    if(!confirm('Créer un nouveau devis ? Le devis courant non sauvegardé sera perdu.')) return;
+    function _shortId(){ return Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4); }
+    window.devis = { __id:_shortId(), __name:'Nouveau devis', __ts: Date.now(), __client:{
+      nom:'', email:'', tel:'', adresse:'', cp:'', ville:'', notes:''
+    }};
+    if(typeof saveLocal==='function') saveLocal();
+    // Redirige vers notre sélection client (existant / nouveau)
+    pageClientNewDevis();
+  };
+})();
+
+/* ============================================================
+   §16D.4 • Injection douce d’un bouton “Clients” dans le menu principal
+   - Sans altérer la structure existante ; si déjà présent, n’ajoute pas de doublon.
+   ============================================================ */
+(function injectClientsButtonIntoMain(){
+  var _orig = window.pageMain;
+  if(typeof _orig !== 'function') return;
+  window.pageMain = function(){
+    _orig();
+    var app=document.getElementById('app'); if(!app) return;
+    if(app.innerHTML.indexOf('pageClients()')!==-1) return;
+    // On ajoute un bloc discret "Clients" sous la section Configuration s'il y a de la place,
+    // sinon on l'ajoute sous le premier card.
+    app.innerHTML = app.innerHTML.replace(
+      /(Configuration<\/div>\s*<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>)/,
+      '$1'
+      + '<div class="card" style="margin-top:12px;">'
+      + '  <div class="section-title">Annuaire</div>'
+      + '  <div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +       '<button class="btn" onclick="pageClients()">Clients</button>'
+      + '  </div>'
+      + '</div>'
+    );
+  };
+})();
+
+/* ============================================================
+   §16D.5 • Expose (global)
+   ============================================================ */
+Object.assign(window, {
+  pageClients,
+  pageClientNew,
+  pageClientEdit,
+  clientDeleteUI,
+  attachClientToCurrent: _selectClientForDevis, // alias action rapide depuis la liste
+  pageClientNewDevis, // exposé si usage direct
+});
+</script>
   
 
