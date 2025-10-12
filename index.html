@@ -3687,14 +3687,8 @@ Object.assign(window, {
 
 
 
-
-
-
-
-
-
-  <!-- =============================
-     CHAPITRE 13 : CATALOGUE PRESTATION — V10.1
+<!-- =============================
+     CHAPITRE 13 : CATALOGUE PRESTATION — V10.2
      Index :
        13.0 • Styles
        13.1 • Stockage & Defaults (prestations + coefficients)
@@ -3714,14 +3708,13 @@ Object.assign(window, {
   .field label{ display:block; font-weight:600; margin-bottom:6px; }
   .muted{ color:var(--muted); }
   .row.gap8{ gap:8px; flex-wrap:wrap; }
-  .pill.small{ padding:6px 10px; font-size:14px; }
   .block{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:12px; }
   .subcard{ border:1px dashed var(--line); border-radius:10px; padding:10px; background:#fafafa; }
   .h-note{ font-size:13px; color:#666; }
+  .mb8{ margin-bottom:8px; }
   .table-mini{ width:100%; border-collapse:collapse; font-size:14px; }
   .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
   .table-mini th{ background:#fafafa; }
-  .mb8{ margin-bottom:8px; }
 </style>
 
 <script>
@@ -3852,6 +3845,9 @@ const _clone = x => JSON.parse(JSON.stringify(x||null));
 const _rowNum = (meta,val)=>'<div class="field"><label>'+_esc(meta.label)+'</label><input id="'+meta.id+'" type="number" step="1" inputmode="decimal" value="'+_num(val)+'"/></div>';
 const _saveNum = id => { const el=document.getElementById(id); return el? _num(el.value) : 0; };
 
+// Fallback roundUp5 si absent
+if (typeof window.roundUp5 !== 'function'){ window.roundUp5 = function(x){ x=+x||0; return Math.ceil(x/5)*5; }; }
+
 function getPrestations(){
   try{ return JSON.parse(localStorage.getItem(KEY_PRESTA13)||'null') || _prestaDefaults(); }
   catch(e){ return _prestaDefaults(); }
@@ -3861,16 +3857,15 @@ function setPrestations(obj){
   applyPrestToApp(); // sync TARIFS_BASE
 }
 
-/* — Liste de pose : si window.POSE_TYPES existe, on l’utilise — */
+/* Liste de pose : si l’app fournit POSE_TYPES on l’utilise, sinon fallback */
 function _poseTypes(){
   if (Array.isArray(window.POSE_TYPES) && window.POSE_TYPES.length){
     return window.POSE_TYPES.slice();
   }
-  // Fallback propre si l’app ne fournit pas POSE_TYPES
   return ["Encastré maçonnerie","Encastré placo","Saillie","Apparent"];
 }
 
-/* Coefficients : toujours alignés sur _poseTypes() */
+/* Coefficients alignés sur _poseTypes() */
 function getCoeffs(){
   let store;
   try{ store = JSON.parse(localStorage.getItem(KEY_COEFFS13)||'null') || {}; }catch(e){ store={}; }
@@ -3880,7 +3875,6 @@ function getCoeffs(){
   return out;
 }
 function setCoeffs(obj){
-  // On ne persiste que les types autorisés par _poseTypes()
   const types=_poseTypes(); const clean={};
   types.forEach(t=>{ clean[t] = (+obj[t] > 0 ? +obj[t] : 1); });
   try{ localStorage.setItem(KEY_COEFFS13, JSON.stringify(clean)); }catch(e){}
@@ -3933,7 +3927,7 @@ function computePU(cat, desig, interv, pose, section, extras){
 }
 window.computePU = computePU;
 
-/* — Construit TARIFS_BASE (pour le reprice V10.x) + synchronise COEFF_POSE — */
+/* — Construit TARIFS_BASE (pour reprice V10.x) + synchronise COEFF_POSE — */
 function applyPrestToApp(){
   const pr = getPrestations();
   const coeffs = getCoeffs();
@@ -3945,14 +3939,13 @@ function applyPrestToApp(){
   const pTypes = (P.baseTypes||[]).concat(P.customTypes||[]);
   pTypes.forEach(name=>{ TB.prises[name] = _clone(P.tarifs[name]||{}); });
 
-  // Luminaires
+  // Luminaires (hors “ligne de spot” calculée dynamiquement)
   const L = pr.appareillage.luminaires;
   const lTypes = (L.baseTypes||[]).filter(n=>n!=="Alimentation ligne de spot").concat(L.customTypes||[]);
   lTypes.forEach(name=>{ TB.eclairage[name] = _clone(L.tarifs[name]||{}); });
-  // Alimentation ligne de spot : on enregistre un “prix création de base” comme repère (sans nb spots)
   if (L.tarifs["__spot_line__"]) {
     TB.eclairage["Alimentation ligne de spot"] = {
-      "Création": _num(L.tarifs["__spot_line__"].base_ligne) // le moteur computePU ajoute “par spot”
+      "Création": _num(L.tarifs["__spot_line__"].base_ligne)
     };
   }
 
@@ -3961,28 +3954,30 @@ function applyPrestToApp(){
   const cTypes = (C.baseTypes||[]).concat(C.customTypes||[]);
   cTypes.forEach(name=>{ TB.eclairage[name] = _clone(C.tarifs[name]||{}); });
 
-  // Circuits spécialisés (par libellé complet)
+  // Circuits spécialisés
   const CS = pr.appareillage.circuit_spec;
   const csTypes = (CS.baseTypes||[]).concat(CS.customTypes||[]);
   csTypes.forEach(name=>{ TB.circuit_specialise[name] = _clone(CS.tarifs[name]||{}); });
 
-  // Expose globaux attendus par Chap.15
+  // Expose globaux attendus par les chapitres 15.x
   window.TARIFS_BASE = TB;
   window.COEFF_POSE  = coeffs;
   try{ if (typeof saveLocal==='function') saveLocal(); }catch(e){}
 }
-
-/* Appel initial (au chargement du fichier) */
+// Appel initial
 try{ applyPrestToApp(); }catch(e){}
 
 /* ============================================================
    13.4 • Accueil "Catalogue prestation"
    ============================================================ */
 function pageCataloguePrestation(){
+  const has = (fn)=> typeof window[fn]==='function';
+  function btn(label, call, cls){ return (typeof b==='function') ? b(label, call, cls||'btn') : '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>'; }
+
   view(
     '<div class="presta-wrap">'
     +  '<div class="card">'
-    +    (typeof b==='function'? b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back') : '')
+    +    (has('pageTarifsAccueil') ? btn('Retour','pageTarifsAccueil()','btn back') : (has('pageMain')?btn('Retour','pageMain()','btn back'):''))
     +    '<h2>Catalogue prestation</h2>'
     +    '<p class="muted">Tarifs de pose et coefficients (appareillages). Toute modification impacte l’estimatif, les exports et la duplication “nouveaux tarifs”.</p>'
     +  '</div>'
@@ -3991,29 +3986,29 @@ function pageCataloguePrestation(){
     +    '<h3>Appareillage</h3>'
     +    '<div class="subcard mb8"><div class="h-note">Prises, éclairage (luminaires & commandes), circuits spécialisés.</div></div>'
     +    '<div class="row gap8">'
-    +      b('Prises','pageCatPresta_Prise()','btn')
-    +      b('Éclairage — Luminaires','pageCatPresta_Luminaires()','btn')
-    +      b('Éclairage — Commandes','pageCatPresta_Commandes()','btn')
-    +      b('Circuit spécialisé','pageCatPresta_CS()','btn')
-    +      b('Coefficients de pose (appareillage)','pageCatPresta_Coeffs()','btn')  <!-- ✅ uniquement ici -->
+    +      btn('Prises','pageCatPresta_Prise()','btn')
+    +      btn('Éclairage — Luminaires','pageCatPresta_Luminaires()','btn')
+    +      btn('Éclairage — Commandes','pageCatPresta_Commandes()','btn')
+    +      btn('Circuit spécialisé','pageCatPresta_CS()','btn')
+    +      btn('Coefficients de pose (appareillage)','pageCatPresta_Coeffs()','btn')
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Autres familles</h3>'
     +    '<div class="row gap8">'
-    +      b('Tableau (à venir)','alert(\'Section Tableau : à définir plus tard.\')','btn')
-    +      b('Ventilation (à venir)','alert(\'Section Ventilation : à définir plus tard.\')','btn')
-    +      b('Mise à la terre (à venir)','alert(\'Section Mise à la terre : à définir plus tard.\')','btn')
+    +      btn('Tableau (à venir)','alert("Section Tableau : à définir plus tard.")','btn')
+    +      btn('Ventilation (à venir)','alert("Section Ventilation : à définir plus tard.")','btn')
+    +      btn('Mise à la terre (à venir)','alert("Section Mise à la terre : à définir plus tard.")','btn')
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Import / Export</h3>'
     +    '<div class="row gap8">'
-    +      b('Export JSON','presta13Export()','btn')
-    +      b('Import JSON','presta13Import()','btn')
-    +      b('Réinitialiser','presta13Reset()','btn')
+    +      btn('Export JSON','presta13Export()','btn')
+    +      btn('Import JSON','presta13Import()','btn')
+    +      btn('Réinitialiser','presta13Reset()','btn')
     +    '</div>'
     +  '</div>'
     +'</div>'
@@ -4035,7 +4030,7 @@ function pageCatPresta_Prise(){
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (P.baseTypes.indexOf(name)===-1 ? b('Supprimer','catPrDel('+JSON.stringify(name)+')','btn') : '')
+      +    (P.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catPrDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catPrDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
       +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
@@ -4044,7 +4039,7 @@ function pageCatPresta_Prise(){
       +    _rowNum({id:prefix+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
       +  '</div>'
       +  '<div class="row gap8" style="margin-top:8px;">'
-      +    b('Enregistrer','catPrSave('+idx+','+JSON.stringify(name)+')','btn')
+      +    (typeof b==='function'? b('Enregistrer','catPrSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catPrSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
       +  '</div>'
       +'</div>'
     );
@@ -4052,13 +4047,13 @@ function pageCatPresta_Prise(){
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Prises</h2></div>'
+    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Prises</h2></div>'
     +  (rows || '<div class="card"><div class="muted">Aucun type.</div></div>')
     +  '<div class="card">'
     +    '<h3>Ajouter un type</h3>'
     +    '<div class="row gap8">'
     +      '<input id="pr-add-name" placeholder="ex : Sortie de câble" />'
-    +      + b('Ajouter','catPrAdd()','btn')
+    +      (typeof b==='function'? b('Ajouter','catPrAdd()','btn') : '<button onclick="catPrAdd()">Ajouter</button>')
     +    '</div>'
     +    '<div class="h-note" style="margin-top:6px;">Les nouveaux types héritent des tarifs actuels de “Prise”.</div>'
     +  '</div>'
@@ -4106,7 +4101,7 @@ function pageCatPresta_Luminaires(){
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (L.baseTypes.indexOf(name)===-1 ? b('Supprimer','catLumDel('+JSON.stringify(name)+')','btn') : '')
+      +    (L.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catLumDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catLumDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
       +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
@@ -4115,7 +4110,7 @@ function pageCatPresta_Luminaires(){
       +    _rowNum({id:prefix+'-rsl',label:'Recâblage sans remplacement luminaire'}, t["Recâblage sans remplacement luminaire"])
       +  '</div>'
       +  '<div class="row gap8" style="margin-top:8px;">'
-      +    b('Enregistrer','catLumSave('+idx+','+JSON.stringify(name)+')','btn')
+      +    (typeof b==='function'? b('Enregistrer','catLumSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catLumSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
       +  '</div>'
       +'</div>'
     );
@@ -4130,19 +4125,19 @@ function pageCatPresta_Luminaires(){
     +    _rowNum({id:'spot-un',   label:'Prix par spot'}, SP.par_spot)
     +  '</div>'
     +  '<div class="row gap8" style="margin-top:8px;">'
-    +    b('Enregistrer','catSpotSave()','btn')
+    +    (typeof b==='function'? b('Enregistrer','catSpotSave()','btn') : '<button onclick="catSpotSave()">Enregistrer</button>')
     +  '</div>'
     +'</div>';
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Éclairage / Luminaires</h2></div>'
+    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Éclairage / Luminaires</h2></div>'
     +  (rows || '') + spotBlock
     +  '<div class="card">'
     +    '<h3>Ajouter un type</h3>'
     +    '<div class="row gap8">'
     +      '<input id="lum-add-name" placeholder="ex : Réglette LED" />'
-    +      + b('Ajouter','catLumAdd()','btn')
+    +      (typeof b==='function'? b('Ajouter','catLumAdd()','btn') : '<button onclick="catLumAdd()">Ajouter</button>')
     +    '</div>'
     +  '</div>'
     +'</div>'
@@ -4193,7 +4188,7 @@ function pageCatPresta_Commandes(){
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (C.baseTypes.indexOf(name)===-1 ? b('Supprimer','catCmdDel('+JSON.stringify(name)+')','btn') : '')
+      +    (C.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catCmdDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catCmdDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
       +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
@@ -4202,7 +4197,7 @@ function pageCatPresta_Commandes(){
       +    _rowNum({id:prefix+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
       +  '</div>'
       +  '<div class="row gap8" style="margin-top:8px;">'
-      +    b('Enregistrer','catCmdSave('+idx+','+JSON.stringify(name)+')','btn')
+      +    (typeof b==='function'? b('Enregistrer','catCmdSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catCmdSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
       +  '</div>'
       +'</div>'
     );
@@ -4210,13 +4205,13 @@ function pageCatPresta_Commandes(){
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Éclairage / Commandes</h2></div>'
+    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Éclairage / Commandes</h2></div>'
     +  (rows || '<div class="card"><div class="muted">Aucun type.</div></div>')
     +  '<div class="card">'
     +    '<h3>Ajouter un type</h3>'
     +    '<div class="row gap8">'
     +      '<input id="cmd-add-name" placeholder="ex : Commande radio" />'
-    +      + b('Ajouter','catCmdAdd()','btn')
+    +      (typeof b==='function'? b('Ajouter','catCmdAdd()','btn') : '<button onclick="catCmdAdd()">Ajouter</button>')
     +    '</div>'
     +  '</div>'
     +'</div>'
@@ -4262,7 +4257,7 @@ function pageCatPresta_CS(){
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (CS.baseTypes.indexOf(name)===-1 ? b('Supprimer','catCSDel('+JSON.stringify(name)+')','btn') : '')
+      +    (CS.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catCSDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catCSDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
       +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
@@ -4271,7 +4266,7 @@ function pageCatPresta_CS(){
       +    _rowNum({id:prefix+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
       +  '</div>'
       +  '<div class="row gap8" style="margin-top:8px;">'
-      +    b('Enregistrer','catCSSave('+idx+','+JSON.stringify(name)+')','btn')
+      +    (typeof b==='function'? b('Enregistrer','catCSSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catCSSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
       +  '</div>'
       +'</div>'
     );
@@ -4279,13 +4274,13 @@ function pageCatPresta_CS(){
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Circuit spécialisé</h2></div>'
+    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Circuit spécialisé</h2></div>'
     +  (rows || '<div class="card"><div class="muted">Aucun type.</div></div>')
     +  '<div class="card">'
     +    '<h3>Ajouter un type</h3>'
     +    '<div class="row gap8">'
     +      '<input id="cs-add-name" placeholder="ex : Circuit spécialisé 4 mm²" />'
-    +      + b('Ajouter','catCSAdd()','btn')
+    +      (typeof b==='function'? b('Ajouter','catCSAdd()','btn') : '<button onclick="catCSAdd()">Ajouter</button>')
     +    '</div>'
     +  '</div>'
     +'</div>'
@@ -4330,9 +4325,9 @@ function pageCatPresta_Coeffs(){
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Coefficients de pose — Appareillage</h2></div>'
+    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Coefficients de pose — Appareillage</h2></div>'
     +  '<div class="card"><div class="presta-grid">'+ keys.map(row).join('') +'</div>'
-    +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','coeffSaveAll()','btn') +'</div>'
+    +  '<div class="row gap8" style="margin-top:8px;">'+ (typeof b==='function'? b('Enregistrer','coeffSaveAll()','btn') : '<button onclick="coeffSaveAll()">Enregistrer</button>') +'</div>'
     +  '<div class="h-note" style="margin-top:6px;">Les coefficients s’appliquent aux interventions “Création” des familles d’appareillage et sont pris en compte dans l’estimatif, l’export et la duplication “nouveaux tarifs”.</div>'
     +  '</div>'
     +'</div>'
@@ -4398,8 +4393,7 @@ Object.assign(window,{
   applyPrestToApp
 });
 </script>
-
-<!-- =============================
+  <!-- =============================
      CHAPITRE 13.9 — ACCUEIL TARIFS (remplace 13A)
      - Page "Paramétrage" (pageTarifsAccueil)
      - Redirige vers : Catalogue prestation, Préférences, Configuration entreprise
@@ -4412,14 +4406,12 @@ Object.assign(window,{
 
 <script>
 (function(){
-  // Utilitaires locaux sûrs (sans effets de bord)
   function has(fn){ return typeof window[fn] === 'function'; }
   function btn(label, call, cls){
-    if (has('b')) return b(label, call, cls || 'btn'); // réutilise ton builder si présent
+    if (has('b')) return b(label, call, cls || 'btn');
     return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
   }
 
-  // --- Page Paramétrage ---
   function pageTarifsAccueil(){
     var html =
       '<div class="tarifs-wrap">'
@@ -4454,72 +4446,18 @@ Object.assign(window,{
     +   '</div>'
     + '</div>';
 
-    if (has('view')) view(html); else document.body.innerHTML = html; // fallback
+    if (has('view')) view(html); else (document.getElementById('app')||document.body).innerHTML = html;
   }
 
-  // Expose uniquement la page
   Object.assign(window, { pageTarifsAccueil });
 })();
 </script>
 
-  
 
 
 
-<!-- 13.SHIM — ré-expose Catalogue prestation si absent -->
-<script>
-(function(){
-  // Si la fonction n'est pas exposée, on fournit un fallback propre
-  if (typeof window.pageCataloguePrestation !== 'function') {
-    window.pageCataloguePrestation = function(){
-      // Si les sous-pages existent, on affiche un accueil minimal qui y renvoie
-      var has = fn => typeof window[fn] === 'function';
-      if (has('pageCatPresta_Prise') || has('pageCatPresta_Luminaires') || has('pageCatPresta_Commandes') || has('pageCatPresta_CS') || has('pageCatPresta_Coeffs')) {
-        var btn = function(label, call, cls){
-          if (typeof window.b === 'function') return b(label, call, cls||'btn');
-          return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
-        };
-        var html = ''
-          + '<div class="presta-wrap">'
-          +   '<div class="card">'
-          +     (has('pageTarifsAccueil') ? btn('Retour','pageTarifsAccueil()','btn back')
-                : (has('pageMain') ? btn('Retour','pageMain()','btn back') : ''))
-          +     '<h2>Catalogue prestation</h2>'
-          +     '<p class="muted">Choisissez une section. Les coefficients de pose ne concernent que l’appareillage (Création).</p>'
-          +   '</div>'
-          +   '<div class="card">'
-          +     '<h3>Appareillage</h3>'
-          +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-          +       (has('pageCatPresta_Prise')       ? btn('Prises','pageCatPresta_Prise()') : '')
-          +       (has('pageCatPresta_Luminaires')  ? btn('Éclairage — Luminaires','pageCatPresta_Luminaires()') : '')
-          +       (has('pageCatPresta_Commandes')   ? btn('Éclairage — Commandes','pageCatPresta_Commandes()') : '')
-          +       (has('pageCatPresta_CS')          ? btn('Circuit spécialisé','pageCatPresta_CS()') : '')
-          +     '</div>'
-          +   '</div>'
-          +   '<div class="card">'
-          +     '<h3>Coefficients de pose</h3>'
-          +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-          +       (has('pageCatPresta_Coeffs') ? btn('Ouvrir','pageCatPresta_Coeffs()') : '')
-          +     '</div>'
-          +     '<p class="muted">Appliqués aux interventions “Création” de l’appareillage (prises, luminaires, commandes, circuits spé.).</p>'
-          +   '</div>'
-          + '</div>';
-        if (typeof window.view === 'function') view(html);
-        else (document.getElementById('app')||document.body).innerHTML = html;
-      } else {
-        // Rien n’existe : prévenir clairement
-        alert('Catalogue prestation indisponible : le Chapitre 13 (pages de détail) n’est pas chargé.');
-      }
-    };
-  }
 
-  // Petit filet de sécurité : si roundUp5 n’existe plus, on fournit un fallback
-  if (typeof window.roundUp5 !== 'function') {
-    window.roundUp5 = function(x){ x = +x||0; return Math.ceil(x/5)*5; };
-  }
-})();
-</script>
-
+ 
 
 
   
