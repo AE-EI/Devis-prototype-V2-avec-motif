@@ -32,6 +32,23 @@
     .badge{ display:inline-block; padding:2px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:#444; background:#fafafa; }
   </style>
 
+  <style>
+/* Toast “Sauvegardé” en bas à gauche */
+.save-toast{
+  position:fixed; left:12px; bottom:12px; z-index:9999;
+  background:#e8f5e9; border:1px solid #c8e6c9; color:#256029;
+  padding:8px 12px; border-radius:10px; font-size:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);
+  transition:opacity .25s ease, transform .25s ease;
+}
+.save-toast.hide{ opacity:0; transform:translateY(6px); }
+
+/* Cadre “OK” pour confirmation visuelle locale */
+.ok-banner{
+  border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
+  padding:8px 10px; border-radius:8px; font-size:14px; margin:8px 0;
+}
+</style>
   <!-- JSZip (exports ZIP) -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
@@ -158,18 +175,71 @@ function formatPieceLabel(key){
   return buildPieceLabel(base, s.qualificatif, s.etage);
 }
 
-// §2.5 • Persistance locale (save/load)
-function ensureSection(key){
-  if(!devis[key]) devis[key] = { items:[], note:'', qualificatif:'', etage:'' };
+<script>
+// §2.5 • Persistance locale (save/load) — avec autosave + badge vert
+var _saveDebounce = null;
+var _lastToastAt = 0; // anti-spam visuel
+
+function showSavedOK(msg){
+  try{
+    var t = document.createElement('div');
+    t.className = 'save-toast hide';
+    t.textContent = msg || 'Brouillon sauvegardé';
+    document.body.appendChild(t);
+    // force reflow
+    void t.offsetHeight;
+    t.classList.remove('hide');
+    setTimeout(function(){ t.classList.add('hide'); }, 1400);
+    setTimeout(function(){ t.remove(); }, 1800);
+  }catch(e){}
 }
-function saveLocal(){
-  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
+
+/* Écriture immédiate (utilisée par le debounce et le snapshot périodique) */
+function _saveLocalNow(silent){
+  try{
+    localStorage.setItem('devis', JSON.stringify(devis));
+    localStorage.setItem('devis_last_ts', Date.now());
+    if(!silent){
+      // pas plus d’un toast toutes les 2s
+      var now = Date.now();
+      if (now - _lastToastAt > 2000){ _lastToastAt = now; showSavedOK('Brouillon sauvegardé'); }
+    }
+  }catch(e){}
 }
+
+/* API publique : saveLocal() (debounce 500 ms) */
+function saveLocal(opts){
+  clearTimeout(_saveDebounce);
+  _saveDebounce = setTimeout(function(){ _saveLocalNow(!!(opts && opts.silent)); }, 500);
+}
+
+/* Lecture robuste + récupération éventuelle du snapshot autosave */
 function loadLocal(){
-  try { devis = JSON.parse(localStorage.getItem('devis') || '{}') || {}; }
-  catch(e){ devis = {}; }
+  try{
+    var cur = JSON.parse(localStorage.getItem('devis') || 'null') || {};
+    var snap = JSON.parse(localStorage.getItem('devis_autosave') || 'null') || null;
+    var tCur = +(localStorage.getItem('devis_last_ts') || 0);
+    var tSnap = +(localStorage.getItem('devis_autosave_ts') || 0);
+
+    // si le snapshot est plus récent, on le préfère (ex: crash avant le debounce)
+    if (snap && tSnap > tCur){ devis = snap; }
+    else { devis = cur; }
+  }catch(e){ devis = {}; }
   ensureId();
 }
+
+/* Snapshot périodique (toute les 10 s) en arrière-plan */
+(function autoSnapshot(){
+  try{
+    setInterval(function(){
+      try{
+        localStorage.setItem('devis_autosave', JSON.stringify(devis));
+        localStorage.setItem('devis_autosave_ts', Date.now());
+      }catch(e){}
+    }, 10000);
+  }catch(e){}
+})();
+</script>
 </script>
 
 
