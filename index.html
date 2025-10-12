@@ -5531,7 +5531,7 @@ function buildDevisPDF16(){
     alert('Erreur PDF : '+(err && err.message ? err.message : String(err)));
   }
 }
-  </script>
+</script>
 
 <script>
 /* ======================================================
@@ -5604,11 +5604,33 @@ function buildDevisPDF16(){
   setTimeout(addBlock, 0);
 })();
 </script>
-  <script>
-/* §6 • Expose (assure la présence en global) */
-try {
-  if (typeof window.pageDevisPDF16 !== 'function') window.pageDevisPDF16 = pageDevisPDF16;
-  if (typeof window.buildDevisPDF16 !== 'function') window.buildDevisPDF16 = buildDevisPDF16;
-  if (typeof window._buildPrintableHTML16 !== 'function') window._buildPrintableHTML16 = _buildPrintableHTML16;
-} catch(e) { /* no-op */ }
+<script>
+/* §6 • Expose (sécurisé) */
+(function(){
+  try {
+    if (typeof window.pageDevisPDF16 !== 'function' && typeof pageDevisPDF16 === 'function') {
+      window.pageDevisPDF16 = pageDevisPDF16;
+    }
+    if (typeof window._buildPrintableHTML16 !== 'function' && typeof _buildPrintableHTML16 === 'function') {
+      window._buildPrintableHTML16 = _buildPrintableHTML16;
+    }
+    if (typeof window.buildDevisPDF16 !== 'function') {
+      if (typeof buildDevisPDF16 === 'function') {
+        window.buildDevisPDF16 = buildDevisPDF16;
+      } else if (typeof _buildPrintableHTML16 === 'function') {
+        window.buildDevisPDF16 = function(){
+          try{
+            const html = _buildPrintableHTML16();
+            const w = window.open('', '_blank');
+            if(!w){ alert('Impossible d’ouvrir l’aperçu. Autorise les pop-ups.'); return; }
+            w.document.open('text/html'); w.document.write(html); w.document.close();
+            setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 300);
+          }catch(err){
+            alert('Erreur PDF : '+(err && err.message ? err.message : String(err)));
+          }
+        };
+      }
+    }
+  } catch(e) {}
+})();
 </script>
