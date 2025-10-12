@@ -3684,45 +3684,64 @@ Object.assign(window, {
 
 
 
-
-
-
 <!-- =============================
-     CHAPITRE 13 : CATALOGUE PRESTATION — V10.2
-     Index :
-       13.0 • Styles
-       13.1 • Stockage & Defaults (prestations + coefficients)
-       13.2 • Helpers (IO, UI, pose types)
-       13.3 • Runtime : computePU + applyPrestToApp (expose TARIFS_BASE, COEFF_POSE)
-       13.4 • Accueil "Catalogue prestation" (boutons Appareillage + Coeffs à cet endroit seulement)
-       13.5 • Éditeurs Appareillage (Prises / Luminaires / Commandes / Circuit spécialisé)
-       13.6 • Éditeur Coefficients de pose (lié aux POSE_TYPES)
-       13.7 • Import / Export / Reset
-       13.8 • Expose (window)
+     CHAPITRE 13 : CATALOGUE PRESTATION — V10.3 (autonome)
+     Contenu :
+       • Styles (presta + tarifs)
+       • Stockage & defaults
+       • Helpers (IO, UI, pose types, roundUp5)
+       • Runtime : computePU + applyPrestToApp (expose TARIFS_BASE, COEFF_POSE)
+       • Pages : Paramétrage (pageTarifsAccueil)
+                 Catalogue prestation (accueil + éditeurs)
+                 Coefficients de pose (visible uniquement via Catalogue)
+       • Import / Export / Reset
+       • Expose (window)
      ============================= -->
 
 <style>
+  /* ---- Presta UI ---- */
   .presta-wrap .card{ margin-bottom:24px; }
   .presta-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
   .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
   .field label{ display:block; font-weight:600; margin-bottom:6px; }
   .muted{ color:var(--muted); }
-  .row.gap8{ gap:8px; flex-wrap:wrap; }
+  .row.gap8{ gap:8px; flex-wrap:wrap; display:flex; }
   .block{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:12px; }
   .subcard{ border:1px dashed var(--line); border-radius:10px; padding:10px; background:#fafafa; }
   .h-note{ font-size:13px; color:#666; }
-  .mb8{ margin-bottom:8px; }
-  .table-mini{ width:100%; border-collapse:collapse; font-size:14px; }
-  .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
-  .table-mini th{ background:#fafafa; }
+  /* ---- Tarifs (Paramétrage) ---- */
+  .tarifs-wrap .card{ margin-bottom:16px; }
+  .tarifs-wrap .muted{ color:var(--muted); }
 </style>
 
 <script>
 /* ============================================================
+   13.x • Helpers communs (UI minimal + sûreté)
+   ============================================================ */
+(function(){
+  // Fallback bouton
+  if (typeof window.b !== 'function') {
+    window.b = function(label, call, cls){
+      return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
+    };
+  }
+  // Fallback view()
+  if (typeof window.view !== 'function') {
+    window.view = function(html){
+      (document.getElementById('app')||document.body).innerHTML = html;
+    };
+  }
+  // Fallback arrondi
+  if (typeof window.roundUp5 !== 'function') {
+    window.roundUp5 = function(x){ x = +x||0; return Math.ceil(x/5)*5; };
+  }
+})();
+
+/* ============================================================
    13.1 • Stockage & Defaults
    ============================================================ */
-const KEY_PRESTA13   = 'catalogue_prestation_v1';
-const KEY_COEFFS13   = 'coeff_pose_v1';
+const KEY_PRESTA13 = 'catalogue_prestation_v1';
+const KEY_COEFFS13 = 'coeff_pose_v1';
 
 function _prestaDefaults(){
   return {
@@ -3761,36 +3780,11 @@ function _prestaDefaults(){
       commandes: {
         baseTypes: [ "Allumage simple", "Allumage double", "Va-et-vient", "Variateur", "Bouton poussoir" ],
         tarifs: {
-          "Allumage simple": {
-            "Création": 65,
-            "Remplacement appareillage": 25,
-            "Recâblage avec remplacement appareillage": 40,
-            "Recâblage sans remplacement appareillage": 28
-          },
-          "Allumage double": {
-            "Création": 80,
-            "Remplacement appareillage": 30,
-            "Recâblage avec remplacement appareillage": 48,
-            "Recâblage sans remplacement appareillage": 34
-          },
-          "Va-et-vient": {
-            "Création": 80,
-            "Remplacement appareillage": 28,
-            "Recâblage avec remplacement appareillage": 46,
-            "Recâblage sans remplacement appareillage": 32
-          },
-          "Variateur": {
-            "Création": 95,
-            "Remplacement appareillage": 35,
-            "Recâblage avec remplacement appareillage": 55,
-            "Recâblage sans remplacement appareillage": 38
-          },
-          "Bouton poussoir": {
-            "Création": 70,
-            "Remplacement appareillage": 26,
-            "Recâblage avec remplacement appareillage": 42,
-            "Recâblage sans remplacement appareillage": 30
-          }
+          "Allumage simple":   {"Création":65,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":40,"Recâblage sans remplacement appareillage":28},
+          "Allumage double":   {"Création":80,"Remplacement appareillage":30,"Recâblage avec remplacement appareillage":48,"Recâblage sans remplacement appareillage":34},
+          "Va-et-vient":       {"Création":80,"Remplacement appareillage":28,"Recâblage avec remplacement appareillage":46,"Recâblage sans remplacement appareillage":32},
+          "Variateur":         {"Création":95,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":55,"Recâblage sans remplacement appareillage":38},
+          "Bouton poussoir":   {"Création":70,"Remplacement appareillage":26,"Recâblage avec remplacement appareillage":42,"Recâblage sans remplacement appareillage":30}
         },
         customTypes: []
       },
@@ -3802,37 +3796,15 @@ function _prestaDefaults(){
           "Circuit spécialisé 10 mm²"
         ],
         tarifs: {
-          "Circuit spécialisé 1,5 mm²": {
-            "Création": 140,
-            "Remplacement appareillage": 35,
-            "Recâblage avec remplacement appareillage": 55,
-            "Recâblage sans remplacement appareillage": 40
-          },
-          "Circuit spécialisé 2,5 mm²": {
-            "Création": 155,
-            "Remplacement appareillage": 35,
-            "Recâblage avec remplacement appareillage": 60,
-            "Recâblage sans remplacement appareillage": 42
-          },
-          "Circuit spécialisé 6 mm²": {
-            "Création": 190,
-            "Remplacement appareillage": 40,
-            "Recâblage avec remplacement appareillage": 70,
-            "Recâblage sans remplacement appareillage": 48
-          },
-          "Circuit spécialisé 10 mm²": {
-            "Création": 230,
-            "Remplacement appareillage": 45,
-            "Recâblage avec remplacement appareillage": 85,
-            "Recâblage sans remplacement appareillage": 58
-          }
+          "Circuit spécialisé 1,5 mm²": {"Création":140,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":55,"Recâblage sans remplacement appareillage":40},
+          "Circuit spécialisé 2,5 mm²": {"Création":155,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":60,"Recâblage sans remplacement appareillage":42},
+          "Circuit spécialisé 6 mm²":   {"Création":190,"Remplacement appareillage":40,"Recâblage avec remplacement appareillage":70,"Recâblage sans remplacement appareillage":48},
+          "Circuit spécialisé 10 mm²":  {"Création":230,"Remplacement appareillage":45,"Recâblage avec remplacement appareillage":85,"Recâblage sans remplacement appareillage":58}
         },
         customTypes: []
       }
     },
-    tableau: { note:"À paramétrer ultérieurement." },
-    ventilation: { note:"À paramétrer ultérieurement." },
-    mise_terre: { note:"À paramétrer ultérieurement." }
+    tableau:{}, ventilation:{}, mise_terre:{}
   };
 }
 
@@ -3842,47 +3814,29 @@ function _prestaDefaults(){
 const _esc = s => String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const _num = n => Math.max(0, +n||0);
 const _clone = x => JSON.parse(JSON.stringify(x||null));
-const _rowNum = (meta,val)=>'<div class="field"><label>'+_esc(meta.label)+'</label><input id="'+meta.id+'" type="number" step="1" inputmode="decimal" value="'+_num(val)+'"/></div>';
+const _rowNum = (meta,val)=>'<div class="field"><label>'+_esc(meta.label)+'</label><input id="'+meta.id+'" type="number" inputmode="decimal" step="1" value="'+_num(val)+'"/></div>';
 const _saveNum = id => { const el=document.getElementById(id); return el? _num(el.value) : 0; };
 
-// Fallback roundUp5 si absent
-if (typeof window.roundUp5 !== 'function'){ window.roundUp5 = function(x){ x=+x||0; return Math.ceil(x/5)*5; }; }
+function getPrestations(){ try{ return JSON.parse(localStorage.getItem(KEY_PRESTA13)||'null') || _prestaDefaults(); }catch(e){ return _prestaDefaults(); } }
+function setPrestations(obj){ try{ localStorage.setItem(KEY_PRESTA13, JSON.stringify(obj||_prestaDefaults())); }catch(e){} applyPrestToApp(); }
 
-function getPrestations(){
-  try{ return JSON.parse(localStorage.getItem(KEY_PRESTA13)||'null') || _prestaDefaults(); }
-  catch(e){ return _prestaDefaults(); }
-}
-function setPrestations(obj){
-  try{ localStorage.setItem(KEY_PRESTA13, JSON.stringify(obj||_prestaDefaults())); }catch(e){}
-  applyPrestToApp(); // sync TARIFS_BASE
-}
-
-/* Liste de pose : si l’app fournit POSE_TYPES on l’utilise, sinon fallback */
 function _poseTypes(){
-  if (Array.isArray(window.POSE_TYPES) && window.POSE_TYPES.length){
-    return window.POSE_TYPES.slice();
-  }
+  // Si l’app définit POSE_TYPES (ex: ["Encastré placo", ...]) on l’utilise, sinon fallback
+  if (Array.isArray(window.POSE_TYPES) && window.POSE_TYPES.length) return window.POSE_TYPES.slice();
   return ["Encastré maçonnerie","Encastré placo","Saillie","Apparent"];
 }
-
-/* Coefficients alignés sur _poseTypes() */
 function getCoeffs(){
-  let store;
-  try{ store = JSON.parse(localStorage.getItem(KEY_COEFFS13)||'null') || {}; }catch(e){ store={}; }
-  const types = _poseTypes();
-  const out = {};
-  types.forEach(t=>{ out[t] = +store[t] > 0 ? +store[t] : 1; });
-  return out;
+  let store; try{ store = JSON.parse(localStorage.getItem(KEY_COEFFS13)||'null') || {}; }catch(e){ store={}; }
+  const out={}; _poseTypes().forEach(t=>{ out[t] = +store[t] > 0 ? +store[t] : 1; }); return out;
 }
 function setCoeffs(obj){
-  const types=_poseTypes(); const clean={};
-  types.forEach(t=>{ clean[t] = (+obj[t] > 0 ? +obj[t] : 1); });
+  const clean={}; _poseTypes().forEach(t=>{ clean[t] = (+obj[t] > 0 ? +obj[t] : 1); });
   try{ localStorage.setItem(KEY_COEFFS13, JSON.stringify(clean)); }catch(e){}
-  applyPrestToApp(); // sync COEFF_POSE
+  applyPrestToApp();
 }
 
 /* ============================================================
-   13.3 • Runtime : computePU + applyPrestToApp
+   13.3 • Runtime : computePU + synchro application
    ============================================================ */
 function mapCatKey(cat){
   if(cat==='Prises') return ['appareillage','prises'];
@@ -3891,14 +3845,13 @@ function mapCatKey(cat){
   if(cat==='Circuit spécialisé')   return ['appareillage','circuit_spec'];
   return null;
 }
-
 function computePU(cat, desig, interv, pose, section, extras){
   const pr = getPrestations();
   const coeffs = getCoeffs();
   const ck = mapCatKey(cat);
   if(!ck) return 0;
 
-  // Luminaires — Alimentation ligne de spot
+  // Luminaires — "Alimentation ligne de spot"
   if(cat==='Éclairage/Luminaires' && /^Alimentation ligne de spot/i.test(String(desig||''))){
     const SP = pr.appareillage.luminaires.tarifs["__spot_line__"] || {base_ligne:0, par_spot:0};
     const nb = Math.max(1, (extras && +extras.spots) || 1);
@@ -3907,7 +3860,7 @@ function computePU(cat, desig, interv, pose, section, extras){
     return roundUp5(base * coef);
   }
 
-  // Circuit spécialisé — normalise désignation avec section si fournie
+  // Circuit spécialisé — normalise libellé si section fournie
   if(cat==='Circuit spécialisé' && /^Circuit spécialisé/i.test(desig||'') && section){
     desig = 'Circuit spécialisé ' + String(section);
   }
@@ -3922,93 +3875,123 @@ function computePU(cat, desig, interv, pose, section, extras){
     }
   }
   const base = _num(tarifs[interv]) || 0;
-  const coef = (interv==='Création' && pose) ? (coeffs[pose]||1) : 1;
+  const coef = (interv==='Création' && pose) ? ((getCoeffs()[pose])||1) : 1;
   return roundUp5(base * coef);
 }
 window.computePU = computePU;
 
-/* — Construit TARIFS_BASE (pour reprice V10.x) + synchronise COEFF_POSE — */
 function applyPrestToApp(){
   const pr = getPrestations();
   const coeffs = getCoeffs();
-
   const TB = { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
 
   // Prises
   const P = pr.appareillage.prises;
-  const pTypes = (P.baseTypes||[]).concat(P.customTypes||[]);
-  pTypes.forEach(name=>{ TB.prises[name] = _clone(P.tarifs[name]||{}); });
+  (P.baseTypes||[]).concat(P.customTypes||[]).forEach(name=>{ TB.prises[name] = _clone(P.tarifs[name]||{}); });
 
-  // Luminaires (hors “ligne de spot” calculée dynamiquement)
+  // Luminaires (hors ligne de spot dyn.)
   const L = pr.appareillage.luminaires;
-  const lTypes = (L.baseTypes||[]).filter(n=>n!=="Alimentation ligne de spot").concat(L.customTypes||[]);
-  lTypes.forEach(name=>{ TB.eclairage[name] = _clone(L.tarifs[name]||{}); });
-  if (L.tarifs["__spot_line__"]) {
-    TB.eclairage["Alimentation ligne de spot"] = {
-      "Création": _num(L.tarifs["__spot_line__"].base_ligne)
-    };
-  }
+  (L.baseTypes||[]).filter(n=>n!=="Alimentation ligne de spot").concat(L.customTypes||[])
+    .forEach(name=>{ TB.eclairage[name] = _clone(L.tarifs[name]||{}); });
+  if (L.tarifs["__spot_line__"]) TB.eclairage["Alimentation ligne de spot"] = {"Création": _num(L.tarifs["__spot_line__"].base_ligne) };
 
   // Commandes
   const C = pr.appareillage.commandes;
-  const cTypes = (C.baseTypes||[]).concat(C.customTypes||[]);
-  cTypes.forEach(name=>{ TB.eclairage[name] = _clone(C.tarifs[name]||{}); });
+  (C.baseTypes||[]).concat(C.customTypes||[]).forEach(name=>{ TB.eclairage[name] = _clone(C.tarifs[name]||{}); });
 
   // Circuits spécialisés
   const CS = pr.appareillage.circuit_spec;
-  const csTypes = (CS.baseTypes||[]).concat(CS.customTypes||[]);
-  csTypes.forEach(name=>{ TB.circuit_specialise[name] = _clone(CS.tarifs[name]||{}); });
+  (CS.baseTypes||[]).concat(CS.customTypes||[]).forEach(name=>{ TB.circuit_specialise[name] = _clone(CS.tarifs[name]||{}); });
 
-  // Expose globaux attendus par les chapitres 15.x
   window.TARIFS_BASE = TB;
   window.COEFF_POSE  = coeffs;
   try{ if (typeof saveLocal==='function') saveLocal(); }catch(e){}
 }
-// Appel initial
 try{ applyPrestToApp(); }catch(e){}
 
 /* ============================================================
-   13.4 • Accueil "Catalogue prestation"
+   13.4 • Page Paramétrage (accueil tarifs)
+   ============================================================ */
+function pageTarifsAccueil(){
+  const has = fn => typeof window[fn]==='function';
+  const callCatalogue   = has('pageCataloguePrestation') ? 'pageCataloguePrestation()' : 'alert("Catalogue indisponible : Chapitre 13 non chargé.")';
+  const callPreferences = has('pagePreferences')         ? 'pagePreferences()'         : 'alert("La page Préférences n\\\'est pas disponible.")';
+  const callEntreprise  = has('pageConfigEntreprise')    ? 'pageConfigEntreprise()'    : 'alert("La page Configuration entreprise n\\\'est pas disponible.")';
+  const callBackMain    = has('pageMain') ? 'pageMain()' : '0';
+
+  view(
+    '<div class="tarifs-wrap">'
+    +  '<div class="card">'
+    +    b('Retour', callBackMain, 'btn back')
+    +    '<h2>Tarifs & paramètres</h2>'
+    +    '<p class="muted">Accès centralisé aux réglages de pose, de TVA et aux infos entreprise.</p>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Catalogue prestation</h3>'
+    +    '<p class="muted">Gérez les tarifs de pose (prises, éclairage, commandes, circuits spé.).</p>'
+    +    '<div class="row gap8">'
+    +      b('Ouvrir le catalogue', callCatalogue, 'btn primary')
+    +    '</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Préférences devis & facturation</h3>'
+    +    '<p class="muted">Devise, TVA par défaut, numérotation…</p>'
+    +    '<div class="row gap8">'+ b('Ouvrir les préférences', callPreferences, 'btn') +'</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Configuration entreprise</h3>'
+    +    '<p class="muted">Coordonnées, SIREN/TVA, IBAN, assurances, logo…</p>'
+    +    '<div class="row gap8">'+ b('Ouvrir la configuration', callEntreprise, 'btn') +'</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+
+/* ============================================================
+   13.5 • Accueil "Catalogue prestation"
    ============================================================ */
 function pageCataloguePrestation(){
-  const has = (fn)=> typeof window[fn]==='function';
-  function btn(label, call, cls){ return (typeof b==='function') ? b(label, call, cls||'btn') : '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>'; }
+  const has = fn => typeof window[fn]==='function';
+  const back = has('pageTarifsAccueil') ? 'pageTarifsAccueil()' : (has('pageMain')?'pageMain()':'0');
 
   view(
     '<div class="presta-wrap">'
     +  '<div class="card">'
-    +    (has('pageTarifsAccueil') ? btn('Retour','pageTarifsAccueil()','btn back') : (has('pageMain')?btn('Retour','pageMain()','btn back'):''))
+    +    b('Retour', back, 'btn back')
     +    '<h2>Catalogue prestation</h2>'
     +    '<p class="muted">Tarifs de pose et coefficients (appareillages). Toute modification impacte l’estimatif, les exports et la duplication “nouveaux tarifs”.</p>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Appareillage</h3>'
-    +    '<div class="subcard mb8"><div class="h-note">Prises, éclairage (luminaires & commandes), circuits spécialisés.</div></div>'
+    +    '<div class="subcard"><div class="h-note">Prises, éclairage (luminaires & commandes), circuits spécialisés.</div></div>'
     +    '<div class="row gap8">'
-    +      btn('Prises','pageCatPresta_Prise()','btn')
-    +      btn('Éclairage — Luminaires','pageCatPresta_Luminaires()','btn')
-    +      btn('Éclairage — Commandes','pageCatPresta_Commandes()','btn')
-    +      btn('Circuit spécialisé','pageCatPresta_CS()','btn')
-    +      btn('Coefficients de pose (appareillage)','pageCatPresta_Coeffs()','btn')
+    +      b('Prises','pageCatPresta_Prise()','btn')
+    +      b('Éclairage — Luminaires','pageCatPresta_Luminaires()','btn')
+    +      b('Éclairage — Commandes','pageCatPresta_Commandes()','btn')
+    +      b('Circuit spécialisé','pageCatPresta_CS()','btn')
+    +      b('Coefficients de pose (appareillage)','pageCatPresta_Coeffs()','btn') /* ✅ uniquement ici */
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Autres familles</h3>'
     +    '<div class="row gap8">'
-    +      btn('Tableau (à venir)','alert("Section Tableau : à définir plus tard.")','btn')
-    +      btn('Ventilation (à venir)','alert("Section Ventilation : à définir plus tard.")','btn')
-    +      btn('Mise à la terre (à venir)','alert("Section Mise à la terre : à définir plus tard.")','btn')
+    +      b('Tableau (à venir)','alert("Section Tableau : à définir plus tard.")','btn')
+    +      b('Ventilation (à venir)','alert("Section Ventilation : à définir plus tard.")','btn')
+    +      b('Mise à la terre (à venir)','alert("Section Mise à la terre : à définir plus tard.")','btn')
     +    '</div>'
     +  '</div>'
 
     +  '<div class="card">'
     +    '<h3>Import / Export</h3>'
     +    '<div class="row gap8">'
-    +      btn('Export JSON','presta13Export()','btn')
-    +      btn('Import JSON','presta13Import()','btn')
-    +      btn('Réinitialiser','presta13Reset()','btn')
+    +      b('Export JSON','presta13Export()','btn')
+    +      b('Import JSON','presta13Import()','btn')
+    +      b('Réinitialiser','presta13Reset()','btn')
     +    '</div>'
     +  '</div>'
     +'</div>'
@@ -4016,45 +3999,40 @@ function pageCataloguePrestation(){
 }
 
 /* ============================================================
-   13.5 • Éditeurs : Appareillage
+   13.6 • Éditeurs : Appareillage
    ============================================================ */
 
-/* ---- 13.5.1 Prises ---- */
+/* ---- 13.6.1 Prises ---- */
 function pageCatPresta_Prise(){
   const P = getPrestations().appareillage.prises;
   const allTypes = (P.baseTypes||[]).concat(P.customTypes||[]);
   const rows = allTypes.map((name,idx)=>{
     const t = P.tarifs[name] || {};
-    const prefix = 'pr-'+idx;
+    const id='pr-'+idx;
     return (
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (P.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catPrDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catPrDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
+      +    (P.baseTypes.indexOf(name)===-1 ? b('Supprimer','catPrDel('+JSON.stringify(name)+')','btn') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
-      +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
-      +    _rowNum({id:prefix+'-ra',label:'Remplacement appareillage'}, t["Remplacement appareillage"])
-      +    _rowNum({id:prefix+'-rwa',label:'Recâblage avec remplacement appareillage'}, t["Recâblage avec remplacement appareillage"])
-      +    _rowNum({id:prefix+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
+      +    _rowNum({id:id+'-c', label:'Création'}, t["Création"])
+      +    _rowNum({id:id+'-ra',label:'Remplacement appareillage'}, t["Remplacement appareillage"])
+      +    _rowNum({id:id+'-rwa',label:'Recâblage avec remplacement appareillage'}, t["Recâblage avec remplacement appareillage"])
+      +    _rowNum({id:id+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
       +  '</div>'
-      +  '<div class="row gap8" style="margin-top:8px;">'
-      +    (typeof b==='function'? b('Enregistrer','catPrSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catPrSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
-      +  '</div>'
+      +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','catPrSave('+idx+','+JSON.stringify(name)+')','btn') +'</div>'
       +'</div>'
     );
   }).join('');
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Prises</h2></div>'
+    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Prises</h2></div>'
     +  (rows || '<div class="card"><div class="muted">Aucun type.</div></div>')
-    +  '<div class="card">'
-    +    '<h3>Ajouter un type</h3>'
-    +    '<div class="row gap8">'
-    +      '<input id="pr-add-name" placeholder="ex : Sortie de câble" />'
-    +      (typeof b==='function'? b('Ajouter','catPrAdd()','btn') : '<button onclick="catPrAdd()">Ajouter</button>')
-    +    '</div>'
+    +  '<div class="card"><h3>Ajouter un type</h3>'
+    +    '<div class="row gap8"><input id="pr-add-name" placeholder="ex : Sortie de câble" />'
+    +    b('Ajouter','catPrAdd()','btn') + '</div>'
     +    '<div class="h-note" style="margin-top:6px;">Les nouveaux types héritent des tarifs actuels de “Prise”.</div>'
     +  '</div>'
     +'</div>'
@@ -4063,23 +4041,17 @@ function pageCatPresta_Prise(){
   window.catPrAdd = function(){
     const name = (document.getElementById('pr-add-name').value||'').trim(); if(!name) return;
     const all = getPrestations(); const P2 = all.appareillage.prises;
-    if(!P2.tarifs[name]){
-      P2.customTypes.push(name);
-      P2.tarifs[name] = _clone(P2.tarifs["Prise"]||{});
-      setPrestations(all);
-    }
+    if(!P2.tarifs[name]){ P2.customTypes.push(name); P2.tarifs[name]=_clone(P2.tarifs["Prise"]||{}); setPrestations(all); }
     pageCatPresta_Prise();
   };
   window.catPrDel = function(name){
-    const all = getPrestations(); const P2 = all.appareillage.prises;
-    if(P2.baseTypes.indexOf(name)!==-1) return;
-    P2.customTypes = (P2.customTypes||[]).filter(n=>n!==name);
-    delete P2.tarifs[name];
-    setPrestations(all); pageCatPresta_Prise();
-  };
-  window.catPrSave = function(idx, name){
-    const id = 'pr-'+idx;
     const all = getPrestations(); const P2=all.appareillage.prises;
+    if(P2.baseTypes.indexOf(name)!==-1) return;
+    P2.customTypes=(P2.customTypes||[]).filter(n=>n!==name);
+    delete P2.tarifs[name]; setPrestations(all); pageCatPresta_Prise();
+  };
+  window.catPrSave = function(idx,name){
+    const id='pr-'+idx, all=getPrestations(), P2=all.appareillage.prises;
     P2.tarifs[name] = {
       "Création": _saveNum(id+'-c'),
       "Remplacement appareillage": _saveNum(id+'-ra'),
@@ -4090,28 +4062,25 @@ function pageCatPresta_Prise(){
   };
 }
 
-/* ---- 13.5.2 Luminaires ---- */
+/* ---- 13.6.2 Luminaires ---- */
 function pageCatPresta_Luminaires(){
   const L = getPrestations().appareillage.luminaires;
   const list = (L.baseTypes||[]).filter(n=>n!=="Alimentation ligne de spot").concat(L.customTypes||[]);
   const rows = list.map((name,idx)=>{
-    const t = L.tarifs[name] || {};
-    const prefix = 'lum-'+idx;
+    const t=L.tarifs[name]||{}, id='lum-'+idx;
     return (
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (L.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catLumDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catLumDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
+      +    (L.baseTypes.indexOf(name)===-1 ? b('Supprimer','catLumDel('+JSON.stringify(name)+')','btn') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
-      +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
-      +    _rowNum({id:prefix+'-rl',label:'Remplacement luminaire'}, t["Remplacement luminaire"])
-      +    _rowNum({id:prefix+'-rwl',label:'Recâblage avec remplacement luminaire'}, t["Recâblage avec remplacement luminaire"])
-      +    _rowNum({id:prefix+'-rsl',label:'Recâblage sans remplacement luminaire'}, t["Recâblage sans remplacement luminaire"])
+      +    _rowNum({id:id+'-c', label:'Création'}, t["Création"])
+      +    _rowNum({id:id+'-rl',label:'Remplacement luminaire'}, t["Remplacement luminaire"])
+      +    _rowNum({id:id+'-rwl',label:'Recâblage avec remplacement luminaire'}, t["Recâblage avec remplacement luminaire"])
+      +    _rowNum({id:id+'-rsl',label:'Recâblage sans remplacement luminaire'}, t["Recâblage sans remplacement luminaire"])
       +  '</div>'
-      +  '<div class="row gap8" style="margin-top:8px;">'
-      +    (typeof b==='function'? b('Enregistrer','catLumSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catLumSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
-      +  '</div>'
+      +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','catLumSave('+idx+','+JSON.stringify(name)+')','btn') +'</div>'
       +'</div>'
     );
   }).join('');
@@ -4124,44 +4093,34 @@ function pageCatPresta_Luminaires(){
     +    _rowNum({id:'spot-base', label:'Prix base ligne'}, SP.base_ligne)
     +    _rowNum({id:'spot-un',   label:'Prix par spot'}, SP.par_spot)
     +  '</div>'
-    +  '<div class="row gap8" style="margin-top:8px;">'
-    +    (typeof b==='function'? b('Enregistrer','catSpotSave()','btn') : '<button onclick="catSpotSave()">Enregistrer</button>')
-    +  '</div>'
+    +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','catSpotSave()','btn') +'</div>'
     +'</div>';
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Éclairage / Luminaires</h2></div>'
-    +  (rows || '') + spotBlock
-    +  '<div class="card">'
-    +    '<h3>Ajouter un type</h3>'
-    +    '<div class="row gap8">'
-    +      '<input id="lum-add-name" placeholder="ex : Réglette LED" />'
-    +      (typeof b==='function'? b('Ajouter','catLumAdd()','btn') : '<button onclick="catLumAdd()">Ajouter</button>')
-    +    '</div>'
+    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Éclairage / Luminaires</h2></div>'
+    +  (rows||'') + spotBlock
+    +  '<div class="card"><h3>Ajouter un type</h3>'
+    +    '<div class="row gap8"><input id="lum-add-name" placeholder="ex : Réglette LED" />'
+    +    b('Ajouter','catLumAdd()','btn') + '</div>'
     +  '</div>'
     +'</div>'
   );
 
   window.catLumAdd = function(){
-    const name = (document.getElementById('lum-add-name').value||'').trim(); if(!name) return;
-    const all = getPrestations(); const L2 = all.appareillage.luminaires;
-    if(!L2.tarifs[name]){
-      L2.customTypes.push(name);
-      L2.tarifs[name] = _clone(L2.tarifs["Point de centre"]||{});
-      setPrestations(all);
-    }
+    const name=(document.getElementById('lum-add-name').value||'').trim(); if(!name) return;
+    const all=getPrestations(), L2=all.appareillage.luminaires;
+    if(!L2.tarifs[name]){ L2.customTypes.push(name); L2.tarifs[name]=_clone(L2.tarifs["Point de centre"]||{}); setPrestations(all); }
     pageCatPresta_Luminaires();
   };
   window.catLumDel = function(name){
-    const all = getPrestations(); const L2 = all.appareillage.luminaires;
+    const all=getPrestations(), L2=all.appareillage.luminaires;
     if(L2.baseTypes.indexOf(name)!==-1) return;
-    L2.customTypes = (L2.customTypes||[]).filter(n=>n!==name);
+    L2.customTypes=(L2.customTypes||[]).filter(n=>n!==name);
     delete L2.tarifs[name]; setPrestations(all); pageCatPresta_Luminaires();
   };
-  window.catLumSave = function(idx, name){
-    const id = 'lum-'+idx;
-    const all = getPrestations(); const L2 = all.appareillage.luminaires;
+  window.catLumSave = function(idx,name){
+    const id='lum-'+idx, all=getPrestations(), L2=all.appareillage.luminaires;
     L2.tarifs[name] = {
       "Création": _saveNum(id+'-c'),
       "Remplacement luminaire": _saveNum(id+'-rl'),
@@ -4171,71 +4130,60 @@ function pageCatPresta_Luminaires(){
     setPrestations(all); alert('Tarifs enregistrés.');
   };
   window.catSpotSave = function(){
-    const all = getPrestations(); const L2=all.appareillage.luminaires;
-    L2.tarifs["__spot_line__"] = { base_ligne: _saveNum('spot-base'), par_spot: _saveNum('spot-un') };
+    const all=getPrestations(), L2=all.appareillage.luminaires;
+    L2.tarifs["__spot_line__"] = { base_ligne:_saveNum('spot-base'), par_spot:_saveNum('spot-un') };
     setPrestations(all); alert('Tarifs enregistrés.');
   };
 }
 
-/* ---- 13.5.3 Commandes ---- */
+/* ---- 13.6.3 Commandes ---- */
 function pageCatPresta_Commandes(){
   const C = getPrestations().appareillage.commandes;
-  const list = (C.baseTypes||[]).concat(C.customTypes||[]);
-  const rows = list.map((name,idx)=>{
-    const t = C.tarifs[name] || {};
-    const prefix = 'cmd-'+idx;
+  const list=(C.baseTypes||[]).concat(C.customTypes||[]);
+  const rows=list.map((name,idx)=>{
+    const t=C.tarifs[name]||{}, id='cmd-'+idx;
     return (
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (C.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catCmdDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catCmdDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
+      +    (C.baseTypes.indexOf(name)===-1 ? b('Supprimer','catCmdDel('+JSON.stringify(name)+')','btn') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
-      +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
-      +    _rowNum({id:prefix+'-ra',label:'Remplacement appareillage'}, t["Remplacement appareillage"])
-      +    _rowNum({id:prefix+'-rwa',label:'Recâblage avec remplacement appareillage'}, t["Recâblage avec remplacement appareillage"])
-      +    _rowNum({id:prefix+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
+      +    _rowNum({id:id+'-c', label:'Création'}, t["Création"])
+      +    _rowNum({id:id+'-ra',label:'Remplacement appareillage'}, t["Remplacement appareillage"])
+      +    _rowNum({id:id+'-rwa',label:'Recâblage avec remplacement appareillage'}, t["Recâblage avec remplacement appareillage"])
+      +    _rowNum({id:id+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
       +  '</div>'
-      +  '<div class="row gap8" style="margin-top:8px;">'
-      +    (typeof b==='function'? b('Enregistrer','catCmdSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catCmdSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
-      +  '</div>'
+      +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','catCmdSave('+idx+','+JSON.stringify(name)+')','btn') +'</div>'
       +'</div>'
     );
   }).join('');
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Éclairage / Commandes</h2></div>'
+    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Éclairage / Commandes</h2></div>'
     +  (rows || '<div class="card"><div class="muted">Aucun type.</div></div>')
-    +  '<div class="card">'
-    +    '<h3>Ajouter un type</h3>'
-    +    '<div class="row gap8">'
-    +      '<input id="cmd-add-name" placeholder="ex : Commande radio" />'
-    +      (typeof b==='function'? b('Ajouter','catCmdAdd()','btn') : '<button onclick="catCmdAdd()">Ajouter</button>')
-    +    '</div>'
+    +  '<div class="card"><h3>Ajouter un type</h3>'
+    +    '<div class="row gap8"><input id="cmd-add-name" placeholder="ex : Commande radio" />'
+    +    b('Ajouter','catCmdAdd()','btn') + '</div>'
     +  '</div>'
     +'</div>'
   );
 
   window.catCmdAdd = function(){
-    const name = (document.getElementById('cmd-add-name').value||'').trim(); if(!name) return;
-    const all = getPrestations(); const C2 = all.appareillage.commandes;
-    if(!C2.tarifs[name]){
-      C2.customTypes.push(name);
-      C2.tarifs[name] = _clone(C2.tarifs["Allumage simple"]||{});
-      setPrestations(all);
-    }
+    const name=(document.getElementById('cmd-add-name').value||'').trim(); if(!name) return;
+    const all=getPrestations(), C2=all.appareillage.commandes;
+    if(!C2.tarifs[name]){ C2.customTypes.push(name); C2.tarifs[name]=_clone(C2.tarifs["Allumage simple"]||{}); setPrestations(all); }
     pageCatPresta_Commandes();
   };
   window.catCmdDel = function(name){
-    const all = getPrestations(); const C2 = all.appareillage.commandes;
+    const all=getPrestations(), C2=all.appareillage.commandes;
     if(C2.baseTypes.indexOf(name)!==-1) return;
-    C2.customTypes = (C2.customTypes||[]).filter(n=>n!==name);
+    C2.customTypes=(C2.customTypes||[]).filter(n=>n!==name);
     delete C2.tarifs[name]; setPrestations(all); pageCatPresta_Commandes();
   };
-  window.catCmdSave = function(idx, name){
-    const id = 'cmd-'+idx;
-    const all = getPrestations(); const C2 = all.appareillage.commandes;
+  window.catCmdSave = function(idx,name){
+    const id='cmd-'+idx, all=getPrestations(), C2=all.appareillage.commandes;
     C2.tarifs[name] = {
       "Création": _saveNum(id+'-c'),
       "Remplacement appareillage": _saveNum(id+'-ra'),
@@ -4246,65 +4194,54 @@ function pageCatPresta_Commandes(){
   };
 }
 
-/* ---- 13.5.4 Circuit spécialisé ---- */
+/* ---- 13.6.4 Circuit spécialisé ---- */
 function pageCatPresta_CS(){
-  const CS = getPrestations().appareillage.circuit_spec;
-  const list = (CS.baseTypes||[]).concat(CS.customTypes||[]);
-  const rows = list.map((name,idx)=>{
-    const t = CS.tarifs[name] || {};
-    const prefix = 'cs-'+idx;
+  const CS=getPrestations().appareillage.circuit_spec;
+  const list=(CS.baseTypes||[]).concat(CS.customTypes||[]);
+  const rows=list.map((name,idx)=>{
+    const t=CS.tarifs[name]||{}, id='cs-'+idx;
     return (
       '<div class="block">'
       +  '<div class="row" style="justify-content:space-between;align-items:center;">'
       +    '<h3 style="margin:0;">'+_esc(name)+'</h3>'
-      +    (CS.baseTypes.indexOf(name)===-1 ? (typeof b==='function'? b("Supprimer",'catCSDel('+JSON.stringify(name)+')','btn') : '<button onclick=\'catCSDel('+JSON.stringify(name)+')\'>Supprimer</button>') : '')
+      +    (CS.baseTypes.indexOf(name)===-1 ? b('Supprimer','catCSDel('+JSON.stringify(name)+')','btn') : '')
       +  '</div>'
       +  '<div class="presta-grid">'
-      +    _rowNum({id:prefix+'-c', label:'Création'}, t["Création"])
-      +    _rowNum({id:prefix+'-ra',label:'Remplacement appareillage'}, t["Remplacement appareillage"])
-      +    _rowNum({id:prefix+'-rwa',label:'Recâblage avec remplacement appareillage'}, t["Recâblage avec remplacement appareillage"])
-      +    _rowNum({id:prefix+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
+      +    _rowNum({id:id+'-c', label:'Création'}, t["Création"])
+      +    _rowNum({id:id+'-ra',label:'Remplacement appareillage'}, t["Remplacement appareillage"])
+      +    _rowNum({id:id+'-rwa',label:'Recâblage avec remplacement appareillage'}, t["Recâblage avec remplacement appareillage"])
+      +    _rowNum({id:id+'-rs', label:'Recâblage sans remplacement appareillage'}, t["Recâblage sans remplacement appareillage"])
       +  '</div>'
-      +  '<div class="row gap8" style="margin-top:8px;">'
-      +    (typeof b==='function'? b('Enregistrer','catCSSave('+idx+','+JSON.stringify(name)+')','btn') : '<button onclick=\'catCSSave('+idx+','+JSON.stringify(name)+')\'>Enregistrer</button>')
-      +  '</div>'
+      +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','catCSSave('+idx+','+JSON.stringify(name)+')','btn') +'</div>'
       +'</div>'
     );
   }).join('');
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Catalogue prestation — Circuit spécialisé</h2></div>'
+    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Catalogue prestation — Circuit spécialisé</h2></div>'
     +  (rows || '<div class="card"><div class="muted">Aucun type.</div></div>')
-    +  '<div class="card">'
-    +    '<h3>Ajouter un type</h3>'
-    +    '<div class="row gap8">'
-    +      '<input id="cs-add-name" placeholder="ex : Circuit spécialisé 4 mm²" />'
-    +      (typeof b==='function'? b('Ajouter','catCSAdd()','btn') : '<button onclick="catCSAdd()">Ajouter</button>')
-    +    '</div>'
+    +  '<div class="card"><h3>Ajouter un type</h3>'
+    +    '<div class="row gap8"><input id="cs-add-name" placeholder="ex : Circuit spécialisé 4 mm²" />'
+    +    b('Ajouter','catCSAdd()','btn') + '</div>'
     +  '</div>'
     +'</div>'
   );
 
   window.catCSAdd = function(){
-    const name = (document.getElementById('cs-add-name').value||'').trim(); if(!name) return;
-    const all = getPrestations(); const CS2 = all.appareillage.circuit_spec;
-    if(!CS2.tarifs[name]){
-      CS2.customTypes.push(name);
-      CS2.tarifs[name] = _clone(CS2.tarifs["Circuit spécialisé 2,5 mm²"]||{});
-      setPrestations(all);
-    }
+    const name=(document.getElementById('cs-add-name').value||'').trim(); if(!name) return;
+    const all=getPrestations(), CS2=all.appareillage.circuit_spec;
+    if(!CS2.tarifs[name]){ CS2.customTypes.push(name); CS2.tarifs[name]=_clone(CS2.tarifs["Circuit spécialisé 2,5 mm²"]||{}); setPrestations(all); }
     pageCatPresta_CS();
   };
   window.catCSDel = function(name){
-    const all = getPrestations(); const CS2 = all.appareillage.circuit_spec;
+    const all=getPrestations(), CS2=all.appareillage.circuit_spec;
     if(CS2.baseTypes.indexOf(name)!==-1) return;
-    CS2.customTypes = (CS2.customTypes||[]).filter(n=>n!==name);
+    CS2.customTypes=(CS2.customTypes||[]).filter(n=>n!==name);
     delete CS2.tarifs[name]; setPrestations(all); pageCatPresta_CS();
   };
-  window.catCSSave = function(idx, name){
-    const id = 'cs-'+idx;
-    const all = getPrestations(); const CS2 = all.appareillage.circuit_spec;
+  window.catCSSave = function(idx,name){
+    const id='cs-'+idx, all=getPrestations(), CS2=all.appareillage.circuit_spec;
     CS2.tarifs[name] = {
       "Création": _saveNum(id+'-c'),
       "Remplacement appareillage": _saveNum(id+'-ra'),
@@ -4316,7 +4253,7 @@ function pageCatPresta_CS(){
 }
 
 /* ============================================================
-   13.6 • Coefficients de pose (alignés sur POSE_TYPES)
+   13.7 • Coefficients de pose (alignés sur POSE_TYPES)
    ============================================================ */
 function pageCatPresta_Coeffs(){
   const C = getCoeffs();
@@ -4325,23 +4262,22 @@ function pageCatPresta_Coeffs(){
 
   view(
     '<div class="presta-wrap">'
-    +  '<div class="card">'+ (typeof b==='function'? b('Retour','pageCataloguePrestation()','btn back') : '<button class="btn back" onclick="pageCataloguePrestation()">Retour</button>') +'<h2>Coefficients de pose — Appareillage</h2></div>'
+    +  '<div class="card">'+ b('Retour','pageCataloguePrestation()','btn back') +'<h2>Coefficients de pose — Appareillage</h2></div>'
     +  '<div class="card"><div class="presta-grid">'+ keys.map(row).join('') +'</div>'
-    +  '<div class="row gap8" style="margin-top:8px;">'+ (typeof b==='function'? b('Enregistrer','coeffSaveAll()','btn') : '<button onclick="coeffSaveAll()">Enregistrer</button>') +'</div>'
-    +  '<div class="h-note" style="margin-top:6px;">Les coefficients s’appliquent aux interventions “Création” des familles d’appareillage et sont pris en compte dans l’estimatif, l’export et la duplication “nouveaux tarifs”.</div>'
+    +  '<div class="row gap8" style="margin-top:8px;">'+ b('Enregistrer','coeffSaveAll()','btn') +'</div>'
+    +  '<div class="h-note" style="margin-top:6px;">Appliqués aux interventions “Création” des familles d’appareillage (prises, luminaires, commandes, circuits spé.).</div>'
     +  '</div>'
     +'</div>'
   );
 
   window.coeffSaveAll = function(){
     const out={}; keys.forEach(k=>{ const el=document.getElementById('cf-'+k); out[k]= Math.max(0, parseFloat(el.value)||1); });
-    setCoeffs(out);
-    alert('Coefficients enregistrés.');
+    setCoeffs(out); alert('Coefficients enregistrés.');
   };
 }
 
 /* ============================================================
-   13.7 • Import / Export / Reset
+   13.8 • Import / Export / Reset
    ============================================================ */
 function presta13Export(){
   const raw = JSON.stringify({ prestations:getPrestations(), coeffs:getCoeffs() }, null, 2);
@@ -4359,8 +4295,7 @@ function presta13Import(){
         const obj = JSON.parse(rd.result||'{}');
         if(obj.prestations) setPrestations(obj.prestations);
         if(obj.coeffs) setCoeffs(obj.coeffs);
-        alert('Catalogue prestation importé.');
-        pageCataloguePrestation();
+        alert('Catalogue prestation importé.'); pageCataloguePrestation();
       }catch(e){ alert('Import impossible : '+e.message); }
     };
     rd.readAsText(f,'utf-8');
@@ -4372,105 +4307,31 @@ function presta13Reset(){
   localStorage.removeItem(KEY_PRESTA13);
   localStorage.removeItem(KEY_COEFFS13);
   applyPrestToApp();
-  alert('Catalogue réinitialisé.');
-  pageCataloguePrestation();
+  alert('Catalogue réinitialisé.'); pageCataloguePrestation();
 }
 
 /* ============================================================
-   13.8 • Expose
+   13.9 • Expose (window)
    ============================================================ */
 Object.assign(window,{
+  // Accueil tarifs
+  pageTarifsAccueil,
+  // Accueil catalogue + éditeurs
   pageCataloguePrestation,
   pageCatPresta_Prise,
   pageCatPresta_Luminaires,
   pageCatPresta_Commandes,
   pageCatPresta_CS,
   pageCatPresta_Coeffs,
-  presta13Export,
-  presta13Import,
-  presta13Reset,
-  computePU,
-  applyPrestToApp
+  // IO
+  presta13Export, presta13Import, presta13Reset,
+  // Runtime
+  computePU, applyPrestToApp
 });
 </script>
-<!-- =============================
-     CHAPITRE 13.9 — ACCUEIL TARIFS (remplace 13A)
-     - Page "Paramétrage" (pageTarifsAccueil)
-     - Liens vers : Catalogue prestation, Préférences, Config entreprise
-     - Appels sécurisés (aucune erreur si une page n'est pas chargée)
-     ============================= -->
-<style>
-  .tarifs-wrap .card{ margin-bottom:16px; }
-  .tarifs-wrap .muted{ color: var(--muted); }
-</style>
 
-<script>
-(function(){
-  // Helpers locaux
-  function has(fn){ return typeof window[fn] === 'function'; }
-  function btn(label, call, cls){
-    if (has('b')) return b(label, call, cls || 'btn');            // réutilise ton builder
-    return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
-  }
 
-  // Appels protégés (affichent une alerte si la cible est absente)
-  var callCatalogue   = has('pageCataloguePrestation')
-      ? 'pageCataloguePrestation()'
-      : 'alert(\\'Catalogue indisponible : le Chapitre 13 n\\'est pas chargé ou comporte une erreur.\\')';
 
-  var callPreferences = has('pagePreferences')
-      ? 'pagePreferences()'
-      : 'alert(\\'La page Préférences n\\'est pas disponible.\\')';
-
-  var callEntreprise  = has('pageConfigEntreprise')
-      ? 'pageConfigEntreprise()'
-      : 'alert(\\'La page Configuration entreprise n\\'est pas disponible.\\')';
-
-  var callBackMain    = has('pageMain') ? 'pageMain()' : '0';
-
-  // Page Paramétrage
-  function pageTarifsAccueil(){
-    var html = ''
-      + '<div class="tarifs-wrap">'
-      +   '<div class="card">'
-      +     btn('Retour', callBackMain, 'btn back')
-      +     '<h2>Tarifs & paramètres</h2>'
-      +     '<p class="muted">Accès centralisé aux réglages de pose, de TVA et aux informations entreprise.</p>'
-      +   '</div>'
-
-      +   '<div class="card">'
-      +     '<h3>Catalogue prestation</h3>'
-      +     '<p class="muted">Gérez les tarifs de pose (prises, éclairage, commandes, circuits spécialisés…).</p>'
-      +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-      +       btn('Ouvrir le catalogue', callCatalogue, 'btn primary')
-      +     '</div>'
-      +   '</div>'
-
-      +   '<div class="card">'
-      +     '<h3>Préférences devis & facturation</h3>'
-      +     '<p class="muted">Devise, TVA par défaut, numérotation…</p>'
-      +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-      +       btn('Ouvrir les préférences', callPreferences, 'btn')
-      +     '</div>'
-      +   '</div>'
-
-      +   '<div class="card">'
-      +     '<h3>Configuration entreprise</h3>'
-      +     '<p class="muted">Coordonnées, SIREN/TVA, IBAN, assurances, logo…</p>'
-      +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-      +       btn('Ouvrir la configuration', callEntreprise, 'btn')
-      +     '</div>'
-      +   '</div>'
-      + '</div>';
-
-    if (has('view')) view(html);
-    else (document.getElementById('app') || document.body).innerHTML = html; // fallback sûr
-  }
-
-  // Expose uniquement la page (aucun auto-run)
-  Object.assign(window, { pageTarifsAccueil: pageTarifsAccueil });
-})();
-</script>
  
 
 
