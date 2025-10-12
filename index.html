@@ -5218,7 +5218,35 @@ Object.assign(window,{
 })();
 </script>
 
-
+<script>
+/* Nettoyage des anciens boutons de duplication (actuels / nouveaux tarifs) */
+(function stripLegacyDuplButtons(){
+  function strip(){
+    var app = document.getElementById('app'); if(!app) return;
+    // retire les boutons injectés par les anciens chapitres 15/15.2
+    Array.from(app.querySelectorAll('button')).forEach(function(btn){
+      var oc  = (btn.getAttribute('onclick')||'');
+      var txt = (btn.textContent||'');
+      if (/duplicateDevisWithCurrentTarifs\(\)/.test(oc)
+       || /duplicateDevisWithCurrentTarifs_REPRICE\(\)/.test(oc)
+       || /Dupliquer avec tarifs actuels/i.test(txt)
+       || /Dupliquer avec nouveaux tarifs/i.test(txt)) {
+        btn.remove();
+      }
+    });
+  }
+  function wrap(name){
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    if (orig.__stripWrapped) return;
+    window[name] = function(){ orig.apply(this, arguments); strip(); };
+    window[name].__stripWrapped = true;
+  }
+  wrap('pageEstimatif');
+  wrap('pageTotaux');
+  setTimeout(strip, 0); // si l’écran est déjà affiché
+})();
+</script>
 
 
 
@@ -5503,6 +5531,7 @@ function buildDevisPDF16(){
     alert('Erreur PDF : '+(err && err.message ? err.message : String(err)));
   }
 }
+  </script>
 
 <script>
 /* ======================================================
