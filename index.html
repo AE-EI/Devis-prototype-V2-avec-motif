@@ -4396,70 +4396,75 @@ Object.assign(window,{
 <!-- =============================
      CHAPITRE 13.9 — ACCUEIL TARIFS (remplace 13A)
      - Page "Paramétrage" (pageTarifsAccueil)
-     - Redirige vers : Catalogue prestation, Préférences, Config entreprise
+     - Liens vers : Catalogue prestation, Préférences, Config entreprise
      - Appels sécurisés (aucune erreur si une page n'est pas chargée)
      ============================= -->
 <style>
   .tarifs-wrap .card{ margin-bottom:16px; }
-  .tarifs-wrap .muted{ color:var(--muted); }
+  .tarifs-wrap .muted{ color: var(--muted); }
 </style>
 
 <script>
 (function(){
-  // Utilitaires locaux
+  // Helpers locaux
   function has(fn){ return typeof window[fn] === 'function'; }
   function btn(label, call, cls){
-    // Réutilise ton builder global s'il est présent, sinon bouton HTML
-    if (has('b')) return b(label, call, cls||'btn');
+    if (has('b')) return b(label, call, cls || 'btn');            // réutilise ton builder
     return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
   }
 
-  // Appels protégés (n’exceptionnent pas si la cible n’existe pas)
-  var callCatalogue   = (has('pageCataloguePrestation') ? 'pageCataloguePrestation()'
-                         : 'alert(\'Catalogue indisponible : le Chapitre 13 n\\\'est pas chargé ou a une erreur.\')');
-  var callPreferences = (has('pagePreferences') ? 'pagePreferences()'
-                         : 'alert(\'La page Préférences n\\\'est pas disponible.\')');
-  var callEntreprise  = (has('pageConfigEntreprise') ? 'pageConfigEntreprise()'
-                         : 'alert(\'La page Configuration entreprise n\\\'est pas disponible.\')');
-  var callBackMain    = (has('pageMain') ? 'pageMain()' : '0');
+  // Appels protégés (affichent une alerte si la cible est absente)
+  var callCatalogue   = has('pageCataloguePrestation')
+      ? 'pageCataloguePrestation()'
+      : 'alert(\\'Catalogue indisponible : le Chapitre 13 n\\'est pas chargé ou comporte une erreur.\\')';
 
-  // --- Page Paramétrage ---
+  var callPreferences = has('pagePreferences')
+      ? 'pagePreferences()'
+      : 'alert(\\'La page Préférences n\\'est pas disponible.\\')';
+
+  var callEntreprise  = has('pageConfigEntreprise')
+      ? 'pageConfigEntreprise()'
+      : 'alert(\\'La page Configuration entreprise n\\'est pas disponible.\\')';
+
+  var callBackMain    = has('pageMain') ? 'pageMain()' : '0';
+
+  // Page Paramétrage
   function pageTarifsAccueil(){
     var html = ''
-    + '<div class="tarifs-wrap">'
-    +   '<div class="card">'
-    +     btn('Retour', callBackMain, 'btn back')
-    +     '<h2>Tarifs & paramètres</h2>'
-    +     '<p class="muted">Accès centralisé aux réglages de pose, de TVA et aux informations entreprise.</p>'
-    +   '</div>'
+      + '<div class="tarifs-wrap">'
+      +   '<div class="card">'
+      +     btn('Retour', callBackMain, 'btn back')
+      +     '<h2>Tarifs & paramètres</h2>'
+      +     '<p class="muted">Accès centralisé aux réglages de pose, de TVA et aux informations entreprise.</p>'
+      +   '</div>'
 
-    +   '<div class="card">'
-    +     '<h3>Catalogue prestation</h3>'
-    +     '<p class="muted">Gérez les tarifs de pose (prises, éclairage, commandes, circuits spécialisés…).</p>'
-    +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +       btn('Ouvrir le catalogue', callCatalogue, 'btn primary')
-    +     '</div>'
-    +   '</div>'
+      +   '<div class="card">'
+      +     '<h3>Catalogue prestation</h3>'
+      +     '<p class="muted">Gérez les tarifs de pose (prises, éclairage, commandes, circuits spécialisés…).</p>'
+      +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +       btn('Ouvrir le catalogue', callCatalogue, 'btn primary')
+      +     '</div>'
+      +   '</div>'
 
-    +   '<div class="card">'
-    +     '<h3>Préférences devis & facturation</h3>'
-    +     '<p class="muted">Devise, TVA par défaut, numérotation…</p>'
-    +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +       btn('Ouvrir les préférences', callPreferences, 'btn')
-    +     '</div>'
-    +   '</div>'
+      +   '<div class="card">'
+      +     '<h3>Préférences devis & facturation</h3>'
+      +     '<p class="muted">Devise, TVA par défaut, numérotation…</p>'
+      +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +       btn('Ouvrir les préférences', callPreferences, 'btn')
+      +     '</div>'
+      +   '</div>'
 
-    +   '<div class="card">'
-    +     '<h3>Configuration entreprise</h3>'
-    +     '<p class="muted">Coordonnées, SIREN/TVA, IBAN, assurances, logo…</p>'
-    +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +       btn('Ouvrir la configuration', callEntreprise, 'btn')
-    +     '</div>'
-    +   '</div>'
-    + '</div>';
+      +   '<div class="card">'
+      +     '<h3>Configuration entreprise</h3>'
+      +     '<p class="muted">Coordonnées, SIREN/TVA, IBAN, assurances, logo…</p>'
+      +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +       btn('Ouvrir la configuration', callEntreprise, 'btn')
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
 
     if (has('view')) view(html);
-    else (document.getElementById('app')||document.body).innerHTML = html; // fallback
+    else (document.getElementById('app') || document.body).innerHTML = html; // fallback sûr
   }
 
   // Expose uniquement la page (aucun auto-run)
