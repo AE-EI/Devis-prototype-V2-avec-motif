@@ -942,6 +942,48 @@ function removePiece(key){
     pageHome();
   }
 }
+  /* === 5.3bis — Ajout d’une nouvelle pièce =================== */
+function pageAddPiece(){
+  var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
+           + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
+
+  var safeEtages = (window.ETAGES && Array.isArray(ETAGES) && ETAGES.length)
+      ? ['(aucun)'].concat(ETAGES)
+      : ['(aucun)','RDC','R+1','R+2','Sous-sol','Combles','Extérieur'];
+
+  var etageOpts = safeEtages.map(e=>'<option value="'+e+'">'+e+'</option>').join('');
+
+  view(
+    '<div class="card">'
+      + b('Retour','pageHome()','btn back')
+      + '<h2>Ajouter une pièce</h2>'
+      + '<label>Choisir une pièce</label>'
+      + '<select id="piece-choice">'+opts+'</select>'
+      + '<label style="margin-top:10px;">Qualificatif (optionnel)</label>'
+      + '<input id="piece-qualif" placeholder="ex : Parents, RDC, gauche" />'
+      + '<label style="margin-top:10px;">Étage (optionnel)</label>'
+      + '<select id="piece-etage">'+etageOpts+'</select>'
+      + '<div class="row" style="margin-top:10px;">'
+        + b('Valider','confirmPieceChoice()','btn primary')
+      + '</div>'
+    + '</div>'
+  );
+}
+
+function confirmPieceChoice(){
+  var sel = document.getElementById('piece-choice').value;
+  var qualif = (document.getElementById('piece-qualif').value || '').trim();
+  var etage = document.getElementById('piece-etage').value;
+  if(!sel) return;
+  var base = sel;
+  if(sel==='__NEW__'){
+    base = (prompt('Nom de la pièce :','') || '').trim();
+    if(!base) return;
+  }
+  var etageVal = (etage && etage!=='(aucun)') ? etage : '';
+  var key = createOrGetPiece(base, qualif, etageVal);
+  goPiece(key);
+}
 </script>
   <!-- === 5.4 — Navigation catégories ========================= -->
 <script>
