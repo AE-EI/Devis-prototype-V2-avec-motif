@@ -5538,3 +5538,92 @@ Object.assign(window,{
   pageDevisPDF16, buildDevisPDF16
 });
 </script>
+
+  <!-- =============================
+     CHAPITRE 16Z — Anti-doublons & PDF Reinjection (safe)
+     ============================= -->
+<script>
+(function(){
+
+  /* 1) Neutraliser définitivement les anciennes fonctions de duplication */
+  const NOP = function(){ /* neutralisé */ };
+  ['repriceCurrentDevisV10',
+   'duplicateDevisWithCurrentTarifs',
+   'duplicateDevisWithCurrentTarifs_REPRICE'
+  ].forEach(function(fn){
+    try{ if (typeof window[fn] === 'function') window[fn] = NOP; }catch(e){}
+  });
+
+  /* 2) Nettoyer l’UI : retirer les vieux boutons réinjectés par d’anciens chapitres */
+  function stripLegacyButtons(){
+    var app = document.getElementById('app'); if(!app) return;
+    var killers = [
+      'repriceCurrentDevisV10(',
+      'duplicateDevisWithCurrentTarifs_REPRICE(',
+      'duplicateDevisWithCurrentTarifs('
+    ];
+    // supprime les <button> ciblés
+    app.querySelectorAll('button').forEach(function(btn){
+      var oc = (btn.getAttribute('onclick')||'');
+      if (killers.some(function(k){ return oc.indexOf(k) !== -1; })){
+        btn.remove();
+      }
+    });
+    // supprime les .row devenues vides
+    app.querySelectorAll('.row').forEach(function(row){
+      if(!row.querySelector('button')) row.parentNode && row.parentNode.removeChild(row);
+    });
+  }
+
+  /* 3) Ré-injecter la carte PDF si absente (utilise tes fonctions si présentes) */
+  function ensurePdfBlock(){
+    var app = document.getElementById('app'); if(!app) return;
+    if (app.innerHTML.indexOf('buildDevisPDF16()') !== -1 ||
+        app.innerHTML.indexOf('pageDevisPDF16()') !== -1) {
+      return; // déjà là
+    }
+    // Petite tolérance : si tes fonctions n’existent pas, on met un fallback d’alerte
+    if (typeof window.pageDevisPDF16 !== 'function'){
+      window.pageDevisPDF16 = function(){ alert('Fonction pageDevisPDF16 introuvable dans ce projet.'); };
+    }
+    if (typeof window.buildDevisPDF16 !== 'function'){
+      window.buildDevisPDF16 = function(){ alert('Fonction buildDevisPDF16 introuvable dans ce projet.'); };
+    }
+
+    // Ajoute une carte dédiée
+    app.innerHTML +=
+      '<div class="card" style="margin-top:12px;">'
+      +  '<h3>Devis (PDF)</h3>'
+      +  '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +    '<button class="btn" onclick="pageDevisPDF16()">Aperçu du devis (PDF)</button>'
+      +    '<button class="btn primary" onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>'
+      +  '</div>'
+      +'</div>';
+  }
+
+  /* 4) Wrapper des pages Estimatif / Totaux pour appliquer strip+reinjection à chaque rendu */
+  function wrapOnce(name){
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    if (orig.__cleanWrapped) return;
+    function wrapped(){
+      orig.apply(this, arguments);
+      // ordre : d’abord on enlève les boutons legacy, puis on garantit la carte PDF
+      stripLegacyButtons();
+      ensurePdfBlock();
+    }
+    wrapped.__cleanWrapped = true;
+    window[name] = wrapped;
+  }
+
+  wrapOnce('pageEstimatif');
+  wrapOnce('pageTotaux');
+
+  // 5) Coup de balai immédiat si une page est déjà affichée
+  setTimeout(function(){
+    stripLegacyButtons();
+    ensurePdfBlock();
+  }, 0);
+
+})();
+</script>
