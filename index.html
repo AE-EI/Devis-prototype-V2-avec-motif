@@ -3269,14 +3269,15 @@ function exportInvoiceText(){
 
   
   
-  <!-- ============================================================
-     CHAPITRE 11 : ESTIMATIF & EXPORTS — vNEXT
+<!-- ============================================================
+     CHAPITRE 11 : ESTIMATIF & EXPORTS — vNEXT + PDF Buttons
      Index :
        §7.0 • Détection / libellé des pièces (Tableaux inclus)
        §7.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
-       §7.2 • Pages : Estimatif détaillé & Totaux par groupe
+       §7.2 • Pages : Estimatif détaillé & Totaux par groupe (+ boutons PDF)
        §7.3 • Exports : .txt par groupe / .zip par groupe
        §7.4 • Exports : complet .txt / complet .zip
+       §7.5 • Boutons PDF (helper)
      ============================================================ -->
 <script>
 // §7.0 • Détection & libellés
@@ -3397,8 +3398,12 @@ function pageEstimatif(){
        +    b("Export .zip (par groupe)","exportZipGroups()","btn")
        +    b("Export .txt (complet)","exportTextFull()","btn")
        +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div></div>';
+       +  '</div>';
 
+  // 🔽 Boutons PDF intégrés de façon déterministe
+  html += pdfButtonsHtml();
+
+  html += '</div>'; // close card
   view(html);
 }
 
@@ -3425,8 +3430,12 @@ function pageTotaux(){
        +    b("Export .zip (par groupe)","exportZipGroups()","btn")
        +    b("Export .txt (complet)","exportTextFull()","btn")
        +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div></div>';
+       +  '</div>';
 
+  // 🔽 Boutons PDF intégrés de façon déterministe
+  html += pdfButtonsHtml();
+
+  html += '</div>'; // close card
   view(html);
 }
 
@@ -3574,8 +3583,32 @@ async function exportZipFull(){
 
   alert('✅ Export .zip complet généré.');
 }
-</script>
 
+/* ------------------------------------------------------------
+   §7.5 • Boutons PDF — helper déterministe (aucune injection)
+   ------------------------------------------------------------ */
+function pdfButtonsHtml(){
+  // si Chapitre 16 est présent → boutons actifs, sinon fallback avec message
+  var hasPage = (typeof pageDevisPDF16 === 'function');
+  var hasBuild = (typeof buildDevisPDF16 === 'function');
+
+  var apPreview = hasPage
+    ? b('Aperçu du devis (PDF)','pageDevisPDF16()','btn')
+    : '<button class="btn" onclick="alert(\'Module PDF manquant (Chapitre 16).\')">Aperçu du devis (PDF)</button>';
+
+  var apBuild = hasBuild
+    ? b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary')
+    : '<button class="btn primary" onclick="alert(\'Module PDF manquant (Chapitre 16).\')">Générer le PDF (tout compris)</button>';
+
+  return '<div class="card" style="margin-top:12px;">'
+       +   '<h3>Devis (PDF)</h3>'
+       +   '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+       +     apPreview
+       +     apBuild
+       +   '</div>'
+       + '</div>';
+}
+</script>
 
 
 
