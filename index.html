@@ -91,16 +91,15 @@
 
   
 
-  
   <!-- =============================
-     CHAPITRE 2 : ÉTAT & HELPERS
-     Index :
-       §2.1 • Gestion erreurs globales
-       §2.2 • État global & contexte courant
-       §2.3 • Identifiants & helpers DOM/UI
-       §2.4 • Libellés de pièces (build/format)
-       §2.5 • Persistance locale (save/load)
-     ============================= -->
+   CHAPITRE 2 : ÉTAT & HELPERS — v2 (avec autosauvegarde)
+   Index :
+     §2.1 • Gestion erreurs globales
+     §2.2 • État global & contexte courant
+     §2.3 • Identifiants & helpers DOM/UI
+     §2.4 • Libellés de pièces (build/format)
+     §2.5 • Persistance locale (save/load + autosave)
+   ============================= -->
 <script>
 // §2.1 • Gestion erreurs globales
 window.addEventListener('error', function (e) {
@@ -115,7 +114,7 @@ window.addEventListener('error', function (e) {
 });
 
 // §2.2 • État global & contexte courant
-var devis = {}; // contiendra aussi __id, __name, __tabCounter
+var devis = {}; // contiendra aussi __id, __name, __ts, __tabCounter
 var ctx   = { piece:null, category:null, intervention:null, pose:null, designation:null };
 
 // §2.3 • Identifiants & helpers DOM/UI
@@ -131,7 +130,7 @@ function view(html, noFooter){
   if(!noFooter){
     html += '<div class="row" style="margin-top:16px; gap:12px;">'
           + b('⬅️ Accueil','confirmBackHome()','btn back')
-          + b('💾 Sauvegarder devis','saveCurrentDevis()','btn primary')
+          + b('💾 Sauvegarder devis','saveCurrentDevis ? saveCurrentDevis() : saveLocal()','btn primary')
           + '</div>';
   }
   $app().innerHTML = html;
@@ -175,22 +174,29 @@ function formatPieceLabel(key){
   return buildPieceLabel(base, s.qualificatif, s.etage);
 }
 
-<script>
-// §2.5 • Persistance locale (save/load) — avec autosave + badge vert
+// §2.5 • Persistance locale (save/load) — autosave + snapshot
 var _saveDebounce = null;
-var _lastToastAt = 0; // anti-spam visuel
+var _lastToastAt = 0;
+
+function _ensureSaveStyles(){
+  if (document.getElementById('save-toast-style')) return;
+  var css = '.save-toast{position:fixed;left:12px;bottom:12px;z-index:9999;background:#e8f5e9;border:1px solid #c8e6c9;color:#256029;padding:8px 12px;border-radius:10px;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:opacity .25s ease,transform .25s ease;}'
+          + '.save-toast.hide{opacity:0;transform:translateY(6px);}';
+  var st = document.createElement('style'); st.id='save-toast-style'; st.textContent = css;
+  document.head.appendChild(st);
+}
 
 function showSavedOK(msg){
   try{
+    _ensureSaveStyles();
     var t = document.createElement('div');
     t.className = 'save-toast hide';
     t.textContent = msg || 'Brouillon sauvegardé';
     document.body.appendChild(t);
-    // force reflow
-    void t.offsetHeight;
+    void t.offsetHeight; // reflow
     t.classList.remove('hide');
-    setTimeout(function(){ t.classList.add('hide'); }, 1400);
-    setTimeout(function(){ t.remove(); }, 1800);
+    setTimeout(function(){ t.classList.add('hide'); }, 1200);
+    setTimeout(function(){ t.remove(); }, 1600);
   }catch(e){}
 }
 
@@ -200,14 +206,13 @@ function _saveLocalNow(silent){
     localStorage.setItem('devis', JSON.stringify(devis));
     localStorage.setItem('devis_last_ts', Date.now());
     if(!silent){
-      // pas plus d’un toast toutes les 2s
       var now = Date.now();
       if (now - _lastToastAt > 2000){ _lastToastAt = now; showSavedOK('Brouillon sauvegardé'); }
     }
   }catch(e){}
 }
 
-/* API publique : saveLocal() (debounce 500 ms) */
+/* API publique : saveLocal() — debounce 500 ms */
 function saveLocal(opts){
   clearTimeout(_saveDebounce);
   _saveDebounce = setTimeout(function(){ _saveLocalNow(!!(opts && opts.silent)); }, 500);
@@ -216,19 +221,17 @@ function saveLocal(opts){
 /* Lecture robuste + récupération éventuelle du snapshot autosave */
 function loadLocal(){
   try{
-    var cur = JSON.parse(localStorage.getItem('devis') || 'null') || {};
+    var cur  = JSON.parse(localStorage.getItem('devis') || 'null') || {};
     var snap = JSON.parse(localStorage.getItem('devis_autosave') || 'null') || null;
-    var tCur = +(localStorage.getItem('devis_last_ts') || 0);
+    var tCur  = +(localStorage.getItem('devis_last_ts') || 0);
     var tSnap = +(localStorage.getItem('devis_autosave_ts') || 0);
-
     // si le snapshot est plus récent, on le préfère (ex: crash avant le debounce)
-    if (snap && tSnap > tCur){ devis = snap; }
-    else { devis = cur; }
+    devis = (snap && tSnap > tCur) ? snap : cur;
   }catch(e){ devis = {}; }
   ensureId();
 }
 
-/* Snapshot périodique (toute les 10 s) en arrière-plan */
+/* Snapshot périodique (toutes les 10 s) */
 (function autoSnapshot(){
   try{
     setInterval(function(){
@@ -240,8 +243,6 @@ function loadLocal(){
   }catch(e){}
 })();
 </script>
-</script>
-
 
 
 
