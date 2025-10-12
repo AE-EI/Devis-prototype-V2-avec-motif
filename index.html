@@ -4837,195 +4837,282 @@ function duplicateDevisWithCurrentTarifs_REPRICE(){
 
 
 <!-- =============================
-     CHAPITRE 15 : MOTEUR TARIFAIRE & DUPLICATION (V10.x)
-     - Recalcule le devis courant selon les tarifs en vigueur (Chap.13)
-     - Duplique un devis en appliquant les nouveaux tarifs
-     - Injection de 2 boutons dans Estimatif + Totaux
+     CHAPITRE 15 (UNIFIÉ) — v15X
+     Tarifs & Duplication
+     - Recalcul (global) du devis courant
+     - Duplication avec tarifs globaux
+     - Tarifs personnalisés pour CE devis (override local)
+     - Recalcul avec overrides (prioritaires)
+     - Injection des boutons Estimatif & Totaux (sans doublons)
      ============================= -->
 <script>
-/* ============================================================
-   §15.0 • Dépendances attendues (déjà présentes dans l’app)
-   - devis : objet de travail courant
-   - saveLocal(), loadLocal()
-   - saved devis utils (Chap.4) : saveCurrentDevis(), export/import existent déjà
-   - TARIFS_BASE : alimenté par Chapitre 13 (pageCataloguePrestation/applyPrestToApp)
-   - COEFFS_POSE / TARIFS_COEFS : si utiles plus tard
-   ============================================================ */
-
-/* ============================================================
-   §15.1 • Résolution de tarif (désignation + intervention)
-   - On cherche d’abord dans PRISES, puis ECLAIRAGE, puis CIRCUIT_SPÉ
-   - On gère quelques synonymes d’interventions historiques
-   ============================================================ */
 (function(){
-  const SYN_INTERV = {
-    // normalisation d’interventions historiques vers nos clés actuelles
-    "Remplacement": "Remplacement appareillage",
-    "Remplacement luminaire (ancien)": "Remplacement luminaire",
-    "Recablage avec remplacement appareillage": "Recâblage avec remplacement appareillage",
-    "Recablage sans remplacement appareillage": "Recâblage sans remplacement appareillage",
-    "Recablage avec remplacement luminaire": "Recâblage avec remplacement luminaire",
-    "Recablage sans remplacement luminaire": "Recâblage sans remplacement luminaire"
-  };
 
-  function _normIntervention(interv){
-    if(!interv) return "Création";
-    const k = String(interv).trim();
-    return SYN_INTERV[k] || k;
-  }
+/* ============== 15X.0 • Helpers sûrs ============== */
+function _deep(x){ try{return JSON.parse(JSON.stringify(x))}catch(e){return x} }
+function _num(x){ return Number.isFinite(+x) ? +x : 0 }
+function _rd(k,d){ try{return JSON.parse(localStorage.getItem(k)||'null') ?? d}catch(e){return d} }
+function _wr(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch(e){} }
+function _poseCoef(p){ const m=(window.COEFF_POSE||{}); return +m[p]>0?+m[p]:1 }
+function _round5(n){ n=_num(n); return Math.ceil(n/5)*5 }
 
-  function _findTarif(designation, intervention){
-    if(!window.TARIFS_BASE) return null;
-    const inter = _normIntervention(intervention);
-    const name  = String(designation||'').trim();
+/* ============== 15X.1 • Résolution de prix ============== */
+/* Source hiérarchique : OVERRIDES (ce devis) > TARIFS_BASE (globaux) */
+const INTERVS_STD = [
+  'Création',
+  'Remplacement appareillage',
+  'Remplacement luminaire',
+  'Recâblage avec remplacement appareillage',
+  'Recâblage sans remplacement appareillage',
+  'Recâblage avec remplacement luminaire',
+  'Recâblage sans remplacement luminaire'
+];
 
-    // 1) PRISES
-    const tP = (TARIFS_BASE.prises && TARIFS_BASE.prises[name]);
-    if(tP && tP[inter] != null) return +tP[inter];
-
-    // 2) ÉCLAIRAGE
-    const tE = (TARIFS_BASE.eclairage && TARIFS_BASE.eclairage[name]);
-    if(tE && tE[inter] != null) return +tE[inter];
-
-    // 3) CIRCUITS SPÉCIALISÉS
-    const tC = (TARIFS_BASE.circuit_specialise && TARIFS_BASE.circuit_specialise[name]);
-    if(tC && tC[inter] != null) return +tC[inter];
-
-    // 4) fallback : si l’intervention n’existe pas mais qu’il y a “Création” on la prend
-    if(tP && tP["Création"] != null) return +tP["Création"];
-    if(tE && tE["Création"] != null) return +tE["Création"];
-    if(tC && tC["Création"] != null) return +tC["Création"];
-
+function _findTarifIn(obj, cat, designation, intervention){
+  if(!obj) return null;
+  if(cat==='Prises') return obj.prises?.[designation]?.[intervention] ?? null;
+  if(cat==='Éclairage/Luminaires' || cat==='Éclairage/Commandes')
+    return obj.eclairage?.[designation]?.[intervention] ?? null;
+  if(cat==='Circuit spécialisé'){
+    // d’abord spécifique par désignation, puis base
+    const s = obj.circuit_specialise?.[designation]?.[intervention];
+    if(s!=null) return s;
+    const b = obj.circuit_specialise_base?.[intervention];
+    if(b!=null) return b;
     return null;
   }
+  return null;
+}
 
-  window.__tarifResolverV10 = { _findTarif, _normIntervention };
-})();
+function computePU15X(item, opts){
+  const cat  = String(item.category||'').trim();
+  const des  = String(item.designation||'').trim();
+  const intv = String(item.intervention||'').trim() || 'Création';
+  const pose = String(item.pose||'').trim();
+  const extras = opts && opts.extras || {};
 
-/* ============================================================
-   §15.2 • Repricing d’un devis (objet) en place
-   - options:
-       {applyCoeffs: false} -> réservé pour futur (on garde off par défaut)
-   ============================================================ */
-function repriceDevisObjectV10(draft, options){
-  if(!draft || typeof draft!=='object') return { changed:0, total:0 };
-  const { _findTarif, _normIntervention } = window.__tarifResolverV10 || {};
-  if(!_findTarif) return { changed:0, total:0 };
+  // 1) tente override (ce devis)
+  const over = (opts && opts.overrides) || (window.devis && devis.__tarifs_override) || null;
+  let pu = _findTarifIn(over, cat, des, intv);
 
-  let changed = 0, total = 0;
+  // 2) sinon tarifs globaux
+  if(pu==null) pu = _findTarifIn(window.TARIFS_BASE||{}, cat, des, intv);
 
-  for(const key in draft){
-    if(key.indexOf('__')===0) continue;
-    const section = draft[key]; if(!section || !Array.isArray(section.items)) continue;
+  // 3) cas spé (ex.: “Alimentation ligne de spot”) — exemple simple : surcharge par spot si défini
+  if(cat==='Éclairage/Luminaires' && /alimentation ligne de spot/i.test(des) && extras.spots){
+    // si tu as défini une clé eclairage['Alimentation ligne de spot (par spot)'][intv], on combine :
+    const perSpot = _findTarifIn(over, cat, 'Alimentation ligne de spot (par spot)', intv)
+                 ?? _findTarifIn(window.TARIFS_BASE||{}, cat, 'Alimentation ligne de spot (par spot)', intv);
+    if(perSpot!=null){
+      pu = _num(pu) + _num(perSpot) * _num(extras.spots);
+    }
+  }
 
-    section.items.forEach(it=>{
-      const q = +it.qty || 0;
-      const oldPU = +it.prixU || 0;
+  // 4) coefficient de pose si Création
+  if(pu!=null && intv==='Création' && pose){
+    pu = _num(pu) * _poseCoef(pose);
+  }
 
-      const designation  = it.designation || '';
-      const intervention = _normIntervention(it.intervention || '');
+  // 5) arrondi commercial (si trouvé)
+  if(pu!=null) return _round5(pu);
 
-      const newPU = _findTarif(designation, intervention);
-      if(newPU != null && newPU >= 0){
-        if(newPU !== oldPU){
-          it.prixU = +newPU;
-          changed++;
-        }
-        total += (+newPU) * q;
-      }else{
-        total += oldPU * q; // on garde le PU existant si non reconnu
+  // 6) sinon on garde le PU existant
+  return _num(item.prixU||0);
+}
+
+/* ============== 15X.2 • Repricing d’un devis ============== */
+function repriceDevisObject15X(src, opts){
+  const draft = _deep(src||{});
+  for(const k in draft){
+    if(k.indexOf('__')===0) continue;
+    const sec = draft[k]; if(!sec || !Array.isArray(sec.items)) continue;
+    sec.items = sec.items.map(it=>{
+      // familles non cataloguées : on laisse (Tableau & distribution, Ventilation, Spécifique…)
+      const cat = String(it.category||'');
+      if(/^Tableau/i.test(cat) || /Ventilation/i.test(cat) || /Sp[ée]cifique/i.test(cat)) return it;
+
+      const pu = computePU15X(it, { overrides: (opts && opts.overrides) || (draft.__tarifs_override||{}), extras: it.__extras||{} });
+      const out = _deep(it); out.prixU = pu; return out;
+    });
+  }
+  return draft;
+}
+
+/* ============== 15X.3 • Actions : Recalcul & Duplication ============== */
+function repriceCurrentDevis15X(){
+  if(!window.devis){ alert('Aucun devis chargé.'); return; }
+  window.devis = repriceDevisObject15X(window.devis, { overrides: (window.devis.__tarifs_override||{}) });
+  if(typeof saveLocal==='function') saveLocal();
+  alert('✅ Devis recalculé (tarifs globaux + overrides de ce devis).');
+  try{ if(typeof pageEstimatif==='function') pageEstimatif(); }catch(e){}
+}
+
+function duplicateWithGlobalTarifs15X(){
+  if(!window.devis){ alert('Aucun devis chargé.'); return; }
+  // clone sans les overrides (on repart “propre”)
+  const dup = _deep(window.devis);
+  delete dup.__tarifs_override;
+
+  const res = repriceDevisObject15X(dup, { overrides: null });
+  res.__id   = 'dv_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+  res.__name = (dup.__name||'Devis').replace(/\s*\(.*\)\s*$/,'') + ' — recalculé (globaux)';
+
+  // Remplace le courant par le duplicata
+  window.devis = res;
+  if(typeof saveLocal==='function') saveLocal();
+  try{ if(typeof saveCurrentDevis==='function') saveCurrentDevis(); }catch(e){}
+  alert('✅ Duplicata créé avec tarifs globaux.');
+  try{ if(typeof pageSavedDevis==='function') pageSavedDevis(); }catch(e){}
+}
+
+/* ============== 15X.4 • UI “Tarifs de CE devis” (override local) ============== */
+/* Objectif : éditeur minimal auto-généré à partir des lignes du devis.
+   - On liste les désignations rencontrées par famille (Prises, Luminaires, Commandes, Circuit spécialisé)
+   - Pour chaque désignation, on affiche les colonnes d’interventions standard et on édite les PU
+   - Sauvegarde dans devis.__tarifs_override (mêmes structures que TARIFS_BASE)
+*/
+function _collectCatalogueFromDevis(){
+  const out = { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
+  if(!window.devis) return out;
+  for(const k in devis){
+    if(k.indexOf('__')===0) continue;
+    const sec = devis[k]; if(!sec || !Array.isArray(sec.items)) continue;
+    sec.items.forEach(it=>{
+      const cat=String(it.category||'').trim();
+      const des=String(it.designation||'').trim();
+      const intv=String(it.intervention||'').trim()||'Création';
+      if(/^Prises$/i.test(cat)){
+        out.prises[des]=out.prises[des]||{};
+        out.prises[des][intv]= out.prises[des][intv] ?? '';
+      }else if(/^Éclairage\/Luminaires$/i.test(cat) || /^Éclairage\/Commandes$/i.test(cat)){
+        out.eclairage[des]=out.eclairage[des]||{};
+        out.eclairage[des][intv]= out.eclairage[des][intv] ?? '';
+      }else if(/^Circuit\s*sp/i.test(cat)){
+        out.circuit_specialise[des]=out.circuit_specialise[des]||{};
+        out.circuit_specialise[des][intv]= out.circuit_specialise[des][intv] ?? '';
       }
     });
   }
-  return { changed, total };
-}
-
-/* ============================================================
-   §15.3 • Actions : Recalculer (devis courant) & Dupliquer
-   ============================================================ */
-function repriceCurrentDevisV10(){
-  if(!window.devis){ alert('Aucun devis chargé.'); return; }
-  const res = repriceDevisObjectV10(window.devis, {applyCoeffs:false});
-  if(typeof saveLocal==='function') saveLocal();
-  alert('✅ Tarifs recalculés.\nLignes modifiées : '+res.changed);
-  // rafraîchir l’écran courant si besoin
-  if(typeof pageEstimatif==='function'){
-    try{ pageEstimatif(); }catch(e){}
-  }
-}
-
-function duplicateDevisWithNewTarifsV10(){
-  if(!window.devis){ alert('Aucun devis chargé.'); return; }
-
-  // clone profond
-  const dup = JSON.parse(JSON.stringify(window.devis));
-  // renommer
-  const base = (dup.__name || 'Devis');
-  dup.__name = base.replace(/\s*\(.*\)\s*$/,'') + ' (recalcul tarifs)';
-
-  const res = repriceDevisObjectV10(dup, {applyCoeffs:false});
-
-  // sauvegarde dans la liste des devis sauvegardés (Chap.4)
-  try{
-    // helpers du Chap.4
-    if(typeof window.ensureSavedList==='function'){
-      window.ensureSavedList();
+  // Ajoute clés existantes déjà en override pour édition complète
+  const cur = (window.devis && devis.__tarifs_override)||{};
+  ['prises','eclairage','circuit_specialise','circuit_specialise_base'].forEach(ns=>{
+    if(cur[ns]){
+      Object.keys(cur[ns]).forEach(des=>{
+        out[ns][des]=Object.assign({}, out[ns][des]||{}, cur[ns][des]);
+      });
     }
-    // structure : savedDevisList [{id, name, ts, data}]
-    const key = 'savedDevisList_v2';
-    const list = JSON.parse(localStorage.getItem(key)||'[]');
-    const id   = 'dv_'+Date.now();
-    list.push({ id, name: dup.__name||'Devis', ts: Date.now(), data: dup });
-    localStorage.setItem(key, JSON.stringify(list));
-    alert('✅ Duplicata créé avec nouveaux tarifs.\nLignes modifiées : '+res.changed+'\nRetrouve-le dans “Mes devis sauvegardés”.');
-  }catch(e){
-    console.error(e);
-    alert('Le duplicata n’a pas pu être sauvegardé.');
-  }
+  });
+  return out;
 }
 
-/* ============================================================
-   §15.4 • Injection des boutons (Estimatif & Totaux)
-   ============================================================ */
-(function injectButtons15(){
-  const addButtons = (html)=>{
-    if(html.indexOf('repriceCurrentDevisV10()')!==-1) return html; // déjà injecté
-    return html.replace(
-      /(Export \.zip \(complet\).*?<\/div>\s*<\/div>)/,
-      '$1'
-      + '<div class="row" style="margin-top:10px;">'
-      +   '<button class="btn" onclick="repriceCurrentDevisV10()">🔄 Recalculer tarifs (devis courant)</button>'
-      +   '<button class="btn primary" onclick="duplicateDevisWithNewTarifsV10()">🧭 Dupliquer avec nouveaux tarifs</button>'
-      + '</div>'
-    );
-  };
+function pageTarifsDevis(){
+  if(!window.devis){ alert('Aucun devis chargé.'); return; }
+  const data = _collectCatalogueFromDevis();
+  function renderSection(title, ns){
+    const map = data[ns]; const keys = Object.keys(map);
+    if(!keys.length) return '<p class="muted">Aucune ligne pour cette famille.</p>';
+    const head = '<tr><th style="min-width:260px">Désignation</th>'+INTERVS_STD.map(i=>'<th style="min-width:120px">'+i+'</th>').join('')+'</tr>';
+    const rows = keys.map(des=>{
+      const cells = INTERVS_STD.map(i=>{
+        const val = (map[des] && map[des][i] != null) ? map[des][i] : '';
+        const id  = 'ov_'+ns+'__'+btoa(encodeURIComponent(des)).replace(/=+$/,'')+'__'+btoa(encodeURIComponent(i)).replace(/=+$/,'');
+        return '<td><input id="'+id+'" type="number" step="1" inputmode="decimal" placeholder="—" value="'+(val===''
+          ? '' : String(val))+'" /></td>';
+      }).join('');
+      return '<tr><td><strong>'+_esc(des)+'</strong></td>'+cells+'</tr>';
+    }).join('');
+    return '<div class="card">'
+         +   '<div class="section-title" style="padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#f6f6f6;margin-bottom:8px;">'+_esc(title)+'</div>'
+         +   '<div style="overflow:auto;"><table class="dv-table"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>'
+         + '</div>';
+  }
 
-  if(typeof window.pageEstimatif === 'function'){
-    const orig = window.pageEstimatif;
-    window.pageEstimatif = function(){
-      orig();
-      const app = document.getElementById('app'); if(app) app.innerHTML = addButtons(app.innerHTML);
-    };
+  view(
+    '<div class="dv-wrap">'
+    +  '<div class="card">'+(typeof b==='function'?b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back'):'')
+    +  '<h2>Tarifs de CE devis (overrides)</h2>'
+    +  '<p class="muted">Valeurs remplies ici priment sur le catalogue global. Laisse vide pour utiliser le tarif global.</p>'
+    +  '</div>'
+    +  renderSection('Prises','prises')
+    +  renderSection('Éclairage (Luminaires & Commandes)','eclairage')
+    +  renderSection('Circuit spécialisé','circuit_specialise')
+    +  '<div class="card">'
+    +    '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+    +      b('Enregistrer ces tarifs (devis)','saveTarifsOverride15X()','btn primary')
+    +      b('Recalculer ce devis avec ces tarifs','repriceCurrentDevis15X()','btn')
+    +      b('Vider les overrides','clearTarifsOverride15X()','btn')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+
+function saveTarifsOverride15X(){
+  // relit tous les inputs ov_*
+  const over = { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
+  function readSection(ns){
+    const inputs = Array.from(document.querySelectorAll('input[id^="ov_'+ns+'__"]'));
+    inputs.forEach(inp=>{
+      const m = new RegExp('^ov_'+ns+'__([^_]+)__([^_]+)$').exec(inp.id.replace(/=+$/,''));
+      if(!m) return;
+      const des = decodeURIComponent(atob(m[1]+'=='));
+      const itv = decodeURIComponent(atob(m[2]+'=='));
+      const val = inp.value.trim();
+      if(val!==''){
+        const num = _num(val);
+        if(!over[ns][des]) over[ns][des]={};
+        over[ns][des][itv]= num;
+      }
+    });
   }
-  if(typeof window.pageTotaux === 'function'){
-    const orig2 = window.pageTotaux;
-    window.pageTotaux = function(){
-      orig2();
-      const app = document.getElementById('app'); if(app) app.innerHTML = addButtons(app.innerHTML);
-    };
+  readSection('prises'); readSection('eclairage'); readSection('circuit_specialise');
+  // NB : circuit_specialise_base éditable si tu veux l’ajouter plus tard
+  if(!window.devis) window.devis={};
+  devis.__tarifs_override = over;
+  if(typeof saveLocal==='function') saveLocal();
+  alert('✅ Tarifs personnalisés enregistrés pour ce devis.');
+}
+
+function clearTarifsOverride15X(){
+  if(!window.devis) return;
+  delete devis.__tarifs_override;
+  if(typeof saveLocal==='function') saveLocal();
+  alert('Overrides supprimés.');
+  try{ pageTarifsDevis(); }catch(e){}
+}
+
+/* ============== 15X.5 • Injection UI (Estimatif & Totaux) ============== */
+(function injectButtonsOnce(){
+  function append(){
+    const app=document.getElementById('app'); if(!app) return;
+    // Empêche doublons
+    if(app.innerHTML.indexOf('pageTarifsDevis()')!==-1) return;
+    // Ajoute une carte simple
+    app.innerHTML +=
+      '<div class="card" style="margin-top:12px;">'
+      +  '<h3>Tarifs & duplication</h3>'
+      +  '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +    '<button class="btn" onclick="repriceCurrentDevis15X()">🔄 Recalculer (globaux + overrides)</button>'
+      +    '<button class="btn primary" onclick="duplicateWithGlobalTarifs15X()">🧭 Dupliquer avec tarifs globaux</button>'
+      +    '<button class="btn" onclick="pageTarifsDevis()">✏️ Tarifs de ce devis</button>'
+      +  '</div>'
+      +'</div>';
   }
+  const e=window.pageEstimatif, t=window.pageTotaux;
+  if(typeof e==='function'){ window.pageEstimatif=function(){ e(); append(); }; }
+  if(typeof t==='function'){ window.pageTotaux=function(){ t(); append(); }; }
 })();
 
-/* ============================================================
-   §15.5 • Expose
-   ============================================================ */
-Object.assign(window, {
-  repriceDevisObjectV10,
-  repriceCurrentDevisV10,
-  duplicateDevisWithNewTarifsV10
+/* ============== 15X.6 • Expose global ============== */
+Object.assign(window,{
+  // Calcul
+  repriceDevisObject15X, repriceCurrentDevis15X, duplicateWithGlobalTarifs15X,
+  // Overrides (UI)
+  pageTarifsDevis, saveTarifsOverride15X, clearTarifsOverride15X
 });
-</script>
 
+})();
+</script>
 
 
 
