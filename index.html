@@ -449,11 +449,11 @@ function getPrix(designation, intervention){
 
   
 <!-- =========================================
-     CHAPITRE 4 : MENU & SAUVEGARDES — V10.1 (corrigé)
-     - Menu principal (Nouveau devis, Mes devis sauvegardés, Paramétrage)
-     - Gestion des devis sauvegardés (LS)
-     - Export / import de la bibliothèque de devis
-     - Restauration « si vide » (recoverSavedIfEmpty)
+     CHAPITRE 4 : MENU & SAUVEGARDES — V11.0
+     - Menu principal (Nouveau devis, Mes devis, Paramétrage)
+     - Flux "Nouveau devis" (Créer un client + bouton Annuaire)
+     - Gestion des devis sauvegardés (LS) + Export / Import
+     - Restauration auto si vide
      ========================================= -->
 
 <script>
@@ -467,7 +467,7 @@ const KEY_CURRENT    = 'devis';          // devis courant (objet global existant
 function _readLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
 function _writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
-/* Récupère la bibliothèque des devis sauvegardés */
+/* Récupère / fixe la bibliothèque des devis sauvegardés */
 function _getSavedList(){ return _readLS(KEY_SAVED_LIST, []); }
 function _setSavedList(list){ _writeLS(KEY_SAVED_LIST, Array.isArray(list)? list : []); }
 
@@ -499,35 +499,144 @@ function _quickTotal(dv){
   return sum;
 }
 
+/* Helpers d’affichage locaux (fallback si b()/view() absents) */
+function _btn(label, fn, cls){ return (typeof b==='function') ? b(label,fn,cls) : '<button class="'+(cls||'btn')+'" onclick="'+fn+'">'+label+'</button>'; }
+function _view(html, noFooter){ if(typeof view==='function') view(html, noFooter); else (document.getElementById('app')||document.body).innerHTML = html; }
+function _save(){ try{ if(typeof saveLocal==='function') saveLocal(); else localStorage.setItem(KEY_CURRENT, JSON.stringify(window.devis||{})); }catch(e){} }
+
 // ==================================================
 // §4.1 • Menu principal
 // ==================================================
 function pageMain(){
-  view(
+  _view(
     '<div class="card">'
       + '<h2>Menu principal</h2>'
       + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-        + b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
-        + b('📁 Mes devis sauvegardés','pageSavedDevis()','btn')
+        + _btn('➕ Nouveau devis','actionNouveauDevis()','btn primary')
+        + _btn('📁 Mes devis sauvegardés','pageSavedDevis()','btn')
       + '</div>'
     + '</div>'
 
     + '<div class="card" style="margin-top:12px;">'
       + '<div class="section-title">Configuration</div>'
       + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-        <!-- 🔧 Correctif : on appelle désormais pageTarifsAccueil() -->
-        + b('Paramétrage','pageTarifsAccueil()','btn')
+        + _btn('Paramétrage','pageTarifsAccueil ? pageTarifsAccueil() : (pageParametrageAccueil ? pageParametrageAccueil() : alert("Module Paramétrage non chargé."))','btn')
       + '</div>'
     + '</div>'
   );
 }
 
-// Créer/vider un devis courant
+// ==================================================
+// §4.1.b • Flux “Nouveau devis” (sans liste de clients)
+// ==================================================
 function actionNouveauDevis(){
   if(!confirm('Créer un nouveau devis ? Le devis courant non sauvegardé sera perdu.')) return;
   window.devis = { __id:_shortId(), __name:'Nouveau devis', __ts: Date.now() };
-  saveLocal && saveLocal();
-  pageHome && pageHome();
+  _save();
+  pageND_Accueil();
+}
+
+/* Accueil du flux : Créer client OU Annuaire */
+function pageND_Accueil(){
+  _view(
+    '<div class="card">'
+      + _btn('Retour','pageMain()','btn back')
+      + '<h2>Nouveau devis</h2>'
+      + '<p class="muted">Associez un client au devis. La sélection d’un client existant est remplacée par un accès à votre annuaire.</p>'
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;">'
+        + _btn('🆕 Créer un nouveau client','pageND_CreateClient()','btn primary')
+        + _btn('📇 Ouvrir l’annuaire client','pageND_OpenAnnuaire()','btn')
+      + '</div>'
+    + '</div>'
+  , /*noFooter*/true);
+}
+
+/* Formulaire client — pas de submit → pas de reload */
+function pageND_CreateClient(){
+  var c = (window.devis && devis.__client) || {
+    type:'Particulier', civ:'M.', nom:'', prenom:'',
+    societe:'', email:'', tel:'',
+    adresse:'', cp:'', ville:''
+  };
+  function opt(v, cur){ return '<option value="'+v+'" '+(cur===v?'selected':'')+'>'+v+'</option>'; }
+  function esc(v){ return String(v||'').replace(/"/g,'&quot;'); }
+
+  _view(
+    '<div class="card">'
+      + _btn('Retour','pageND_Accueil()','btn back')
+      + '<h2>Nouveau client</h2>'
+
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+        + '<label class="pill"><small>Type</small> <select id="ndc-type">'
+          + opt('Particulier', c.type) + opt('Professionnel', c.type)
+        + '</select></label>'
+        + '<label class="pill"><small>Civilité</small> <select id="ndc-civ">'
+          + opt('M.', c.civ) + opt('Mme', c.civ) + opt('—', c.civ)
+        + '</select></label>'
+      + '</div>'
+
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+        + '<div style="flex:1 1 220px;"><label>Nom</label><input id="ndc-nom" value="'+esc(c.nom)+'"/></div>'
+        + '<div style="flex:1 1 220px;"><label>Prénom</label><input id="ndc-prenom" value="'+esc(c.prenom)+'"/></div>'
+        + '<div style="flex:1 1 260px;"><label>Société (si pro)</label><input id="ndc-societe" value="'+esc(c.societe)+'"/></div>'
+      + '</div>'
+
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">'
+        + '<div style="flex:2 1 320px;"><label>Adresse</label><input id="ndc-adr" value="'+esc(c.adresse)+'"/></div>'
+        + '<div style="flex:0 0 120px;"><label>CP</label><input id="ndc-cp" value="'+esc(c.cp)+'"/></div>'
+        + '<div style="flex:1 1 220px;"><label>Ville</label><input id="ndc-ville" value="'+esc(c.ville)+'"/></div>'
+      + '</div>'
+
+      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">'
+        + '<div style="flex:1 1 260px;"><label>Email</label><input id="ndc-email" value="'+esc(c.email)+'"/></div>'
+        + '<div style="flex:1 1 200px;"><label>Téléphone</label><input id="ndc-tel" value="'+esc(c.tel)+'"/></div>'
+      + '</div>'
+
+      + '<div class="row" style="margin-top:14px; gap:8px;">'
+        + _btn('Enregistrer et continuer','pageND_SaveClientThenContinue()','btn primary')
+      + '</div>'
+    + '</div>'
+  , true);
+}
+
+/* Enregistre le client sur le devis et enchaîne vers l’app */
+function pageND_SaveClientThenContinue(){
+  function v(id){ var el=document.getElementById(id); return el? (el.value||'').trim() : ''; }
+  var client = {
+    type: v('ndc-type'),
+    civ: v('ndc-civ'),
+    nom: v('ndc-nom'),
+    prenom: v('ndc-prenom'),
+    societe: v('ndc-societe'),
+    adresse: v('ndc-adr'),
+    cp: v('ndc-cp'),
+    ville: v('ndc-ville'),
+    email: v('ndc-email'),
+    tel: v('ndc-tel')
+  };
+  // Nom du devis = "Nom Prénom" ou Société
+  var displayName = client.societe ? client.societe.trim() : (client.nom+' '+client.prenom).trim();
+  if(!displayName) displayName = 'Nouveau devis';
+
+  if(!window.devis) window.devis = {};
+  devis.__client = client;
+  devis.__name   = displayName;
+  devis.__ts     = Date.now();
+  _save();
+
+  // Aller à l’accueil de construction du devis
+  if(typeof pageHome==='function') pageHome();
+  else if(typeof pageMain==='function') pageMain();
+  else alert('Client enregistré. Continuez avec l’ajout de pièces.');
+}
+
+/* Renvoi vers l’annuaire si dispo, sinon message propre */
+function pageND_OpenAnnuaire(){
+  if (typeof pageAnnuaireClients === 'function'){
+    pageAnnuaireClients();
+  } else {
+    alert('Annuaire client non chargé dans cette page. (Attendu : fonction globale pageAnnuaireClients) ');
+  }
 }
 
 // ==================================================
@@ -541,20 +650,20 @@ function pageSavedDevis(){
       '<div class="pill" style="width:100%;align-items:center;">'
       +  '<div style="flex:1 1 auto;"><strong>'+_friendlyName(it.data)+'</strong>'
       +  '<div class="muted" style="font-size:13px;">ID: '+it.id+' • '+total+'</div></div>'
-      +  b('Ouvrir','loadDevis('+JSON.stringify(it.id)+')','btn')
-      +  b('Supprimer','deleteDevis('+JSON.stringify(it.id)+')','btn')
+      +  _btn('Ouvrir','loadDevis('+JSON.stringify(it.id)+')','btn')
+      +  _btn('Supprimer','deleteDevis('+JSON.stringify(it.id)+')','btn')
       +'</div>'
     );
   }).join('') : '<p class="muted">Aucun devis sauvegardé.</p>';
 
-  view(
+  _view(
     '<div class="card">'
-      + b('Retour','pageMain()','btn back')
+      + _btn('Retour','pageMain()','btn back')
       + '<h2>Mes devis sauvegardés</h2>'
       + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">'
-        + b('💾 Sauvegarder le devis courant','saveCurrentDevis()','btn primary')
-        + b('⬇️ Exporter la bibliothèque (.json)','exportSavedDevis()','btn')
-        + b('⬆️ Importer une bibliothèque','importSavedDevisUI()','btn')
+        + _btn('💾 Sauvegarder le devis courant','saveCurrentDevis()','btn primary')
+        + _btn('⬇️ Exporter la bibliothèque (.json)','exportSavedDevis()','btn')
+        + _btn('⬆️ Importer une bibliothèque','importSavedDevisUI()','btn')
       + '</div>'
     + '</div>'
     + '<div class="card" style="margin-top:12px;">'
@@ -580,17 +689,15 @@ function saveCurrentDevis(){
   pageSavedDevis();
 }
 
-/* Charger un devis depuis la bibliothèque */
+/* Charger / supprimer */
 function loadDevis(id){
   const list=_getSavedList();
   const it=list.find(x=>x.id===id);
   if(!it){ alert('Introuvable.'); return; }
   window.devis = _clone(it.data||{});
-  saveLocal && saveLocal();
-  pageHome && pageHome();
+  _save();
+  if(typeof pageHome==='function') pageHome(); else pageMain();
 }
-
-/* Supprimer un devis de la bibliothèque */
 function deleteDevis(id){
   if(!confirm('Supprimer ce devis sauvegardé ?')) return;
   const list=_getSavedList().filter(x=>x.id!==id);
@@ -638,7 +745,7 @@ function recoverSavedIfEmpty(){
     const list=_getSavedList();
     if(!list.length) return;
     window.devis = _clone(list[0].data||{});
-    saveLocal && saveLocal();
+    _save();
   }catch(e){}
 }
 
@@ -647,7 +754,13 @@ function recoverSavedIfEmpty(){
 // ==================================================
 Object.assign(window, {
   pageMain,
+  // Nouveau flux
   actionNouveauDevis,
+  pageND_Accueil,
+  pageND_CreateClient,
+  pageND_SaveClientThenContinue,
+  pageND_OpenAnnuaire,
+  // Bibliothèque
   pageSavedDevis,
   saveCurrentDevis,
   exportSavedDevis,
@@ -657,7 +770,6 @@ Object.assign(window, {
   recoverSavedIfEmpty
 });
 </script>
-
 
 
 
