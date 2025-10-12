@@ -814,21 +814,46 @@ Object.assign(window, {
   
 
 
+
 <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V10.0
-     (ajouts : Prises = Fourniture/Marque/Gamme • Luminaires = Alimentation ligne de spot (nb) •
-               Commandes nouvelles désignations • Option "plusieurs types de pose")
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V10.1
+     (stabilisé : ensureSection intégré + flux de création corrigé)
      ============================= -->
 
 <script>
+/* ============================================================
+   SOMMAIRE CHAPITRE 5
+   ------------------------------------------------------------
+   5.1 — Fonctions utilitaires globales
+   5.2 — Page d’accueil (pageHome)
+   5.3 — Gestion des pièces : ajout, suppression, ouverture
+   5.4 — Navigation catégories (Prises, Éclairage, Spécifique)
+   5.5 — Saisie one-shot (fournitures, multi-pose, etc.)
+   5.6 — Notes & éléments spécifiques
+   ============================================================ */
+
+/* === 5.1 — Fonctions utilitaires globales ================== */
+function ensureSection(name){
+  try {
+    if (!window.devis || typeof devis !== 'object') window.devis = {};
+    if (!name || typeof name !== 'string') name = 'Général';
+    if (!devis[name]) devis[name] = { items: [], total: 0 };
+    else if (!Array.isArray(devis[name].items)) devis[name].items = [];
+    return devis[name];
+  } catch(e){
+    console.error('Erreur ensureSection:', e);
+    alert('Impossible de créer la section "'+name+'".');
+    return { items: [], total: 0 };
+  }
+}
+
 function goVent(){
   if (typeof pageVentAccueil === 'function') pageVentAccueil();
   else alert('La section Ventilation n’est pas encore chargée.');
 }
 function _badge(txt){ return txt ? '<span class="badge">'+txt+'</span>' : ''; }
-</script>
 
-<script>
+/* === 5.2 — Page d’accueil ================================= */
 function pageHome(){
   var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
   var listHtml = keys.length ? keys.map(function(key){
@@ -864,6 +889,7 @@ function pageHome(){
   );
 }
 
+/* === 5.3 — Gestion des pièces ============================== */
 function goPiece(key){
   ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
@@ -905,58 +931,21 @@ function goPiece(key){
 }
 
 function delLine(key, idx){
-  (devis[key].items||[]).splice(idx,1); saveLocal(); goPiece(key);
+  (devis[key].items||[]).splice(idx,1);
+  saveLocal();
+  goPiece(key);
 }
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
-    delete devis[key]; saveLocal(); pageHome();
+    delete devis[key];
+    saveLocal();
+    pageHome();
   }
 }
 </script>
-
+  
+<!-- === 5.4 — Navigation catégories ========================= -->
 <script>
-function pageAddPiece(){
-  var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
-           + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
-  var safeEtages = (window.ETAGES && Array.isArray(ETAGES) && ETAGES.length)
-      ? ['(aucun)'].concat(ETAGES)
-      : ['(aucun)','RDC','R+1','R+2','Sous-sol','Combles','Extérieur'];
-  var etageOpts = safeEtages.map(e=>'<option value="'+e+'">'+e+'</option>').join('');
-
-  view(
-    '<div class="card">'
-      + b('Retour','pageHome()','btn back')
-      + '<h2>Ajouter une pièce</h2>'
-      + '<label>Choisir une pièce</label>'
-      + '<select id="piece-choice">'+opts+'</select>'
-      + '<label style="margin-top:10px;">Qualificatif (optionnel)</label>'
-      + '<input id="piece-qualif" placeholder="ex : Parents, RDC, gauche" />'
-      + '<label style="margin-top:10px;">Étage (optionnel)</label>'
-      + '<select id="piece-etage">'+etageOpts+'</select>'
-      + '<div class="row" style="margin-top:10px;">'
-        + b('Valider','confirmPieceChoice()','btn primary')
-      + '</div>'
-    + '</div>'
-  );
-}
-function confirmPieceChoice(){
-  var sel    = document.getElementById('piece-choice').value;
-  var qualif = (document.getElementById('piece-qualif').value || '').trim();
-  var etage  = document.getElementById('piece-etage').value;
-  if(!sel) return;
-  var base = sel;
-  if(sel==='__NEW__'){
-    base = (prompt('Nom de la pièce :','') || '').trim();
-    if(!base) return;
-  }
-  var etageVal = (etage && etage!=='(aucun)') ? etage : '';
-  var key = createOrGetPiece(base, qualif, etageVal);
-  goPiece(key);
-}
-</script>
-
-<script>
-// ---- Sous-menu Éclairage
 function goCategory(cat){
   if (cat === 'Éclairage') return goEclairageSub();
   ctx.category = cat;
@@ -980,8 +969,8 @@ function setEclairageBranch(branch){
 }
 </script>
 
+<!-- === 5.5 — Saisie one-shot (Prises, Éclairage, Multi-pose) === -->
 <script>
-// ---- Saisie one-shot (avec Fourniture/Marque/Gamme, Spots, Multi-pose)
 const _BRANDS = {
   "Schneider": ["Odace","Alréa","Unica"],
   "Legrand": ["Céliane","Dooxie","Keva"],
@@ -992,7 +981,7 @@ const _FOURNITURES_PRISES = ["Prise 2P+T","Prise 2P","Prise IP44","Sortie de câ
 function pageOneShotSelection(){
   var cat = ctx.category;
 
-  // Interventions par catégorie
+  // interventions disponibles
   var invs = [];
   if(cat==='Prises' || cat==='Circuit spécialisé'){
     invs = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
@@ -1005,333 +994,160 @@ function pageOneShotSelection(){
   }
   var invOpts = invs.map(i=>'<option value="'+i+'">'+i+'</option>').join('');
 
-  // Désignation + champs spécifiques
-  var desigHtml = '', defaultDesignation = '';
-  var extraHtml = '';
-
+  // désignations & options selon catégorie
+  var desigHtml='', extraHtml='', defaultDesignation='';
   if(cat==='Prises'){
-    defaultDesignation = 'Prise';
-    // Fourniture / Marque / Gamme
-    var fOpt  = _FOURNITURES_PRISES.map(x=>'<option>'+x+'</option>').join('');
-    var mOpt  = Object.keys(_BRANDS).map(x=>'<option>'+x+'</option>').join('');
-    var gOpt  = (_BRANDS["Schneider"]||[]).map(x=>'<option>'+x+'</option>').join('');
-    desigHtml =
-      '<div class="block">'
-      +  '<div class="subcard"><div class="h-note">Fourniture (catalogue à venir), Marque et Gamme sont mémorisées avec la ligne, sans impact sur le PU de prestation.</div></div>'
-      +  '<div class="presta-grid">'
-      +    '<div class="field"><label>Fourniture</label><select id="fourn-prise">'+fOpt+'</select></div>'
-      +    '<div class="field"><label>Marque</label><select id="brand-prise">'+mOpt+'</select></div>'
-      +    '<div class="field"><label>Gamme</label><select id="range-prise">'+gOpt+'</select></div>'
-      +  '</div>'
+    defaultDesignation='Prise';
+    var fOpt=_FOURNITURES_PRISES.map(x=>'<option>'+x+'</option>').join('');
+    var mOpt=Object.keys(_BRANDS).map(x=>'<option>'+x+'</option>').join('');
+    var gOpt=(_BRANDS["Schneider"]||[]).map(x=>'<option>'+x+'</option>').join('');
+    desigHtml=
+      '<div class="presta-grid">'
+      +'<div class="field"><label>Fourniture</label><select id="fourn-prise">'+fOpt+'</select></div>'
+      +'<div class="field"><label>Marque</label><select id="brand-prise">'+mOpt+'</select></div>'
+      +'<div class="field"><label>Gamme</label><select id="range-prise">'+gOpt+'</select></div>'
       +'</div>';
-  }
-  else if(cat==='Éclairage/Luminaires'){
-    var list = (function(){
-      // types dispos = ceux du catalogue prestation
-      const pr = getPrestations();
-      const L  = pr.appareillage.luminaires;
-      return (L.baseTypes||[]).concat(L.customTypes||[]);
-    })();
-    defaultDesignation = list[0] || 'Point de centre';
-    desigHtml =
-      '<label style="margin-top:10px;">Désignation</label>'
-      + '<select id="oneshot-desig">'
-      + list.map(d=>'<option value="'+d+'">'+d+'</option>').join('')
-      + '</select>';
-
-    // bloc spots (visible si design "Alimentation ligne de spot")
-    extraHtml =
-      '<div id="spot-extra" class="block" style="display:none;margin-top:10px;">'
-      +  '<div class="field"><label>Nombre de spots sur la ligne</label>'
-      +  '<input id="nb-spots" type="number" min="1" step="1" value="1" inputmode="numeric"/></div>'
-      +  '<div class="h-note">PU = Base ligne + (Prix par spot × nombre de spots), avec coefficient de pose si Création.</div>'
+  } else if(cat==='Éclairage/Luminaires'){
+    const pr=getPrestations(), L=pr.appareillage.luminaires;
+    const list=(L.baseTypes||[]).concat(L.customTypes||[]);
+    defaultDesignation=list[0]||'Point de centre';
+    desigHtml='<label>Désignation</label><select id="oneshot-desig">'+list.map(d=>'<option>'+d+'</option>').join('')+'</select>';
+    extraHtml='<div id="spot-extra" class="block" style="display:none;margin-top:10px;">'
+      +'<div class="field"><label>Nombre de spots</label><input id="nb-spots" type="number" min="1" step="1" value="1"/></div>'
       +'</div>';
-  }
-  else if(cat==='Éclairage/Commandes'){
-    var listC = (function(){
-      const pr = getPrestations();
-      const C  = pr.appareillage.commandes;
-      return (C.baseTypes||[]).concat(C.customTypes||[]);
-    })();
-    defaultDesignation = listC[0] || 'Allumage simple';
-    desigHtml =
-      '<label style="margin-top:10px;">Désignation</label>'
-      + '<select id="oneshot-desig">'
-      + listC.map(d=>'<option value="'+d+'">'+d+'</option>').join('')
-      + '</select>';
-  }
-  else if(cat==='Circuit spécialisé'){
-    // Choix de la section (affiché en Création)
-    defaultDesignation = 'Circuit spécialisé'; // sera enrichi avec la section
+  } else if(cat==='Éclairage/Commandes'){
+    const pr=getPrestations(), C=pr.appareillage.commandes;
+    const list=(C.baseTypes||[]).concat(C.customTypes||[]);
+    defaultDesignation=list[0]||'Allumage simple';
+    desigHtml='<label>Désignation</label><select id="oneshot-desig">'+list.map(d=>'<option>'+d+'</option>').join('')+'</select>';
   } else {
-    defaultDesignation = 'Élément';
-    desigHtml = '<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
+    defaultDesignation='Élément';
+    desigHtml='<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
   }
 
-  // Pose (masquée si intervention ≠ Création)
-  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
-  var poseBlock = '<div id="oneshot-pose-wrap" class="block">'
-                +   '<div class="field"><label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select></div>'
-                +   '<div class="field"><label><input type="checkbox" id="multi-pose"/> Plusieurs types de pose</label></div>'
-                +   '<div id="multi-pose-wrap" class="subcard" style="display:none;margin-top:8px;">'
-                +     '<div class="h-note">Ajoute plusieurs paliers {pose, quantité}. Le calcul utilise un PU moyen pondéré (total / quantité totale).</div>'
-                +     '<div class="row gap8">'
-                +       '<select id="mp-pose">'+poseOpts+'</select>'
-                +       '<input id="mp-qty" type="number" min="1" step="1" value="1" inputmode="numeric"/>'
-                +       b("Ajouter","mpAdd()","btn")
-                +     '</div>'
-                +     '<div id="mp-list" style="margin-top:8px;"></div>'
-                +   '</div>'
-                + '</div>';
+  // options de pose
+  var poseOpts=POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  var poseBlock='<div id="oneshot-pose-wrap" class="block">'
+    +'<div class="field"><label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select></div>'
+    +'<div class="field"><label><input type="checkbox" id="multi-pose"/> Plusieurs types de pose</label></div>'
+    +'<div id="multi-pose-wrap" class="subcard" style="display:none;margin-top:8px;">'
+    +'<div class="row gap8"><select id="mp-pose">'+poseOpts+'</select>'
+    +'<input id="mp-qty" type="number" min="1" step="1" value="1"/>'
+    +b("Ajouter","mpAdd()","btn")+'</div>'
+    +'<div id="mp-list" style="margin-top:8px;"></div></div></div>';
 
-  // Section (CS uniquement, visible en Création)
-  var sectionBlock = '';
-  if(cat==='Circuit spécialisé'){
-    var sectOpts = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
-    sectionBlock = '<div id="oneshot-section-wrap" class="block" style="margin-top:10px;">'
-                 +   '<div class="field"><label>Section</label><select id="oneshot-section">'+sectOpts+'</select></div>'
-                 + '</div>';
-  }
+  var qtyOpts=Array.from({length:20},(_,i)=>'<option>'+(i+1)+'</option>').join('');
+  var backFn=(cat && cat.indexOf('Éclairage/')===0)?'goEclairageSub()':'goPiece('+JSON.stringify(ctx.piece)+')';
 
-  // Quantité
-  var qtyOpts = Array.from({length:30},(_,i)=>'<option '+(i===0?'selected':'')+'>'+(i+1)+'</option>').join('');
-
-  var backFn = (cat && cat.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goPiece('+JSON.stringify(ctx.piece)+')';
   view(
     '<div class="card">'
-      + b('Retour', backFn, 'btn back')
-      + '<h2>'+cat+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-      + '<label>Intervention</label><select id="oneshot-interv">'+invOpts+'</select>'
-      + desigHtml
-      + (extraHtml || '')
-      + poseBlock
-      + sectionBlock
-      + (cat==='Prises'
-          ? '' // tout est dans desigHtml (fourniture/marque/gamme)
-          : '')
-      + '<label style="margin-top:10px;">Quantité</label>'
-      + '<select id="oneshot-qty">'+qtyOpts+'</select>'
-      + '<div id="oneshot-preview" class="muted" style="margin-top:10px;"></div>'
-      + '<div class="row" style="margin-top:14px; gap:8px;">'
-        + b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
-        + b('Ajouter et rester','saveOneShotItem(true)','btn')
-      + '</div>'
-    + '</div>'
+    +b('Retour',backFn,'btn back')
+    +'<h2>'+cat+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
+    +'<label>Intervention</label><select id="oneshot-interv">'+invOpts+'</select>'
+    +desigHtml+(extraHtml||'')+poseBlock
+    +'<label style="margin-top:10px;">Quantité</label><select id="oneshot-qty">'+qtyOpts+'</select>'
+    +'<div id="oneshot-preview" class="muted" style="margin-top:10px;"></div>'
+    +'<div class="row" style="margin-top:14px;">'
+    +b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
+    +b('Ajouter et rester','saveOneShotItem(true)','btn')
+    +'</div></div>'
   );
 
-  // ---------- logique dynamique
-  function isCreation(){ return String(document.getElementById('oneshot-interv').value||'')==='Création'; }
-  function togglePoseVisibility(){
-    var wrap = document.getElementById('oneshot-pose-wrap');
-    if(wrap) wrap.style.display = isCreation() ? '' : 'none';
-    var sWrap = document.getElementById('oneshot-section-wrap');
-    if(sWrap) sWrap.style.display = (isCreation() && cat==='Circuit spécialisé') ? '' : 'none';
-  }
-  function refreshRanges(){
-    var bsel = document.getElementById('brand-prise'); var rsel = document.getElementById('range-prise');
-    if(!(bsel && rsel)) return;
-    var brand = bsel.value;
-    var list = _BRANDS[brand] || [];
-    rsel.innerHTML = list.map(x=>'<option>'+x+'</option>').join('');
-  }
-  function refreshSpotExtra(){
-    var sel = document.getElementById('oneshot-desig');
-    var block = document.getElementById('spot-extra');
-    if(!sel || !block) return;
-    block.style.display = (String(sel.value).toLowerCase().indexOf('alimentation ligne de spot')===0) ? '' : 'none';
-  }
-
-  // multi-pose
-  var mp = []; // [{pose, qty}]
-  function renderMP(){
-    var el = document.getElementById('mp-list');
-    if(!el) return;
-    if(!mp.length){ el.innerHTML = '<div class="muted">Aucune ligne de pose multiple.</div>'; return; }
-    el.innerHTML = '<table class="table-mini"><thead><tr><th>Pose</th><th>Qté</th><th></th></tr></thead><tbody>'
-      + mp.map(function(x,i){
-        return '<tr><td>'+_esc(x.pose)+'</td><td>'+x.qty+'</td><td>'+b("×",'mpDel('+i+')','btn')+'</td></tr>';
-      }).join('') + '</tbody></table>';
-  }
-  window.mpAdd = function(){
-    var p = document.getElementById('mp-pose').value;
-    var q = Math.max(1, parseInt(document.getElementById('mp-qty').value,10)||1);
-    mp.push({pose:p, qty:q}); renderMP(); refreshPreview();
+  // logique interne
+  var mp=[]; // multi-poses
+  window.mpAdd=function(){
+    var p=document.getElementById('mp-pose').value;
+    var q=Math.max(1,parseInt(document.getElementById('mp-qty').value,10)||1);
+    mp.push({pose:p,qty:q}); renderMP(); refreshPreview();
   };
-  window.mpDel = function(i){ mp.splice(i,1); renderMP(); refreshPreview(); };
+  window.mpDel=function(i){ mp.splice(i,1); renderMP(); refreshPreview(); };
 
-  // Aperçu PU/Total
+  function renderMP(){
+    var el=document.getElementById('mp-list');
+    if(!el)return;
+    if(!mp.length){ el.innerHTML='<div class="muted">Aucune pose multiple.</div>'; return; }
+    el.innerHTML='<table class="table-mini"><tbody>'
+      +mp.map((x,i)=>'<tr><td>'+x.pose+'</td><td>'+x.qty+'</td><td>'+b("×",'mpDel('+i+')','btn')+'</td></tr>').join('')
+      +'</tbody></table>';
+  }
+
   function currentDesignation(){
     if(cat==='Prises') return 'Prise';
-    var selDes = document.getElementById('oneshot-desig');
-    var custom = document.getElementById('oneshot-custom-desig');
-    var d = (selDes && selDes.value) || (custom && custom.value.trim()) || 'Élément';
-    return d;
-  }
-  function currentExtras(){
-    var ex = {};
-    if(cat==='Éclairage/Luminaires'){
-      var sel = document.getElementById('oneshot-desig');
-      if(sel && String(sel.value).toLowerCase().indexOf('alimentation ligne de spot')===0){
-        ex.spots = Math.max(1, parseInt(document.getElementById('nb-spots').value,10)||1);
-      }
-    }
-    return ex;
-  }
-  function computePUMulti(interv, desig, pose, section){
-    if(!isCreation() || !document.getElementById('multi-pose').checked || mp.length===0){
-      return (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section, currentExtras()) : 0;
-    }
-    // somme pondérée de plusieurs types de pose
-    var total = 0, qtyTot = 0;
-    mp.forEach(function(row){
-      var pu = (typeof computePU==='function') ? computePU(cat, desig, interv, row.pose, section, currentExtras()) : 0;
-      total += pu * row.qty; qtyTot += row.qty;
-    });
-    if(qtyTot<=0) return 0;
-    return roundUp5(total / qtyTot);
+    var s=document.getElementById('oneshot-desig');
+    var c=document.getElementById('oneshot-custom-desig');
+    return (s&&s.value)||(c&&c.value)||'Élément';
   }
   function refreshPreview(){
-    var interv = document.getElementById('oneshot-interv').value;
-    var desig  = currentDesignation();
-    var pose   = isCreation() ? (document.getElementById('oneshot-pose').value || '') : '';
-    var section= (isCreation() && cat==='Circuit spécialisé') ? ((document.getElementById('oneshot-section')||{}).value||'') : '';
-    var pu     = computePUMulti(interv, desig, pose, section);
-    var q      = parseInt(document.getElementById('oneshot-qty').value,10)||1;
-    document.getElementById('oneshot-preview').innerHTML = 'PU : '+euro(pu)+' — Total : '+euro(pu*q);
+    var desig=currentDesignation();
+    var q=parseInt(document.getElementById('oneshot-qty').value,10)||1;
+    var interv=document.getElementById('oneshot-interv').value;
+    var pose=document.getElementById('oneshot-pose').value;
+    var pu=(typeof computePU==='function')?computePU(cat,desig,interv,pose):0;
+    document.getElementById('oneshot-preview').innerHTML='PU : '+euro(pu)+' — Total : '+euro(pu*q);
   }
 
-  // events
-  (function bind(){
-    ['oneshot-interv','oneshot-pose','oneshot-section','oneshot-desig','oneshot-custom-desig','oneshot-qty','nb-spots']
-      .forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('input', function(){
-        if(id==='oneshot-interv'){ togglePoseVisibility(); }
-        if(id==='oneshot-desig'){ refreshSpotExtra(); }
-        refreshPreview();
-      }); });
-    var mpChk = document.getElementById('multi-pose');
-    if(mpChk) mpChk.addEventListener('change', function(){
-      document.getElementById('multi-pose-wrap').style.display = mpChk.checked ? '' : 'none';
-      refreshPreview();
-    });
-    var msel = document.getElementById('brand-prise'); if(msel){ msel.addEventListener('change', function(){ refreshRanges(); }); }
-  })();
-
-  // init
-  togglePoseVisibility(); refreshRanges(); renderMP(); refreshSpotExtra(); refreshPreview();
+  ['oneshot-interv','oneshot-desig','oneshot-qty','oneshot-pose'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.addEventListener('input',refreshPreview);
+  });
+  refreshPreview();
 }
 
+/* === Sauvegarde ligne one-shot ============================ */
 function saveOneShotItem(stayHere){
-  var cat  = ctx.category;
-  var interv = document.getElementById('oneshot-interv').value;
-
-  var isCrea = (interv==='Création');
-  var pose   = isCrea ? (document.getElementById('oneshot-pose').value||'') : '';
-  var section= (isCrea && cat==='Circuit spécialisé')
-                 ? ((document.getElementById('oneshot-section')||{}).value||'')
-                 : '';
-
-  var qty    = Math.max(1, parseInt(document.getElementById('oneshot-qty').value,10)||1);
-  var desig  = (function(){
-    if(cat==='Prises') return 'Prise';
-    var selDes = document.getElementById('oneshot-desig');
-    var custom = document.getElementById('oneshot-custom-desig');
-    return (selDes && selDes.value) || (custom && custom.value.trim()) || 'Élément';
+  var cat=ctx.category;
+  var interv=document.getElementById('oneshot-interv').value;
+  var pose=document.getElementById('oneshot-pose').value||'';
+  var qty=Math.max(1,parseInt(document.getElementById('oneshot-qty').value,10)||1);
+  var desig=(function(){
+    var s=document.getElementById('oneshot-desig');
+    var c=document.getElementById('oneshot-custom-desig');
+    return (s&&s.value)||(c&&c.value)||'Élément';
   })();
-
-  // extras
-  var extras = {};
-  if(cat==='Éclairage/Luminaires'){
-    var sel = document.getElementById('oneshot-desig');
-    if(sel && String(sel.value).toLowerCase().indexOf('alimentation ligne de spot')===0){
-      extras.spots = Math.max(1, parseInt(document.getElementById('nb-spots').value,10)||1);
-    }
-  }
-
-  // PU (multi-pose moyen si activé)
-  var pu = (function(){
-    var multi = document.getElementById('multi-pose');
-    if(isCrea && multi && multi.checked){
-      // recompute comme dans preview
-      var mpRows = (function(){
-        var list = []; var el=document.getElementById('mp-list'); if(!el) return list;
-        return list; // (inutile ici, on recalcule à nouveau)
-      })();
-      // On refait le calcul moyen via computePUMulti interne :
-      var total = 0, qtyTot = 0;
-      var tbl = []; // on relit mp depuis closure de pageOneShotSelection ? non — on recalcule ad hoc :
-      // pour simplicité : relire DOM (table) n’est pas fiable ici ; on prend pose courant si pas mp.
-      // Or preview a déjà affiché le bon PU moyen ; on le reprend :
-      var prevTxt = document.getElementById('oneshot-preview').textContent||'';
-      var m = /PU\s*:\s*([0-9]+(?:[\.,][0-9]+)?)/.exec(prevTxt.replace(/\s/g,''));
-      if(m){ return parseFloat(m[1].replace(',','.')) || 0; }
-    }
-    return (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section, extras) : 0;
-  })();
-
-  // métadonnées Prises (fourniture/marque/gamme)
-  var meta = {};
-  if(cat==='Prises'){
-    meta.__fourniture = (document.getElementById('fourn-prise')||{}).value || '';
-    meta.__marque     = (document.getElementById('brand-prise')||{}).value || '';
-    meta.__gamme      = (document.getElementById('range-prise')||{}).value || '';
-  }
+  var pu=(typeof computePU==='function')?computePU(cat,desig,interv,pose):0;
 
   ensureSection(ctx.piece);
-  devis[ctx.piece].items.push(Object.assign({
-    category: cat,
-    intervention: interv,
-    pose: pose,
-    designation: (cat==='Circuit spécialisé' && desig==='Circuit spécialisé' && section) ? (desig+' — '+section) : desig,
-    qty: qty,
-    prixU: pu,
-    __tabKey: ctx.piece
-  }, meta));
+  devis[ctx.piece].items.push({
+    category:cat, intervention:interv, pose:pose,
+    designation:desig, qty:qty, prixU:pu, __tabKey:ctx.piece
+  });
   saveLocal();
-
   if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 </script>
 
+<!-- === 5.6 — Spécifique & Notes ============================ -->
 <script>
-// Spécifique & notes — inchangé
 function pageSpecifiqueForm(){
-  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
-  var invOpts   = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']
-                    .map(i=>'<option value="'+i+'">'+i+'</option>').join('');
+  var poseOpts=POSES.map(p=>'<option>'+p+'</option>').join('');
+  var invOpts=['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']
+    .map(i=>'<option>'+i+'</option>').join('');
   view(
     '<div class="card">'
-      + b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
-      + '<h2>Spécifique — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-      + '<label>Intervention</label><select id="sp-interv">'+invOpts+'</select>'
-      + '<label style="margin-top:10px;">Nom</label>'
-      + '<input id="sp-label" placeholder="ex : Bandeau LED, Pompe piscine…" />'
-      + '<label style="margin-top:10px;">Type de pose</label><select id="sp-pose">'+poseOpts+'</select>'
-      + '<label style="margin-top:10px;">Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal" placeholder="0" />'
-      + '<label style="margin-top:10px;">Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1" />'
-      + '<div class="row" style="margin-top:14px; gap:8px;">'
-        + b('Ajouter la ligne','saveSpecifique(false)','btn primary')
-        + b('Ajouter et rester','saveSpecifique(true)','btn')
-      + '</div>'
-    + '</div>'
+    +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
+    +'<h2>Spécifique — '+pieceDisplayLabel(ctx.piece)+'</h2>'
+    +'<label>Intervention</label><select id="sp-interv">'+invOpts+'</select>'
+    +'<label>Nom</label><input id="sp-label" placeholder="ex : Pompe piscine…" />'
+    +'<label>Type de pose</label><select id="sp-pose">'+poseOpts+'</select>'
+    +'<label>Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal"/>'
+    +'<label>Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1"/>'
+    +'<div class="row" style="margin-top:14px;">'
+    +b('Ajouter','saveSpecifique(false)','btn primary')
+    +b('Ajouter et rester','saveSpecifique(true)','btn')
+    +'</div></div>'
   );
 }
-function saveSpecifique(stayHere){
-  var label = (document.getElementById('sp-label').value||'').trim();
-  if(!label){ alert('Nom requis.'); return; }
-  var pose  = document.getElementById('sp-pose').value || '';
-  var interv= document.getElementById('sp-interv').value || 'Création';
-  var prix  = parseFloat(document.getElementById('sp-price').value)||0;
-  var qty   = Math.max(1, parseInt(document.getElementById('sp-qty').value,10) || 1);
 
+function saveSpecifique(stayHere){
+  var label=(document.getElementById('sp-label').value||'').trim();
+  if(!label){ alert('Nom requis.'); return; }
+  var pose=document.getElementById('sp-pose').value||'';
+  var interv=document.getElementById('sp-interv').value||'Création';
+  var prix=parseFloat(document.getElementById('sp-price').value)||0;
+  var qty=Math.max(1,parseInt(document.getElementById('sp-qty').value,10)||1);
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
-    category:'Spécifique',
-    intervention:interv,
-    pose:pose,
-    designation:label,
-    qty:qty,
-    prixU:roundUp5(prix),
-    __tabKey: ctx.piece
+    category:'Spécifique',intervention:interv,pose:pose,
+    designation:label,qty:qty,prixU:roundUp5(prix),__tabKey:ctx.piece
   });
   saveLocal();
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
@@ -1339,15 +1155,13 @@ function saveSpecifique(stayHere){
 
 function editPieceNote(){
   ensureSection(ctx.piece);
-  var cur = devis[ctx.piece].note || '';
-  var n = prompt('Note pour '+pieceDisplayLabel(ctx.piece), cur);
-  if(n!==null) devis[ctx.piece].note = n.trim();
+  var cur=devis[ctx.piece].note||'';
+  var n=prompt('Note pour '+pieceDisplayLabel(ctx.piece),cur);
+  if(n!==null) devis[ctx.piece].note=n.trim();
   saveLocal();
   goPiece(ctx.piece);
 }
 </script>
-
-
 
 
 
