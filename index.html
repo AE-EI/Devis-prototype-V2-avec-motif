@@ -4463,7 +4463,53 @@ Object.assign(window,{
   Object.assign(window, { pageTarifsAccueil });
 })();
 </script>
-
+  
+<!-- 13.9-SHIM — sécurité minimale pour pageTarifsAccueil -->
+<script>
+(function(){
+  if (typeof window.pageTarifsAccueil !== 'function') {
+    window.pageTarifsAccueil = function(){
+      var makeBtn = function(label, call, cls){
+        if (typeof window.b === 'function') return b(label, call, cls||'btn');
+        return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
+      };
+      var back = (typeof window.pageMain==='function')
+        ? makeBtn('Retour','pageMain()','btn back') : '';
+      var html = ''
+        + '<div class="tarifs-wrap">'
+        +   '<div class="card">'+ back +'<h2>Tarifs & paramètres</h2>'
+        +   '<p class="muted">Le module complet n’est pas chargé, mais cette page de secours évite l’erreur JS.</p>'
+        +   '</div>'
+        +   '<div class="card"><h3>Catalogue prestation</h3>'
+        +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+        +       (typeof window.pageCataloguePrestation==='function'
+                  ? makeBtn('Ouvrir le catalogue','pageCataloguePrestation()','btn primary')
+                  : makeBtn('Ouvrir le catalogue','alert(\"Catalogue indisponible : le Chapitre 13 n\\\'est pas chargé ou en erreur.\")','btn'))
+        +     '</div>'
+        +   '</div>'
+        +   '<div class="card"><h3>Préférences devis & facturation</h3>'
+        +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+        +       makeBtn('Ouvrir les préférences',
+                    (typeof window.pagePreferences==='function'
+                      ? 'pagePreferences()'
+                      : 'alert(\"La page Préférences n\\\'est pas disponible.\")'))
+        +     '</div>'
+        +   '</div>'
+        +   '<div class="card"><h3>Configuration entreprise</h3>'
+        +     '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+        +       makeBtn('Ouvrir la configuration',
+                    (typeof window.pageConfigEntreprise==='function'
+                      ? 'pageConfigEntreprise()'
+                      : 'alert(\"La page Configuration entreprise n\\\'est pas disponible.\")'))
+        +     '</div>'
+        +   '</div>'
+        + '</div>';
+      if (typeof window.view === 'function') view(html);
+      else (document.getElementById('app')||document.body).innerHTML = html;
+    };
+  }
+})();
+</script>
 
  
 
