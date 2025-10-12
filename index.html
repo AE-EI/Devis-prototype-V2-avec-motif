@@ -80,6 +80,99 @@
     }
   })();
   </script>
+  <!-- =============================
+     CHAPITRE 1 : BOOTSTRAP & INFRA — V3.1
+     (sécurise le démarrage + helpers UI génériques)
+     ============================= -->
+<script>
+(function Chapter1Bootstrap(){
+  // =============================
+  // 1) UI d'erreur globale (unique)
+  // =============================
+  if (!window.__md_err_ui_installed__) {
+    window.__md_err_ui_installed__ = true;
+    window.addEventListener('error', function (e) {
+      try{
+        var el = document.getElementById('app');
+        if (!el) return;
+        var msg = (e && e.message) ? e.message : 'Erreur inconnue';
+        var file = (e && e.filename) ? e.filename : '';
+        var l = (e && e.lineno) || 0, c = (e && e.colno) || 0;
+        el.innerHTML =
+          '<div class="card"><h2>Erreur JS</h2><pre>'
+          + msg + '\n' + file + ':' + l + ':' + c
+          + '</pre></div>';
+      }catch(_){}
+    });
+  }
+
+  // =============================
+  // 2) Helpers UI (non intrusifs)
+  // =============================
+
+  // a) Toast "Sauvegardé" — utilise tes styles .save-toast
+  function ensureToast(){
+    var id='save-toast';
+    var el=document.getElementById(id);
+    if(!el){
+      el=document.createElement('div');
+      el.id=id; el.className='save-toast hide';
+      el.textContent='Sauvegardé';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  // Exposé global (si absent)
+  if (typeof window.showSaveToast !== 'function') {
+    window.showSaveToast = function(msg){
+      var el = ensureToast();
+      if (msg) el.textContent = msg;
+      el.classList.remove('hide');
+      // auto-hide après 1.8 s
+      clearTimeout(el.__tHide);
+      el.__tHide = setTimeout(function(){ el.classList.add('hide'); }, 1800);
+    };
+  }
+
+  // b) Bandeau OK (retourne du HTML — à insérer dans tes vues)
+  if (typeof window.okBannerHtml !== 'function') {
+    window.okBannerHtml = function(text){
+      return '<div class="ok-banner">'+ (text||'Enregistré ✅') +'</div>';
+    };
+  }
+
+  // =============================
+  // 3) Bootstrap robuste pageMain()
+  // =============================
+  // Placeholder inoffensif pour éviter "ReferenceError" si d'autres scripts
+  // tentent d'appeler pageMain avant que le Chapitre 4 ne la définisse.
+  if (typeof window.pageMain !== 'function') {
+    window.pageMain = function(){ /* remplacée par le Chapitre 4 quand chargé */ };
+  }
+
+  function tryBoot(){
+    try{
+      var fn = window.pageMain;
+      // On attend que la vraie implémentation ait remplacé le placeholder
+      if (typeof fn === 'function' && fn.toString().indexOf('remplacée par le Chapitre 4') === -1) {
+        // Optionnel : si un devis vide, on restaure le dernier (si la fonction existe)
+        if (typeof window.recoverSavedIfEmpty === 'function') {
+          try { window.recoverSavedIfEmpty(); } catch(_){}
+        }
+        fn(); // lance l’accueil
+        return;
+      }
+    }catch(_){}
+    setTimeout(tryBoot, 30);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', tryBoot);
+  } else {
+    tryBoot();
+  }
+})();
+</script>
 
 
 
