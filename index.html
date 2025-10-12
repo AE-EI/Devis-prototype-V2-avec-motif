@@ -940,32 +940,34 @@ function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&
 
 
 <!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V10.1
-     (stabilisé : ensureSection intégré + flux de création corrigé)
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V10.2
+     (Prises = désignation = fourniture + migration des anciennes lignes)
      ============================= -->
 
 <script>
 /* ============================================================
    SOMMAIRE CHAPITRE 5
    ------------------------------------------------------------
-   5.1 — Fonctions utilitaires globales
-   5.2 — Page d’accueil (pageHome)
-   5.3 — Gestion des pièces : ajout, suppression, ouverture
-   5.4 — Navigation catégories (Prises, Éclairage, Spécifique)
-   5.5 — Saisie one-shot (fournitures, multi-pose, etc.)
-   5.6 — Notes & éléments spécifiques
+   5.1 — Helpers globaux (ensureSection, badges, migration)
+   5.2 — Accueil (pageHome)
+   5.3 — Gestion des pièces : ouvrir, ajouter, supprimer
+   5.4 — Navigation catégories (Prises / Éclairage / Spécifique)
+   5.5 — Saisie one-shot (Prises, Éclairage, multi-pose)
+   5.6 — Spécifique & Notes
    ============================================================ */
 
-/* === 5.1 — Fonctions utilitaires globales ================== */
+
+/* === 5.1 — Helpers globaux ================================= */
+
 function ensureSection(name){
-  try {
-    if (!window.devis || typeof devis !== 'object') window.devis = {};
-    if (!name || typeof name !== 'string') name = 'Général';
+  try{
+    if (!window.devis || typeof devis!=='object') window.devis = {};
+    if (!name || typeof name!=='string') name = 'Général';
     if (!devis[name]) devis[name] = { items: [], total: 0 };
     else if (!Array.isArray(devis[name].items)) devis[name].items = [];
     return devis[name];
-  } catch(e){
-    console.error('Erreur ensureSection:', e);
+  }catch(e){
+    console.error('ensureSection:', e);
     alert('Impossible de créer la section "'+name+'".');
     return { items: [], total: 0 };
   }
@@ -977,8 +979,36 @@ function goVent(){
 }
 function _badge(txt){ return txt ? '<span class="badge">'+txt+'</span>' : ''; }
 
-/* === 5.2 — Page d’accueil ================================= */
+/* ---- Migration : anciennes lignes "Prise" -> fourniture ----
+   - Si category === 'Prises' ET (designation vide ou 'Prise')
+     alors on remplace par it.__fourniture si présent.
+*/
+function _migratePriseDesignations(){
+  if(!window.devis) return;
+  var changed = false;
+  Object.keys(devis).forEach(function(k){
+    if(k.indexOf('__')===0) return;
+    var sec = devis[k]; if(!sec || !Array.isArray(sec.items)) return;
+    sec.items.forEach(function(it){
+      if(String(it.category||'')==='Prises'){
+        var f = it.__fourniture || '';
+        if((!it.designation || it.designation==='Prise') && f){
+          it.designation = f;
+          changed = true;
+        }
+      }
+    });
+  });
+  if(changed && typeof saveLocal==='function') saveLocal();
+}
+
+
+/* === 5.2 — Accueil ========================================= */
+
 function pageHome(){
+  // Migration discrète des anciennes lignes "Prise"
+  _migratePriseDesignations();
+
   var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
   var listHtml = keys.length ? keys.map(function(key){
     var s = devis[key] || {};
@@ -1013,7 +1043,9 @@ function pageHome(){
   );
 }
 
+
 /* === 5.3 — Gestion des pièces ============================== */
+
 function goPiece(key){
   ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
@@ -1030,7 +1062,7 @@ function goPiece(key){
         var unitTxt = it.unit || 'u';
         var left = it.intervention ? (it.intervention+' — ') : '';
         return '<li>'
-          + left + it.designation + poseTxt
+          + left + (it.designation||'') + poseTxt
           +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
           + b('×','delLine('+JSON.stringify(key)+','+i+')','btn')
         +'</li>';
@@ -1066,7 +1098,9 @@ function removePiece(key){
     pageHome();
   }
 }
-  /* === 5.3bis — Ajout d’une nouvelle pièce =================== */
+
+/* === 5.3bis — Ajout d’une nouvelle pièce =================== */
+
 function pageAddPiece(){
   var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
            + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
@@ -1109,7 +1143,9 @@ function confirmPieceChoice(){
   goPiece(key);
 }
 </script>
-  <!-- === 5.4 — Navigation catégories ========================= -->
+
+
+<!-- === 5.4 — Navigation catégories ========================= -->
 <script>
 function goCategory(cat){
   if (cat === 'Éclairage') return goEclairageSub();
@@ -1134,6 +1170,7 @@ function setEclairageBranch(branch){
 }
 </script>
 
+
 <!-- === 5.5 — Saisie one-shot (Prises, Éclairage, Multi-pose) === -->
 <script>
 const _BRANDS = {
@@ -1146,7 +1183,7 @@ const _FOURNITURES_PRISES = ["Prise 2P+T","Prise 2P","Prise IP44","Sortie de câ
 function pageOneShotSelection(){
   var cat = ctx.category;
 
-  // interventions disponibles
+  // Interventions
   var invs = [];
   if(cat==='Prises' || cat==='Circuit spécialisé'){
     invs = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
@@ -1159,7 +1196,7 @@ function pageOneShotSelection(){
   }
   var invOpts = invs.map(i=>'<option value="'+i+'">'+i+'</option>').join('');
 
-  // désignations & options selon catégorie
+  // Désignation & options par catégorie
   var desigHtml='', extraHtml='', defaultDesignation='';
   if(cat==='Prises'){
     defaultDesignation='Prise';
@@ -1168,17 +1205,18 @@ function pageOneShotSelection(){
     var gOpt=(_BRANDS["Schneider"]||[]).map(x=>'<option>'+x+'</option>').join('');
     desigHtml=
       '<div class="presta-grid">'
-      +'<div class="field"><label>Fourniture</label><select id="fourn-prise">'+fOpt+'</select></div>'
-      +'<div class="field"><label>Marque</label><select id="brand-prise">'+mOpt+'</select></div>'
-      +'<div class="field"><label>Gamme</label><select id="range-prise">'+gOpt+'</select></div>'
+      +  '<div class="field"><label>Fourniture</label><select id="fourn-prise">'+fOpt+'</select></div>'
+      +  '<div class="field"><label>Marque</label><select id="brand-prise">'+mOpt+'</select></div>'
+      +  '<div class="field"><label>Gamme</label><select id="range-prise">'+gOpt+'</select></div>'
       +'</div>';
   } else if(cat==='Éclairage/Luminaires'){
     const pr=getPrestations(), L=pr.appareillage.luminaires;
     const list=(L.baseTypes||[]).concat(L.customTypes||[]);
     defaultDesignation=list[0]||'Point de centre';
     desigHtml='<label>Désignation</label><select id="oneshot-desig">'+list.map(d=>'<option>'+d+'</option>').join('')+'</select>';
-    extraHtml='<div id="spot-extra" class="block" style="display:none;margin-top:10px;">'
-      +'<div class="field"><label>Nombre de spots</label><input id="nb-spots" type="number" min="1" step="1" value="1"/></div>'
+    extraHtml=
+      '<div id="spot-extra" class="block" style="display:none;margin-top:10px;">'
+      +  '<div class="field"><label>Nombre de spots</label><input id="nb-spots" type="number" min="1" step="1" value="1" inputmode="numeric"/></div>'
       +'</div>';
   } else if(cat==='Éclairage/Commandes'){
     const pr=getPrestations(), C=pr.appareillage.commandes;
@@ -1190,36 +1228,50 @@ function pageOneShotSelection(){
     desigHtml='<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
   }
 
-  // options de pose
+  // Type de pose (affiché en Création)
   var poseOpts=POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
   var poseBlock='<div id="oneshot-pose-wrap" class="block">'
-    +'<div class="field"><label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select></div>'
-    +'<div class="field"><label><input type="checkbox" id="multi-pose"/> Plusieurs types de pose</label></div>'
-    +'<div id="multi-pose-wrap" class="subcard" style="display:none;margin-top:8px;">'
-    +'<div class="row gap8"><select id="mp-pose">'+poseOpts+'</select>'
-    +'<input id="mp-qty" type="number" min="1" step="1" value="1"/>'
-    +b("Ajouter","mpAdd()","btn")+'</div>'
-    +'<div id="mp-list" style="margin-top:8px;"></div></div></div>';
+    + '<div class="field"><label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select></div>'
+    + '<div class="field"><label><input type="checkbox" id="multi-pose"/> Plusieurs types de pose</label></div>'
+    + '<div id="multi-pose-wrap" class="subcard" style="display:none;margin-top:8px;">'
+    +   '<div class="row gap8">'
+    +     '<select id="mp-pose">'+poseOpts+'</select>'
+    +     '<input id="mp-qty" type="number" min="1" step="1" value="1" inputmode="numeric"/>'
+    +     b("Ajouter","mpAdd()","btn")
+    +   '</div>'
+    +   '<div id="mp-list" style="margin-top:8px;"></div>'
+    + '</div>'
+    +'</div>';
 
-  var qtyOpts=Array.from({length:20},(_,i)=>'<option>'+(i+1)+'</option>').join('');
+  var qtyOpts=Array.from({length:20},(_,i)=>'<option '+(i===0?'selected':'')+'>'+(i+1)+'</option>').join('');
   var backFn=(cat && cat.indexOf('Éclairage/')===0)?'goEclairageSub()':'goPiece('+JSON.stringify(ctx.piece)+')';
 
   view(
     '<div class="card">'
-    +b('Retour',backFn,'btn back')
-    +'<h2>'+cat+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-    +'<label>Intervention</label><select id="oneshot-interv">'+invOpts+'</select>'
-    +desigHtml+(extraHtml||'')+poseBlock
-    +'<label style="margin-top:10px;">Quantité</label><select id="oneshot-qty">'+qtyOpts+'</select>'
-    +'<div id="oneshot-preview" class="muted" style="margin-top:10px;"></div>'
-    +'<div class="row" style="margin-top:14px;">'
-    +b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
-    +b('Ajouter et rester','saveOneShotItem(true)','btn')
-    +'</div></div>'
+      + b('Retour', backFn, 'btn back')
+      + '<h2>'+cat+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
+      + '<label>Intervention</label><select id="oneshot-interv">'+invOpts+'</select>'
+      + desigHtml + (extraHtml||'') + poseBlock
+      + '<label style="margin-top:10px;">Quantité</label><select id="oneshot-qty">'+qtyOpts+'</select>'
+      + '<div id="oneshot-preview" class="muted" style="margin-top:10px;"></div>'
+      + '<div class="row" style="margin-top:14px;">'
+        + b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
+        + b('Ajouter et rester','saveOneShotItem(true)','btn')
+      + '</div>'
+    + '</div>'
   );
 
-  // logique interne
-  var mp=[]; // multi-poses
+  // --------- logique dynamique ----------
+  function refreshRanges(){
+    var bsel=document.getElementById('brand-prise');
+    var rsel=document.getElementById('range-prise');
+    if(!(bsel && rsel)) return;
+    var brand=bsel.value;
+    var list=_BRANDS[brand] || [];
+    rsel.innerHTML=list.map(x=>'<option>'+x+'</option>').join('');
+  }
+
+  var mp=[]; // [{pose,qty}]
   window.mpAdd=function(){
     var p=document.getElementById('mp-pose').value;
     var q=Math.max(1,parseInt(document.getElementById('mp-qty').value,10)||1);
@@ -1229,76 +1281,123 @@ function pageOneShotSelection(){
 
   function renderMP(){
     var el=document.getElementById('mp-list');
-    if(!el)return;
+    if(!el) return;
     if(!mp.length){ el.innerHTML='<div class="muted">Aucune pose multiple.</div>'; return; }
     el.innerHTML='<table class="table-mini"><tbody>'
-      +mp.map((x,i)=>'<tr><td>'+x.pose+'</td><td>'+x.qty+'</td><td>'+b("×",'mpDel('+i+')','btn')+'</td></tr>').join('')
-      +'</tbody></table>';
+      + mp.map((x,i)=>'<tr><td>'+x.pose+'</td><td>'+x.qty+'</td><td>'+b("×",'mpDel('+i+')','btn')+'</td></tr>').join('')
+      + '</tbody></table>';
   }
 
+  function isCreation(){ return String(document.getElementById('oneshot-interv').value||'')==='Création'; }
+  function togglePoseVisibility(){
+    var wrap=document.getElementById('oneshot-pose-wrap');
+    if(wrap) wrap.style.display = isCreation()? '' : 'none';
+  }
+
+  // Désignation courante (⚠️ Prises = fourniture)
   function currentDesignation(){
-    if(cat==='Prises') return 'Prise';
+    if(cat==='Prises'){
+      var f=(document.getElementById('fourn-prise')||{}).value || 'Prise';
+      return f;
+    }
     var s=document.getElementById('oneshot-desig');
     var c=document.getElementById('oneshot-custom-desig');
     return (s&&s.value)||(c&&c.value)||'Élément';
   }
+
   function refreshPreview(){
-    var desig=currentDesignation();
-    var q=parseInt(document.getElementById('oneshot-qty').value,10)||1;
     var interv=document.getElementById('oneshot-interv').value;
-    var pose=document.getElementById('oneshot-pose').value;
-    var pu=(typeof computePU==='function')?computePU(cat,desig,interv,pose):0;
-    document.getElementById('oneshot-preview').innerHTML='PU : '+euro(pu)+' — Total : '+euro(pu*q);
+    var desig=currentDesignation();
+    var pose=isCreation()? (document.getElementById('oneshot-pose').value||'') : '';
+    var pu=(typeof computePU==='function') ? computePU(cat, desig, interv, pose) : 0;
+    var q=parseInt(document.getElementById('oneshot-qty').value,10)||1;
+    document.getElementById('oneshot-preview').innerHTML = 'PU : '+euro(pu)+' — Total : '+euro(pu*q);
   }
 
-  ['oneshot-interv','oneshot-desig','oneshot-qty','oneshot-pose'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.addEventListener('input',refreshPreview);
+  // Écouteurs
+  ['oneshot-interv','oneshot-desig','oneshot-qty','oneshot-pose','nb-spots'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.addEventListener('input', function(){
+      if(id==='oneshot-interv'){ togglePoseVisibility(); }
+      refreshPreview();
+    });
   });
-  refreshPreview();
+  var fsel=document.getElementById('fourn-prise');
+  if(fsel) fsel.addEventListener('change', refreshPreview);
+  var bsel=document.getElementById('brand-prise');
+  if(bsel) bsel.addEventListener('change', refreshRanges);
+
+  // init
+  togglePoseVisibility(); refreshRanges(); renderMP(); refreshPreview();
 }
 
-/* === Sauvegarde ligne one-shot ============================ */
+
+/* === Sauvegarde ligne one-shot ============================= */
+
 function saveOneShotItem(stayHere){
   var cat=ctx.category;
   var interv=document.getElementById('oneshot-interv').value;
-  var pose=document.getElementById('oneshot-pose').value||'';
+  var isCrea=(interv==='Création');
+  var pose=isCrea ? (document.getElementById('oneshot-pose').value||'') : '';
   var qty=Math.max(1,parseInt(document.getElementById('oneshot-qty').value,10)||1);
+
+  // Désignation : Prises -> fourniture ; sinon select/custom
   var desig=(function(){
+    if(cat==='Prises'){
+      return (document.getElementById('fourn-prise')||{}).value || 'Prise';
+    }
     var s=document.getElementById('oneshot-desig');
     var c=document.getElementById('oneshot-custom-desig');
     return (s&&s.value)||(c&&c.value)||'Élément';
   })();
+
+  // PU à partir du catalogue
   var pu=(typeof computePU==='function')?computePU(cat,desig,interv,pose):0;
 
+  // Métadonnées utiles (non affichées)
+  var meta={};
+  if(cat==='Prises'){
+    meta.__fourniture = (document.getElementById('fourn-prise')||{}).value || '';
+    meta.__marque     = (document.getElementById('brand-prise')||{}).value || '';
+    meta.__gamme      = (document.getElementById('range-prise')||{}).value || '';
+  }
+
   ensureSection(ctx.piece);
-  devis[ctx.piece].items.push({
-    category:cat, intervention:interv, pose:pose,
-    designation:desig, qty:qty, prixU:pu, __tabKey:ctx.piece
-  });
+  devis[ctx.piece].items.push(Object.assign({
+    category:cat,
+    intervention:interv,
+    pose:pose,
+    designation:desig,
+    qty:qty,
+    prixU:pu,
+    __tabKey:ctx.piece
+  }, meta));
+
   saveLocal();
   if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 </script>
+
 
 <!-- === 5.6 — Spécifique & Notes ============================ -->
 <script>
 function pageSpecifiqueForm(){
   var poseOpts=POSES.map(p=>'<option>'+p+'</option>').join('');
   var invOpts=['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']
-    .map(i=>'<option>'+i+'</option>').join('');
+    .map(i=>'<option value="'+i+'">'+i+'</option>').join('');
   view(
     '<div class="card">'
-    +b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
-    +'<h2>Spécifique — '+pieceDisplayLabel(ctx.piece)+'</h2>'
-    +'<label>Intervention</label><select id="sp-interv">'+invOpts+'</select>'
-    +'<label>Nom</label><input id="sp-label" placeholder="ex : Pompe piscine…" />'
-    +'<label>Type de pose</label><select id="sp-pose">'+poseOpts+'</select>'
-    +'<label>Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal"/>'
-    +'<label>Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1"/>'
-    +'<div class="row" style="margin-top:14px;">'
-    +b('Ajouter','saveSpecifique(false)','btn primary')
-    +b('Ajouter et rester','saveSpecifique(true)','btn')
-    +'</div></div>'
+      + b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
+      + '<h2>Spécifique — '+pieceDisplayLabel(ctx.piece)+'</h2>'
+      + '<label>Intervention</label><select id="sp-interv">'+invOpts+'</select>'
+      + '<label style="margin-top:10px;">Nom</label><input id="sp-label" placeholder="ex : Pompe piscine…"/>'
+      + '<label style="margin-top:10px;">Type de pose</label><select id="sp-pose">'+poseOpts+'</select>'
+      + '<label style="margin-top:10px;">Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal" placeholder="0"/>'
+      + '<label style="margin-top:10px;">Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1"/>'
+      + '<div class="row" style="margin-top:14px;">'
+        + b('Ajouter','saveSpecifique(false)','btn primary')
+        + b('Ajouter et rester','saveSpecifique(true)','btn')
+      + '</div>'
+    + '</div>'
   );
 }
 
@@ -1309,10 +1408,16 @@ function saveSpecifique(stayHere){
   var interv=document.getElementById('sp-interv').value||'Création';
   var prix=parseFloat(document.getElementById('sp-price').value)||0;
   var qty=Math.max(1,parseInt(document.getElementById('sp-qty').value,10)||1);
+
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
-    category:'Spécifique',intervention:interv,pose:pose,
-    designation:label,qty:qty,prixU:roundUp5(prix),__tabKey:ctx.piece
+    category:'Spécifique',
+    intervention:interv,
+    pose:pose,
+    designation:label,
+    qty:qty,
+    prixU:roundUp5(prix),
+    __tabKey:ctx.piece
   });
   saveLocal();
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
@@ -1321,13 +1426,12 @@ function saveSpecifique(stayHere){
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur=devis[ctx.piece].note||'';
-  var n=prompt('Note pour '+pieceDisplayLabel(ctx.piece),cur);
-  if(n!==null) devis[ctx.piece].note=n.trim();
+  var n=prompt('Note pour '+pieceDisplayLabel(ctx.piece), cur);
+  if(n!==null) devis[ctx.piece].note = n.trim();
   saveLocal();
   goPiece(ctx.piece);
 }
 </script>
-
 
 
 
