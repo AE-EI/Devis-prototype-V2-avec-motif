@@ -5256,7 +5256,6 @@ Object.assign(window,{
 
 
 
-
 <!-- =============================
      CHAPITRE 16 : DEVIS (PDF) — V16.0 CLEAN (FIX)
      ============================= -->
@@ -5270,78 +5269,123 @@ Object.assign(window,{
 </style>
 
 <script>
-/* §0 • Keys & helpers */
-const KEY_DEVIS_CGV='devis_cgv_v1',KEY_DEVIS_LASTCLIENT='devis_last_client_v1',KEY_PREFS_V1='appPrefs_v1',KEY_COMPANY_V1='companyConfig_v1';
-function _rd16(k,d){try{return JSON.parse(localStorage.getItem(k)||'null')??d}catch(e){return d}}
-function _wr16(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-function _esc16(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function _num16(v){return Number.isFinite(+v)?+v:0}
-function _euro16(n){const v=_num16(n);try{return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}catch(e){return (Math.round(v*100)/100)+' €'}}
-function _todayFR16(){try{return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'})}catch(e){return new Date().toLocaleDateString()}}
-function _pad4_16(n){return String(n).padStart(4,'0')}
+/* ======================
+   §0 • Clés & helpers
+   ====================== */
+const KEY_DEVIS_CGV  = 'devis_cgv_v1';
+const KEY_DEVIS_LASTCLIENT = 'devis_last_client_v1';
+const KEY_PREFS_V1   = 'appPrefs_v1';
+const KEY_COMPANY_V1 = 'companyConfig_v1';
 
-/* §1 • Client & CGV */
-function _getClient16(){return _rd16(KEY_DEVIS_LASTCLIENT,{nom:'',adresse:'',cp:'',ville:'',tel:'',email:''})}
-function _setClient16(c){_wr16(KEY_DEVIS_LASTCLIENT,c||{})}
-function _getCGV16(){return _rd16(KEY_DEVIS_CGV,
+function _rd16(k, d){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } }
+function _wr16(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function _esc16(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]); }
+function _num16(v){ return Number.isFinite(+v) ? +v : 0; }
+function _euro16(n){ const v=_num16(n); try{ return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }catch(e){ return (Math.round(v*100)/100)+' €'; } }
+function _todayFR16(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
+function _pad4_16(n){ return String(n).padStart(4,'0'); }
+
+/* ==================================
+   §1 • Données client & CGV (LS)
+   ================================== */
+function _getClient16(){ return _rd16(KEY_DEVIS_LASTCLIENT, {nom:'',adresse:'',cp:'',ville:'',tel:'',email:''}); }
+function _setClient16(c){ _wr16(KEY_DEVIS_LASTCLIENT, c||{}); }
+function _getCGV16(){
+  return _rd16(KEY_DEVIS_CGV,
 `Conditions générales de vente
 - Validité du devis : 30 jours.
 - Délai de paiement : 30 jours fin de mois par virement.
 - Les travaux seront réalisés selon les règles de l’art.
 - Toute modification hors devis fera l’objet d’un avenant.
-- Les fournitures et la pose sont garanties selon les conditions légales.`)}
-function _setCGV16(txt){_wr16(KEY_DEVIS_CGV,String(txt||''))}
+- Les fournitures et la pose sont garanties selon les conditions légales.`);
+}
+function _setCGV16(txt){ _wr16(KEY_DEVIS_CGV, String(txt||'')); }
 
-/* §2 • Collecte lignes */
-function _pieceLabel16(key){return (typeof pieceDisplayLabel==='function')?pieceDisplayLabel(key):key}
-function _sortedItems16(key,items){return (typeof sortedItemsForPiece==='function')?sortedItemsForPiece(key,items):(Array.isArray(items)?items.slice():[])}
+/* ==================================
+   §2 • Collecte des lignes (fallback)
+   ================================== */
+function _pieceLabel16(key){
+  return (typeof pieceDisplayLabel === 'function') ? pieceDisplayLabel(key) : key;
+}
+function _sortedItems16(key, items){
+  return (typeof sortedItemsForPiece === 'function') ? sortedItemsForPiece(key, items) : (Array.isArray(items)?items.slice():[]);
+}
 function _collectLines16(){
-  const out=[],src=(typeof window.devis==='object'&&window.devis)?window.devis:{};
-  let total=0;
-  for(const k in src){
+  const out = [];
+  let total = 0;
+  const src = (typeof window.devis==='object' && window.devis) ? window.devis : {};
+  for (const k in src){
     if(k.indexOf('__')===0) continue;
-    const sec=src[k]; if(!sec||!Array.isArray(sec.items)) continue;
-    _sortedItems16(k,sec.items).forEach(it=>{
-      const q=_num16(it.qty),pu=_num16(it.prixU),t=q*pu; total+=t;
-      const left=it.intervention?(it.intervention+' — '):'';
-      const pose=(it.intervention==='Création'&&it.pose)?(' — '+String(it.pose).toLowerCase()):'';
-      out.push({piece:_pieceLabel16(k),designation:left+(it.designation||'Élément')+pose,qty:q,pu:pu,total:t});
+    const sec = src[k]; if(!sec || !Array.isArray(sec.items)) continue;
+    const items = _sortedItems16(k, sec.items);
+    items.forEach(it=>{
+      const q=_num16(it.qty), pu=_num16(it.prixU), t=_num16(q*pu);
+      total += t;
+      const left = it.intervention ? (it.intervention+' — ') : '';
+      const pose = (it.intervention==='Création' && it.pose) ? (' — '+String(it.pose).toLowerCase()) : '';
+      out.push({ piece:_pieceLabel16(k), designation:left+(it.designation||'Élément')+pose, qty:q, pu:pu, total:t });
     });
   }
-  return {lines:out,total};
+  return { lines: out, total };
 }
 
-/* §3 • HTML imprimable */
+/* ======================================================
+   §3 • Constructeur HTML imprimable
+   ====================================================== */
 function _buildPrintableHTML16(){
-  const prefs=_rd16(KEY_PREFS_V1,{}), company=_rd16(KEY_COMPANY_V1,{}), cli=_getClient16(), cgv=_getCGV16();
-  const devName=(window.devis&&devis.__name)?String(devis.__name):'Devis';
-  const prefix=(prefs.numerotation_prefix||'DEV-'), numCour=Math.max(1,parseInt(prefs.numerotation_courante||1,10));
-  const ref=(window.devis&&devis.__ref)?String(devis.__ref):(prefix+_pad4_16(numCour));
-  const pack=_collectLines16();
+  const prefs   = _rd16(KEY_PREFS_V1, {});
+  const company = _rd16(KEY_COMPANY_V1, {});
+  const cli     = _getClient16();
+  const cgv     = _getCGV16();
 
-  const byPiece={}; pack.lines.forEach(L=>{(byPiece[L.piece]||(byPiece[L.piece]=[])).push(L)});
-  let sectionsHTML='';
+  const devName = (window.devis && devis.__name) ? String(devis.__name) : 'Devis';
+  const prefix  = (prefs.numerotation_prefix || 'DEV-');
+  const numCour = Math.max(1, parseInt(prefs.numerotation_courante||1,10));
+  const ref     = (window.devis && devis.__ref) ? String(devis.__ref) : (prefix + _pad4_16(numCour));
+
+  const pack = _collectLines16();
+
+  // Groupement par pièce
+  const byPiece = {};
+  pack.lines.forEach(L=>{ (byPiece[L.piece]||(byPiece[L.piece]=[])).push(L); });
+
+  let sectionsHTML = '';
   Object.keys(byPiece).forEach(piece=>{
-    const rows=byPiece[piece].map(L=>(
-      '<tr><td>'+_esc16(L.designation)+'</td>'
-      +'<td style="text-align:right">'+L.qty+'</td>'
-      +'<td style="text-align:right">'+_euro16(L.pu)+'</td>'
-      +'<td style="text-align:right">'+_euro16(L.total)+'</td></tr>'
-    )).join('');
-    const st=byPiece[piece].reduce((s,x)=>_num16(s)+_num16(x.total),0);
-    sectionsHTML+='<div class="sec-title">'+_esc16(piece)+'</div>'
-      +'<table class="dv-table"><thead><tr>'
-      +'<th>Désignation</th><th style="width:70px;text-align:right">Qté</th>'
-      +'<th style="width:110px;text-align:right">PU</th><th style="width:130px;text-align:right">Total</th>'
-      +'</tr></thead><tbody>'+rows+'</tbody>'
-      +'<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td>'
-      +'<td style="text-align:right"><strong>'+_euro16(st)+'</strong></td></tr></tfoot></table>';
+    const rows = byPiece[piece].map(L =>
+      '<tr>'
+        + '<td>'+_esc16(L.designation)+'</td>'
+        + '<td style="text-align:right">'+L.qty+'</td>'
+        + '<td style="text-align:right">'+_euro16(L.pu)+'</td>'
+        + '<td style="text-align:right">'+_euro16(L.total)+'</td>'
+      + '</tr>'
+    ).join('');
+    const st = byPiece[piece].reduce((s,x)=> _num16(s)+_num16(x.total), 0);
+
+    sectionsHTML +=
+      '<div class="sec-title">'+_esc16(piece)+'</div>'
+      + '<table class="dv-table"><thead><tr>'
+      +   '<th>Désignation</th>'
+      +   '<th style="width:70px;text-align:right">Qté</th>'
+      +   '<th style="width:110px;text-align:right">PU</th>'
+      +   '<th style="width:130px;text-align:right">Total</th>'
+      + '</tr></thead><tbody>'+rows+'</tbody>'
+      + '<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td>'
+      + '<td style="text-align:right"><strong>'+_euro16(st)+'</strong></td></tr></tfoot>'
+      + '</table>';
   });
 
-  const tvaOn=!!prefs.tva_applicable, taux=_num16(prefs.taux_tva||20);
-  const totalHT=_num16(pack.total), totalTVA=tvaOn?_num16(totalHT*(taux/100)):0, totalTTC=_num16(totalHT+totalTVA);
-  const logoHTML=company.logo_dataurl?('<img src="'+company.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>'):'';
-  const style=
+  // Totaux & TVA
+  const tvaOn    = !!prefs.tva_applicable;
+  const taux     = _num16(prefs.taux_tva || 20);
+  const totalHT  = _num16(pack.total);
+  const totalTVA = tvaOn ? _num16(totalHT * (taux/100)) : 0;
+  const totalTTC = _num16(totalHT + totalTVA);
+
+  const logoHTML = company.logo_dataurl
+    ? '<img src="'+company.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>'
+    : '';
+
+  const style =
     'body{font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;color:#222;margin:0;background:#fff}'
     +'.sheet{width:210mm;margin:0 auto;padding:18mm 16mm}'
     +'.row{display:flex;justify-content:space-between;gap:16px}'
@@ -5354,113 +5398,216 @@ function _buildPrintableHTML16(){
     +'@media print{.no-print{display:none !important}.sheet{box-shadow:none;margin:0}}';
 
   function _companyBlock(c){
-    const adr=[c.adresse,c.cp||c.code_postal,c.ville].filter(Boolean).join(' ');
-    const L=[]; if(c.raison_sociale||c.nom_commercial)L.push('<strong>'+_esc16(c.raison_sociale||c.nom_commercial)+'</strong>');
-    if(adr)L.push(_esc16(adr)); if(c.telephone)L.push('Tél : '+_esc16(c.telephone));
-    if(c.email)L.push('Email : '+_esc16(c.email)); if(c.siren)L.push('SIREN : '+_esc16(c.siren));
-    if(c.tva_intracom)L.push('TVA : '+_esc16(c.tva_intracom)); return L.join('<br>');
+    const adr = [c.adresse, c.cp||c.code_postal, c.ville].filter(Boolean).join(' ');
+    const L=[]; if(c.raison_sociale||c.nom_commercial) L.push('<strong>'+_esc16(c.raison_sociale||c.nom_commercial)+'</strong>');
+    if(adr) L.push(_esc16(adr));
+    if(c.telephone) L.push('Tél : '+_esc16(c.telephone));
+    if(c.email)     L.push('Email : '+_esc16(c.email));
+    if(c.siren)     L.push('SIREN : '+_esc16(c.siren));
+    if(c.tva_intracom) L.push('TVA : '+_esc16(c.tva_intracom));
+    return L.join('<br>');
   }
   function _clientBlock(c){
-    const L=[]; if(c.nom)L.push('<strong>'+_esc16(c.nom)+'</strong>');
-    if(c.adresse)L.push(_esc16(c.adresse));
-    const cpv=[c.cp,c.ville].filter(Boolean).join(' '); if(cpv)L.push(_esc16(cpv));
-    if(c.tel)L.push('Tél : '+_esc16(c.tel)); if(c.email)L.push('Email : '+_esc16(c.email)); return L.join('<br>');
+    const L=[]; if(c.nom) L.push('<strong>'+_esc16(c.nom)+'</strong>');
+    if(c.adresse) L.push(_esc16(c.adresse));
+    const cpv=[c.cp,c.ville].filter(Boolean).join(' ');
+    if(cpv) L.push(_esc16(cpv));
+    if(c.tel) L.push('Tél : '+_esc16(c.tel));
+    if(c.email) L.push('Email : '+_esc16(c.email));
+    return L.join('<br>');
   }
 
-  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"/>'
-    +'<title>'+_esc16(devName)+' — '+_esc16(ref)+'</title><style>'+style+'</style></head><body>'
-    +'<div class="sheet"><div class="row">'
-      +'<div style="flex:1 1 auto"><div>'+logoHTML+'</div><div style="margin-top:8px" class="muted">'+_companyBlock(company)+'</div></div>'
-      +'<div class="box" style="min-width:280px;"><h2>Devis</h2><div>Référence : <strong>'+_esc16(ref)+'</strong></div>'
-      +'<div>Date : '+_esc16(_todayFR16())+'</div><div style="margin-top:6px;">Destinataire :</div><div>'+_clientBlock(cli)+'</div></div>'
-    +'</div>'
-    +'<div style="margin-top:14px;"><h1 style="font-size:20px;margin:0 0 6px 0">'+_esc16(devName)+'</h1>'
-      +'<div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div></div>'
-    +'<div style="margin-top:10px;">'+(sectionsHTML||'<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
-    +'<table class="totals" style="margin-top:6px;">'
-      +'<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+_euro16(totalHT)+'</strong></td></tr>'
-      +'<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+_esc16(String(taux))+' %</td></tr>'
-      +(tvaOn?('<tr><td style="text-align:right">TVA</td><td style="text-align:right">'+_euro16(totalTVA)+'</td></tr>'):'')
-      +'<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+_euro16(totalTTC)+'</strong></td></tr>'
-    +'</table>'
-    +'<div style="margin-top:16px;"><h3>Conditions générales</h3><div class="box" style="white-space:pre-wrap">'+_esc16(cgv)+'</div></div>'
-    +'<div class="no-print" style="margin-top:14px;display:flex;gap:8px;"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button><button onclick="window.close()">Fermer</button></div>'
-    +'</div></body></html>';
+  const html =
+'<!doctype html><html lang="fr"><head><meta charset="utf-8"/>'
++'<title>'+_esc16(devName)+' — '+_esc16(ref)+'</title>'
++'<style>'+style+'</style></head><body>'
++'<div class="sheet">'
++  '<div class="row">'
++    '<div style="flex:1 1 auto"><div>'+logoHTML+'</div><div style="margin-top:8px" class="muted">'+_companyBlock(company)+'</div></div>'
++    '<div class="box" style="min-width:280px;"><h2>Devis</h2><div>Référence : <strong>'+_esc16(ref)+'</strong></div><div>Date : '+_esc16(_todayFR16())+'</div><div style="margin-top:6px;">Destinataire :</div><div>'+_clientBlock(cli)+'</div></div>'
++  '</div>'
++  '<div style="margin-top:14px;"><h1 style="font-size:20px;margin:0 0 6px 0">'+_esc16(devName)+'</h1><div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div></div>'
++  '<div style="margin-top:10px;">'+(Object.keys(byPiece).length ? sectionsHTML : '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
++  '<table class="totals" style="margin-top:6px;">'
++    '<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+_euro16(totalHT)+'</strong></td></tr>'
++    '<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+_esc16(String(taux))+' %</td></tr>'
++    +(tvaOn ? ('<tr><td style="text-align:right">TVA</td><td style="text-align:right">'+_euro16(totalTVA)+'</td></tr>') : '')
++    '<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+_euro16(totalTTC)+'</strong></td></tr>'
++  '</table>'
++  '<div style="margin-top:16px;"><h3>Conditions générales</h3><div class="box" style="white-space:pre-wrap">'+_esc16(cgv)+'</div></div>'
++  '<div class="no-print" style="margin-top:14px;display:flex;gap:8px;"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button><button onclick="window.close()">Fermer</button></div>'
++'</div></body></html>';
+
+  return html;
 }
 
-/* §4 • UI + Génération */
+/* ======================================================
+   §4 • UI + Génération
+   ====================================================== */
 function pageDevisPDF16(){
-  const cli=_getClient16(), cgv=_getCGV16(), prefs=_rd16(KEY_PREFS_V1,{});
-  const devName=(window.devis&&devis.__name)?devis.__name:'Devis';
-  const ref=(prefs.numerotation_prefix||'DEV-')+_pad4_16(Math.max(1,parseInt(prefs.numerotation_courante||1,10)));
+  const cli = _getClient16();
+  const cgv = _getCGV16();
+  const prefs = _rd16(KEY_PREFS_V1, {});
+  const devName = (window.devis && devis.__name) ? devis.__name : 'Devis';
+  const ref = (prefs.numerotation_prefix||'DEV-') + _pad4_16(Math.max(1,parseInt(prefs.numerotation_courante||1,10)));
+
   view(
     '<div class="dv-wrap">'
-    +'<div class="card">'+(typeof b==='function'?b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back'):'')
-    +'<h2>Aperçu du devis (PDF)</h2><p class="dv-note">Référence : '+_esc16(ref)+' — Titre : '+_esc16(devName)+'</p></div>'
-    +'<div class="card"><h3>Client</h3><div class="dv-grid">'
-    +'<div class="dv-field"><label>Nom / Société</label><input id="dv-cli-nom" value="'+_esc16(cli.nom)+'"/></div>'
-    +'<div class="dv-field"><label>Email</label><input id="dv-cli-email" value="'+_esc16(cli.email)+'"/></div>'
-    +'<div class="dv-field"><label>Téléphone</label><input id="dv-cli-tel" value="'+_esc16(cli.tel)+'"/></div>'
-    +'<div class="dv-field"><label>Adresse</label><input id="dv-cli-adr" value="'+_esc16(cli.adresse)+'"/></div>'
-    +'<div class="dv-field"><label>Code postal</label><input id="dv-cli-cp" value="'+_esc16(cli.cp)+'"/></div>'
-    +'<div class="dv-field"><label>Ville</label><input id="dv-cli-ville" value="'+_esc16(cli.ville)+'"/></div>'
-    +'</div><div class="dv-actions">'+(typeof b==='function'?b('Enregistrer le client','_dvSaveClient16()','btn'):'<button onclick="_dvSaveClient16()">Enregistrer le client</button>')+'</div></div>'
-    +'<div class="card"><h3>Conditions générales (CGV)</h3>'
-    +'<textarea id="dv-cgv" rows="8" style="width:100%;">'+_esc16(cgv)+'</textarea>'
-    +'<div class="dv-actions">'+(typeof b==='function'?b('Enregistrer les CGV','_dvSaveCGV16()','btn'):'<button onclick="_dvSaveCGV16()">Enregistrer les CGV</button>')+'</div></div>'
-    +'<div class="card"><h3>Génération</h3><div class="dv-actions">'
-    +(typeof b==='function'?b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary'):'<button onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>')
-    +'</div></div></div>'
+    +  '<div class="card">'
+    +     (typeof b==='function' ? b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back') : '')
+    +     '<h2>Aperçu du devis (PDF)</h2>'
+    +     '<p class="dv-note">Référence : '+_esc16(ref)+' — Titre : '+_esc16(devName)+'</p>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Client</h3>'
+    +    '<div class="dv-grid">'
+    +      '<div class="dv-field"><label>Nom / Société</label><input id="dv-cli-nom" value="'+_esc16(cli.nom)+'"/></div>'
+    +      '<div class="dv-field"><label>Email</label><input id="dv-cli-email" value="'+_esc16(cli.email)+'"/></div>'
+    +      '<div class="dv-field"><label>Téléphone</label><input id="dv-cli-tel" value="'+_esc16(cli.tel)+'"/></div>'
+    +      '<div class="dv-field"><label>Adresse</label><input id="dv-cli-adr" value="'+_esc16(cli.adresse)+'"/></div>'
+    +      '<div class="dv-field"><label>Code postal</label><input id="dv-cli-cp" value="'+_esc16(cli.cp)+'"/></div>'
+    +      '<div class="dv-field"><label>Ville</label><input id="dv-cli-ville" value="'+_esc16(cli.ville)+'"/></div>'
+    +    '</div>'
+    +    '<div class="dv-actions">'+(typeof b==='function' ? b('Enregistrer le client','_dvSaveClient16()','btn') : '<button onclick="_dvSaveClient16()">Enregistrer le client</button>')+'</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Conditions générales (CGV)</h3>'
+    +    '<textarea id="dv-cgv" rows="8" style="width:100%;">'+_esc16(cgv)+'</textarea>'
+    +    '<div class="dv-actions">'+(typeof b==='function' ? b('Enregistrer les CGV','_dvSaveCGV16()','btn') : '<button onclick="_dvSaveCGV16()">Enregistrer les CGV</button>')+'</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Génération</h3>'
+    +    '<div class="dv-actions">'
+    +      (typeof b==='function' ? b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary') : '<button onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
   );
 }
 function _dvSaveClient16(){
-  const cli={
-    nom:(document.getElementById('dv-cli-nom')||{}).value||'',
-    email:(document.getElementById('dv-cli-email')||{}).value||'',
-    tel:(document.getElementById('dv-cli-tel')||{}).value||'',
-    adresse:(document.getElementById('dv-cli-adr')||{}).value||'',
-    cp:(document.getElementById('dv-cli-cp')||{}).value||'',
-    ville:(document.getElementById('dv-cli-ville')||{}).value||''
+  const cli = {
+    nom: (document.getElementById('dv-cli-nom')||{}).value || '',
+    email: (document.getElementById('dv-cli-email')||{}).value || '',
+    tel: (document.getElementById('dv-cli-tel')||{}).value || '',
+    adresse: (document.getElementById('dv-cli-adr')||{}).value || '',
+    cp: (document.getElementById('dv-cli-cp')||{}).value || '',
+    ville: (document.getElementById('dv-cli-ville')||{}).value || ''
   };
-  _setClient16(cli); alert('Client enregistré.');
+  _setClient16(cli);
+  alert('Client enregistré.');
 }
-function _dvSaveCGV16(){ const txt=(document.getElementById('dv-cgv')||{}).value||''; _setCGV16(txt); alert('CGV enregistrées.'); }
+function _dvSaveCGV16(){
+  const txt = (document.getElementById('dv-cgv')||{}).value || '';
+  _setCGV16(txt);
+  alert('CGV enregistrées.');
+}
 function buildDevisPDF16(){
   try{
-    const html=_buildPrintableHTML16();
-    const w=window.open('','_blank'); if(!w){alert('Impossible d’ouvrir l’aperçu. Autorise les pop-ups.'); return;}
+    const html = _buildPrintableHTML16();
+    const w = window.open('', '_blank');
+    if(!w){ alert('Impossible d’ouvrir l’aperçu. Autorise les pop-ups.'); return; }
     w.document.open('text/html'); w.document.write(html); w.document.close();
-    setTimeout(()=>{try{w.focus(); w.print();}catch(e){}},300);
-  }catch(err){ alert('Erreur PDF : '+(err&&err.message?err.message:String(err))); }
+    setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 300);
+  }catch(err){
+    alert('Erreur PDF : '+(err && err.message ? err.message : String(err)));
+  }
 }
+</script>
 
-/* §6 • Expose */
-Object.assign(window,{ pageDevisPDF16, buildDevisPDF16, _buildPrintableHTML16 });
-
-
-
-/* §5 • Injection robuste des boutons Estimatif/Totaux */
-(function(){
+<script>
+/* ======================================================
+   §5 • Injection robuste des boutons (Estimatif & Totaux)
+   ====================================================== */
+(function injectButtons16Robuste(){
   function addBlock(){
-    const app=document.getElementById('app'); if(!app) return;
-    if(app.innerHTML.indexOf('buildDevisPDF16()')!==-1) return;
+    const app = document.getElementById('app');
+    if (!app) return;
+    if (app.innerHTML.indexOf('buildDevisPDF16()') !== -1) return;
+
     app.innerHTML +=
       '<div class="card" style="margin-top:12px;">'
-      +'<h3>Devis (PDF)</h3>'
-      +'<div class="row" style="gap:8px;flex-wrap:wrap;">'
-      +'<button class="btn" onclick="pageDevisPDF16()">Aperçu du devis (PDF)</button>'
-      +'<button class="btn primary" onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>'
-      +'</div></div>';
+      +  '<h3>Devis (PDF)</h3>'
+      +  '<div class="row" style="gap:8px;flex-wrap:wrap;">'
+      +    '<button class="btn" onclick="pageDevisPDF16()">Aperçu du devis (PDF)</button>'
+      +    '<button class="btn primary" onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>'
+      +  '</div>'
+      +'</div>';
   }
-  function wrap(fnName){
-    const orig=window[fnName];
-    if(typeof orig!=='function' || orig.__pdfWrapped) return;
-    window[fnName]=function(){ orig.apply(this,arguments); addBlock(); };
-    window[fnName].__pdfWrapped=true;
+
+  function wrap(name, fn){
+    if (typeof fn !== 'function') return fn;
+    if (fn.__pdfInjectWrapped)   return fn;
+    function wrapped(){
+      fn.apply(this, arguments);
+      addBlock();
+    }
+    wrapped.__pdfInjectWrapped = true;
+    return wrapped;
   }
-  wrap('pageEstimatif'); wrap('pageTotaux'); setTimeout(addBlock,0);
+
+  function hookLate(name){
+    if (typeof window[name] === 'function'){
+      window[name] = wrap(name, window[name]);
+      return;
+    }
+    let _val;
+    try{
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get(){ return _val; },
+        set(v){ _val = wrap(name, v); }
+      });
+    }catch(e){
+      const iv = setInterval(()=>{
+        if (typeof window[name] === 'function' && !window[name].__pdfInjectWrapped){
+          window[name] = wrap(name, window[name]);
+          clearInterval(iv);
+        }
+      }, 50);
+    }
+  }
+
+  hookLate('pageEstimatif');
+  hookLate('pageTotaux');
+  setTimeout(addBlock, 0);
 })();
+</script>
+
+<script>
+/* ======================
+   §6 • Expose (window)
+   ====================== */
+Object.assign(window, {
+  pageDevisPDF16,
+  buildDevisPDF16,
+  _buildPrintableHTML16
+});
 </script>
 
 
 
+<script>
+(function removeLegacyDupButtons(){
+  const oldMarkers = [
+    'duplicateDevisWithCurrentTarifs()',
+    'duplicateDevisWithCurrentTarifs_REPRICE()'
+  ];
+  const _est = window.pageEstimatif, _tot = window.pageTotaux;
+  function cleanse(){
+    const app = document.getElementById('app'); if(!app) return;
+    oldMarkers.forEach(m=>{
+      if(app.innerHTML.indexOf(m)!==-1){
+        app.innerHTML = app.innerHTML.replace(
+          new RegExp('<div class="row"[^>]*>[^]*?'+m+'[^]*?</div>','m'), ''
+        );
+      }
+    });
+  }
+  if(typeof _est==='function'){ window.pageEstimatif=function(){ _est(); cleanse(); }; }
+  if(typeof _tot==='function'){ window.pageTotaux=function(){ _tot(); cleanse(); }; }
+})();
+</script>
+  
