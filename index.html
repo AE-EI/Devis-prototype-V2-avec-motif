@@ -5130,467 +5130,290 @@ Object.assign(window,{
 
 
 <!-- =============================
-     CHAPITRE 16 (UNIFIÉ) — v16X
-     - Annuaire clients (LS)
-     - Flux "Nouveau devis" (choix/création client + nom + TVA)
-     - Préparation & Génération PDF (aperçu imprimable)
-     - Bandes grises pour titres de section
-     - Anti-NaN + ligne "Taux de TVA" + saut de page avant CGV
-     - Injection des boutons sur Estimatif & Totaux
+     CHAPITRE 16 : DEVIS (PDF) — V16.0 CLEAN
+     Index :
+       §0  • Clés & helpers
+       §1  • Données client & CGV (LS)
+       §2  • Collecte des lignes (fallbacks sûrs)
+       §3  • Constructeur HTML imprimable (_buildPrintableHTML16)
+       §4  • UI : pageDevisPDF16() + génération buildDevisPDF16()
+       §5  • Injection unique des boutons (Estimatif & Totaux)
+       §6  • Expose (window)
      ============================= -->
-
 <style>
-  /* UI pages 16 */
-  .dv-wrap .card, .cli-wrap .card{ margin-bottom:16px; }
-  .dv-grid, .cli-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-  .dv-field, .cli-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
-  .dv-field label, .cli-field label{ display:block; font-weight:600; margin-bottom:6px; }
-  .dv-actions, .cli-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-  .cli-list-item{ display:flex; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:10px; background:#fff; }
-  .cli-list-item .meta{ font-size:13px; color:var(--muted); }
-  .muted{ color:var(--muted); }
+  .dv-wrap .card{ margin-bottom:16px; }
+  .dv-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .dv-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .dv-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .dv-note{ color:var(--muted); font-size:14px; }
+  .dv-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
 </style>
 
 <script>
-/* =========================
-   16X.0 • Keys & helpers
-   ========================= */
-const KEY_CLIENTS_V1   = 'clients_v1';
-const KEY_DEVIS_CGV    = 'devis_cgv_v1';
-const KEY_DEVIS_LASTCL = 'devis_last_client_v1';
-const KEY_PREFS_V1     = 'appPrefs_v1';          // { numerotation_prefix, numerotation_courante, tva_applicable, taux_tva }
-const KEY_COMPANY_V1   = 'companyConfig_v1';     // { logo_dataurl, raison_sociale, ... }
+/* ======================
+   §0 • Clés & helpers
+   ====================== */
+const KEY_DEVIS_CGV  = 'devis_cgv_v1';
+const KEY_DEVIS_LASTCLIENT = 'devis_last_client_v1';
+const KEY_PREFS_V1   = 'appPrefs_v1';
+const KEY_COMPANY_V1 = 'companyConfig_v1';
 
-function _rd(k,d){ try{return JSON.parse(localStorage.getItem(k)||'null') ?? d;}catch(e){return d;} }
-function _wr(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
-function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function _euro(n){ n=+n||0; try{ return n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }catch(e){ return (Math.round(n*100)/100)+' €'; } }
-function _todayFR(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
-function _pad4(n){ return String(n).padStart(4,'0'); }
-function _num(v){ return Number.isFinite(+v) ? +v : 0; }
+function _rd16(k, d){ try{ return JSON.parse(localStorage.getItem(k)||'null') ?? d; }catch(e){ return d; } }
+function _wr16(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function _esc16(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]); }
+function _num16(v){ return Number.isFinite(+v) ? +v : 0; }
+function _euro16(n){ const v=_num16(n); try{ return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }catch(e){ return (Math.round(v*100)/100)+' €'; } }
+function _todayFR16(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
+function _pad4_16(n){ return String(n).padStart(4,'0'); }
 
-/* =========================
-   16X.1 • Annuaire clients
-   ========================= */
-function _clientsGet(){ return _rd(KEY_CLIENTS_V1, []); }
-function _clientsSet(list){ _wr(KEY_CLIENTS_V1, Array.isArray(list)? list:[]); }
-function _clientById(id){ return _clientsGet().find(c=>c.id===id)||null; }
-function _clientUpsert(c){
-  const L=_clientsGet(); if(!c.id) c.id=Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4);
-  const i=L.findIndex(x=>x.id===c.id); if(i>=0) L[i]=c; else L.unshift(c); _clientsSet(L); return c;
-}
-function _clientDelete(id){ _clientsSet(_clientsGet().filter(x=>x.id!==id)); }
-
-function pageClients(){
-  const list=_clientsGet();
-  const rows = list.length ? list.map(c=>{
-    const line2=[(c.adresse||'').trim(), [c.cp||'',c.ville||''].filter(Boolean).join(' ')].filter(Boolean).join(' — ');
-    const meta=[c.email,c.tel].filter(Boolean).join(' • ');
-    return '<div class="cli-list-item">'
-         +   '<div style="flex:1 1 auto;"><strong>'+_esc(c.nom||'')+'</strong>'
-         +   (line2?'<div class="meta">'+_esc(line2)+'</div>':'')
-         +   (meta ?'<div class="meta">'+_esc(meta )+'</div>':'')
-         +   '</div>'
-         +   b('Ouvrir','pageClientEdit('+JSON.stringify(c.id)+')','btn')
-         +   b('Supprimer','clientDeleteUI('+JSON.stringify(c.id)+')','btn')
-         +   (window.devis ? b('Affecter au devis','attachClientToCurrent('+JSON.stringify(c.id)+')','btn') : '')
-         + '</div>';
-  }).join('') : '<p class="muted">Aucun client enregistré.</p>';
-
-  view(
-    '<div class="cli-wrap">'
-    + '<div class="card">'+(typeof b==='function'?b('Retour','pageMain()','btn back'):'')+'<h2>Clients</h2>'
-    +   '<div class="cli-actions">'+ b('Créer un client','pageClientNew()','btn primary') +'</div>'
-    + '</div>'
-    + '<div class="card"><h3>Annuaire</h3>'+rows+'</div>'
-    +'</div>'
-  );
-}
-function clientDeleteUI(id){ const c=_clientById(id); if(!c) return; if(confirm('Supprimer « '+(c.nom||'')+' » ?')){ _clientDelete(id); pageClients(); } }
-function pageClientNew(prefill){ const c=Object.assign({id:'',nom:'',email:'',tel:'',adresse:'',cp:'',ville:'',notes:''}, prefill||{}); view(_clientFormHTML(c,'Créer un client','_clientSaveNew()','pageClients()')); }
-function pageClientEdit(id){ const c=_clientById(id); if(!c){alert('Introuvable.');return pageClients();} view(_clientFormHTML(c,'Modifier le client','_clientSaveEdit('+JSON.stringify(id)+')','pageClients()')); }
-function _clientFormHTML(c,title,onSave,onCancel){
-  return (
-    '<div class="cli-wrap">'
-    + '<div class="card">'+b('Retour',onCancel,'btn back')+'<h2>'+_esc(title)+'</h2></div>'
-    + '<div class="card"><div class="cli-grid">'
-    +   '<div class="cli-field"><label>Nom / Société</label><input id="cli-nom" value="'+_esc(c.nom)+'"/></div>'
-    +   '<div class="cli-field"><label>Email</label><input id="cli-email" value="'+_esc(c.email)+'"/></div>'
-    +   '<div class="cli-field"><label>Téléphone</label><input id="cli-tel" value="'+_esc(c.tel)+'"/></div>'
-    +   '<div class="cli-field" style="grid-column:1/-1;"><label>Adresse</label><input id="cli-adr" value="'+_esc(c.adresse)+'"/></div>'
-    +   '<div class="cli-field"><label>Code postal</label><input id="cli-cp" value="'+_esc(c.cp)+'"/></div>'
-    +   '<div class="cli-field"><label>Ville</label><input id="cli-ville" value="'+_esc(c.ville)+'"/></div>'
-    +   '<div class="cli-field" style="grid-column:1/-1;"><label>Notes</label><textarea id="cli-notes" rows="4">'+_esc(c.notes||'')+'</textarea></div>'
-    + '</div><div class="cli-actions">'+b('Enregistrer',onSave,'btn primary')+b('Annuler',onCancel,'btn')+'</div></div>'
-    +'</div>'
-  );
-}
-function _readClientForm(){
-  const g=id=> (document.getElementById(id)||{}).value||'';
-  return {id:'', nom:g('cli-nom'), email:g('cli-email'), tel:g('cli-tel'), adresse:g('cli-adr'), cp:g('cli-cp'), ville:g('cli-ville'), notes:g('cli-notes')};
-}
-function _clientSaveNew(){ const data=_readClientForm(); _clientUpsert(data); alert('Client créé.'); pageClients(); }
-function _clientSaveEdit(id){ const old=_clientById(id)||{id:id}; const data=Object.assign({},old,_readClientForm(),{id:id}); _clientUpsert(data); alert('Client mis à jour.'); pageClients(); }
-function attachClientToCurrent(id){
-  const c=_clientById(id); if(!c){alert('Introuvable.');return;}
-  if(!window.devis) window.devis={};
-  devis.__client={ nom:c.nom||'', email:c.email||'', tel:c.tel||'', adresse:c.adresse||'', cp:c.cp||'', ville:c.ville||'', notes:c.notes||'', __client_id:c.id };
-  if(typeof saveLocal==='function') saveLocal();
-  alert('Client affecté au devis.');
-}
-
-/* =========================================
-   16X.2 • Flux “Nouveau devis” unifié (2 étapes)
-   - Étape 1 : choisir ou créer un client
-   - Étape 2 : nom du devis + TVA
-   ========================================= */
-function pageClientNewDevis(){
-  const list=_clientsGet();
-  const cur=(window.devis && devis.__client)?devis.__client:{nom:'',email:'',tel:'',adresse:'',cp:'',ville:''};
-
-  const exist = list.length ? list.map(c =>
-    '<div class="cli-list-item" style="justify-content:space-between;">'
-    + '<div><strong>'+_esc(c.nom)+'</strong><div class="meta">'+_esc(c.ville||'')+'</div></div>'
-    + '<button class="btn" onclick="_useExistingClient16X(\''+_esc(c.id)+'\')">Sélectionner</button>'
-    + '</div>'
-  ).join('') : '<p class="muted">Aucun client enregistré.</p>';
-
-  view(
-    '<div class="cli-wrap">'
-    + '<div class="card">'+b('Annuler','pageMain()','btn back')+'<h2>Nouveau devis — Client</h2></div>'
-    + '<div class="card"><h3>Client existant</h3>'+exist+'</div>'
-    + '<div class="card"><h3>Créer un nouveau client</h3>'
-    +   '<div class="cli-grid">'
-    +     '<div class="cli-field"><label>Nom / Société</label><input id="ncli-nom" value="'+_esc(cur.nom)+'"/></div>'
-    +     '<div class="cli-field"><label>Email</label><input id="ncli-email" value="'+_esc(cur.email)+'"/></div>'
-    +     '<div class="cli-field"><label>Téléphone</label><input id="ncli-tel" value="'+_esc(cur.tel)+'"/></div>'
-    +     '<div class="cli-field" style="grid-column:1/-1;"><label>Adresse</label><input id="ncli-adr" value="'+_esc(cur.adresse)+'"/></div>'
-    +     '<div class="cli-field"><label>Code postal</label><input id="ncli-cp" value="'+_esc(cur.cp)+'"/></div>'
-    +     '<div class="cli-field"><label>Ville</label><input id="ncli-ville" value="'+_esc(cur.ville)+'"/></div>'
-    +   '</div>'
-    +   '<div class="cli-actions">'+b('Enregistrer et continuer','_saveNewClient16X()','btn primary')+b('📇 Ouvrir l’annuaire client','pageClients()','btn')+'</div>'
-    + '</div>'
-    + '</div>'
-  );
-}
-function _useExistingClient16X(id){
-  const c=_clientById(id); if(!c){alert('Client introuvable.');return;}
-  if(!window.devis) window.devis={};
-  devis.__client={nom:c.nom,email:c.email,tel:c.tel,adresse:c.adresse,cp:c.cp,ville:c.ville,notes:c.notes,__client_id:c.id};
-  if(typeof saveLocal==='function') saveLocal();
-  pageNomTVA16X();
-}
-function _saveNewClient16X(){
-  const v=id=> (document.getElementById(id)||{}).value||'';
-  const saved=_clientUpsert({ nom:v('ncli-nom'), email:v('ncli-email'), tel:v('ncli-tel'), adresse:v('ncli-adr'), cp:v('ncli-cp'), ville:v('ncli-ville') });
-  if(!window.devis) window.devis={};
-  devis.__client=saved; if(typeof saveLocal==='function') saveLocal(); pageNomTVA16X();
-}
-
-function pageNomTVA16X(){
-  const prefs=_rd(KEY_PREFS_V1,{tva_applicable:true,taux_tva:20,numerotation_prefix:'DEV-',numerotation_courante:1});
-  const curName=(window.devis && devis.__name)?devis.__name:'Nouveau devis';
-  const tva=(window.devis && devis.__tva)?devis.__tva:{applicable:!!prefs.tva_applicable,taux:+prefs.taux_tva||20};
-
-  view(
-    '<div class="cli-wrap">'
-    + '<div class="card">'+b('Retour','pageClientNewDevis()','btn back')+'<h2>Nouveau devis — Nom & TVA</h2></div>'
-    + '<div class="card"><h3>Nom du devis</h3><input id="dv-name" value="'+_esc(curName)+'"/></div>'
-    + '<div class="card"><h3>TVA</h3>'
-    +   '<label><input type="checkbox" id="tva-on" '+(tva.applicable?'checked':'')+'> Appliquer la TVA</label>'
-    +   '<div style="margin-top:8px;"><label>Taux (%)</label> <input id="tva-rate" type="number" min="0" step="0.1" value="'+_esc(tva.taux)+'"/></div>'
-    + '</div>'
-    + '<div class="card"><div class="cli-actions">'
-    +   b('Valider','_saveTVA16X()','btn primary')
-    +   b('Annuler','pageMain()','btn')
-    + '</div></div>'
-    + '</div>'
-  );
-}
-function _saveTVA16X(){
-  if(!window.devis) window.devis={};
-  devis.__name=(document.getElementById('dv-name')||{}).value||'Devis';
-  devis.__tva={
-    applicable: !!(document.getElementById('tva-on')||{}).checked,
-    taux: parseFloat((document.getElementById('tva-rate')||{}).value)||0
-  };
-  if(typeof saveLocal==='function') saveLocal();
-  pageMain();
-}
-
-/* =========================================
-   16X.3 • Préparation Devis (fiche + CGV)
-   ========================================= */
-function _getClient16(){ return _rd(KEY_DEVIS_LASTCL,{nom:'',adresse:'',cp:'',ville:'',email:'',tel:''}); }
-function _setClient16(o){ _wr(KEY_DEVIS_LASTCL,o||{}); }
-function _getCGV16(){ return _rd(KEY_DEVIS_CGV,
+/* ==================================
+   §1 • Données client & CGV (LS)
+   ================================== */
+function _getClient16(){ return _rd16(KEY_DEVIS_LASTCLIENT, {nom:'',adresse:'',cp:'',ville:'',tel:'',email:''}); }
+function _setClient16(c){ _wr16(KEY_DEVIS_LASTCLIENT, c||{}); }
+function _getCGV16(){
+  return _rd16(KEY_DEVIS_CGV,
 `Conditions générales de vente
 - Validité du devis : 30 jours.
 - Délai de paiement : 30 jours fin de mois par virement.
-- Travaux réalisés selon les règles de l’art.
+- Les travaux seront réalisés selon les règles de l’art.
 - Toute modification hors devis fera l’objet d’un avenant.
-- Garanties selon conditions légales.`); }
-function _setCGV16(t){ _wr(KEY_DEVIS_CGV,String(t||'')); }
-function _getPrefs16(){ return _rd(KEY_PREFS_V1,{}); }
-function _getCompany16(){ return _rd(KEY_COMPANY_V1,{}); }
-
-function pageDevisPDF16(){
-  const cli=_getClient16(), cgv=_getCGV16(), prefs=_getPrefs16();
-  const devName=(window.devis&&devis.__name)?devis.__name:'Devis';
-  const ref=(prefs.numerotation_prefix||'DEV-')+_pad4(Math.max(1,parseInt(prefs.numerotation_courante||1,10)));
-
-  view(
-    '<div class="dv-wrap">'
-    + '<div class="card">'+(typeof b==='function'?b('Retour','(typeof pageEstimatif==\'function\'?pageEstimatif():pageMain())','btn back'):'')+'<h2>Préparer le devis (PDF — tout compris)</h2><p class="muted">Chaque ligne regroupe fourniture et pose en un prix global.</p></div>'
-    + '<div class="card"><h3>Client</h3><div class="dv-grid">'
-    +   '<div class="dv-field"><label>Nom / Société</label><input id="dv-cli-nom" value="'+_esc(cli.nom)+'"/></div>'
-    +   '<div class="dv-field"><label>Email</label><input id="dv-cli-email" value="'+_esc(cli.email)+'"/></div>'
-    +   '<div class="dv-field"><label>Téléphone</label><input id="dv-cli-tel" value="'+_esc(cli.tel)+'"/></div>'
-    +   '<div class="dv-field" style="grid-column:1/-1;"><label>Adresse</label><input id="dv-cli-adr" value="'+_esc(cli.adresse)+'"/></div>'
-    +   '<div class="dv-field"><label>Code postal</label><input id="dv-cli-cp" value="'+_esc(cli.cp)+'"/></div>'
-    +   '<div class="dv-field"><label>Ville</label><input id="dv-cli-ville" value="'+_esc(cli.ville)+'"/></div>'
-    + '</div><div class="dv-actions">'+b('Enregistrer le client','_dvSaveClient16()','btn primary')+'<span class="muted">Réf : '+_esc(ref)+' — '+_esc(_todayFR())+'</span></div></div>'
-    + '<div class="card"><h3>Conditions générales (CGV)</h3><textarea id="dv-cgv" rows="10" style="width:100%;">'+_esc(cgv)+'</textarea><div class="dv-actions">'+b('Enregistrer les CGV','_dvSaveCGV16()','btn')+'</div></div>'
-    + '<div class="card"><h3>Génération</h3><p class="muted">Ouvre un aperçu imprimable. Utilisez ensuite « Enregistrer en PDF ».</p><div class="dv-actions">'+b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary')+'</div></div>'
-    + '</div>'
-  );
+- Les fournitures et la pose sont garanties selon les conditions légales.`);
 }
-function _dvSaveClient16(){
-  const g=id=> (document.getElementById(id)||{}).value||'';
-  _setClient16({nom:g('dv-cli-nom'),email:g('dv-cli-email'),tel:g('dv-cli-tel'),adresse:g('dv-cli-adr'),cp:g('dv-cli-cp'),ville:g('dv-cli-ville')});
-  alert('Client enregistré.');
+function _setCGV16(txt){ _wr16(KEY_DEVIS_CGV, String(txt||'')); }
+
+/* ==================================
+   §2 • Collecte des lignes (fallback)
+   ================================== */
+function _pieceLabel16(key){
+  return (typeof pieceDisplayLabel === 'function') ? pieceDisplayLabel(key) : key;
 }
-function _dvSaveCGV16(){ _setCGV16((document.getElementById('dv-cgv')||{}).value||''); alert('CGV enregistrées.'); }
-
-/* =========================================
-   16X.4 • Collecte lignes & rendu HTML imprimable
-   ========================================= */
-function _groupDevis16(){
-  if (typeof groupDevis==='function') return groupDevis();
-  const g={'Devis':{}}; for(const k in devis){ if(k.indexOf('__')===0) continue; g['Devis'][k]=devis[k]; } return g;
+function _sortedItems16(key, items){
+  return (typeof sortedItemsForPiece === 'function') ? sortedItemsForPiece(key, items) : (Array.isArray(items)?items.slice():[]);
 }
-function _pieceLabel16(k){ return (typeof pieceDisplayLabel==='function') ? pieceDisplayLabel(k) : k; }
-function _sortedItems16(k,items){ return (typeof sortedItemsForPiece==='function') ? sortedItemsForPiece(k,items) : (Array.isArray(items)?items.slice():[]); }
-
-function _buildPrintableHTML16(){
-  const prefs=_getPrefs16(), company=_getCompany16(), cli=_getClient16(), cgv=_getCGV16();
-  const prefix=(prefs.numerotation_prefix||'DEV-'); const num=Math.max(1,parseInt(prefs.numerotation_courante||1,10)); const ref=(window.devis && devis.__ref)? String(devis.__ref):(prefix+_pad4(num));
-  const devName=(window.devis && devis.__name)? String(devis.__name) : 'Devis';
-  const tvaOn = !!(window.devis && devis.__tva ? devis.__tva.applicable : prefs.tva_applicable);
-  const taux  = _num(window.devis && devis.__tva ? devis.__tva.taux : prefs.taux_tva || 20);
-
-  // Collecte lignes
-  const grouped=_groupDevis16(); const lines=[]; let total=0;
-  for(const grp in grouped){
-    for(const key in grouped[grp]){
-      const sec=grouped[grp][key]; if(!sec||!Array.isArray(sec.items)||!sec.items.length) continue;
-      _sortedItems16(key, sec.items).forEach(it=>{
-        const q=_num(it.qty), pu=_num(it.prixU), t=_num(q*pu); total+=t;
-        const left=it.intervention ? (it.intervention+' — ') : '';
-        const pose=(it.intervention==='Création' && it.pose) ? (' — '+String(it.pose).toLowerCase()) : '';
-        lines.push({ piece:_pieceLabel16(key), designation:left+(it.designation||'Élément')+pose, qty:q, pu:pu, total:t });
-      });
-    }
+function _collectLines16(){
+  const out = [];
+  let total = 0;
+  const src = (typeof window.devis==='object' && window.devis) ? window.devis : {};
+  for (const k in src){
+    if(k.indexOf('__')===0) continue;
+    const sec = src[k]; if(!sec || !Array.isArray(sec.items)) continue;
+    const items = _sortedItems16(k, sec.items);
+    items.forEach(it=>{
+      const q=_num16(it.qty), pu=_num16(it.prixU), t=_num16(q*pu);
+      total += t;
+      const left = it.intervention ? (it.intervention+' — ') : '';
+      const pose = (it.intervention==='Création' && it.pose) ? (' — '+String(it.pose).toLowerCase()) : '';
+      out.push({ piece:_pieceLabel16(k), designation:left+(it.designation||'Élément')+pose, qty:q, pu:pu, total:t });
+    });
   }
-  const byPiece={}; lines.forEach(L=>{(byPiece[L.piece]||(byPiece[L.piece]=[])).push(L);});
+  return { lines: out, total };
+}
 
-  // Sections HTML avec bande grise
-  let sectionsHTML='';
-  Object.keys(byPiece).forEach(pl=>{
-    const rows = byPiece[pl].map(L =>
+/* ======================================================
+   §3 • Constructeur HTML imprimable (définitif & robuste)
+   - Titres de section avec bande grise légère
+   - Garde la phrase “Devis en prix global par ligne …”
+   ====================================================== */
+function _buildPrintableHTML16(){
+  const prefs   = _rd16(KEY_PREFS_V1, {});
+  const company = _rd16(KEY_COMPANY_V1, {});
+  const cli     = _getClient16();
+  const cgv     = _getCGV16();
+
+  const devName = (window.devis && devis.__name) ? String(devis.__name) : 'Devis';
+  const prefix  = (prefs.numerotation_prefix || 'DEV-');
+  const numCour = Math.max(1, parseInt(prefs.numerotation_courante||1,10));
+  const ref     = (window.devis && devis.__ref) ? String(devis.__ref) : (prefix + _pad4_16(numCour));
+
+  const pack = _collectLines16();
+
+  // Groupement par pièce
+  const byPiece = {};
+  pack.lines.forEach(L=>{ (byPiece[L.piece]||(byPiece[L.piece]=[])).push(L); });
+
+  let sectionsHTML = '';
+  Object.keys(byPiece).forEach(piece=>{
+    const rows = byPiece[piece].map(L =>
       '<tr>'
-      + '<td>'+_esc(L.designation)+'</td>'
-      + '<td style="text-align:right">'+_num(L.qty)+'</td>'
-      + '<td style="text-align:right">'+_euro(L.pu)+'</td>'
-      + '<td style="text-align:right">'+_euro(L.total)+'</td>'
+        + '<td>'+_esc16(L.designation)+'</td>'
+        + '<td style="text-align:right">'+L.qty+'</td>'
+        + '<td style="text-align:right">'+_euro16(L.pu)+'</td>'
+        + '<td style="text-align:right">'+_euro16(L.total)+'</td>'
       + '</tr>'
     ).join('');
-    const st = byPiece[pl].reduce((s,x)=> _num(s)+_num(x.total),0);
+    const st = byPiece[piece].reduce((s,x)=> _num16(s)+_num16(x.total), 0);
+
     sectionsHTML +=
-      '<h3 class="section-h3">'+_esc(pl)+'</h3>'
+      '<div class="sec-title">'+_esc16(piece)+'</div>'
       + '<table class="dv-table"><thead><tr>'
-      +   '<th>Désignation</th><th style="width:70px;text-align:right">Qté</th><th style="width:110px;text-align:right">PU</th><th style="width:130px;text-align:right">Total</th>'
+      +   '<th>Désignation</th>'
+      +   '<th style="width:70px;text-align:right">Qté</th>'
+      +   '<th style="width:110px;text-align:right">PU</th>'
+      +   '<th style="width:130px;text-align:right">Total</th>'
       + '</tr></thead><tbody>'+rows+'</tbody>'
-      + '<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td><td style="text-align:right"><strong>'+_euro(st)+'</strong></td></tr></tfoot>'
+      + '<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td>'
+      + '<td style="text-align:right"><strong>'+_euro16(st)+'</strong></td></tr></tfoot>'
       + '</table>';
   });
 
-  const totalHT=_num(total), totalTVA = tvaOn ? _num(totalHT * (taux/100)) : 0, totalTTC=_num(totalHT + totalTVA);
-  const logoHTML = company.logo_dataurl ? '<img src="'+company.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>' : '';
+  // Totaux & TVA
+  const tvaOn    = !!prefs.tva_applicable;
+  const taux     = _num16(prefs.taux_tva || 20);
+  const totalHT  = _num16(pack.total);
+  const totalTVA = tvaOn ? _num16(totalHT * (taux/100)) : 0;
+  const totalTTC = _num16(totalHT + totalTVA);
+
+  const logoHTML = company.logo_dataurl
+    ? '<img src="'+company.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>'
+    : '';
 
   const style =
-  'body{font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;color:#222;margin:0;background:#fff}'
-  +'.sheet{width:210mm;margin:0 auto;padding:18mm 16mm}'
-  +'h1,h2,h3{margin:0 0 6px 0}.row{display:flex;justify-content:space-between;gap:16px}'
-  +'.box{border:1px solid #ddd;border-radius:8px;padding:10px;background:#fafafa}.muted{color:#666}'
-  +'.dv-table{width:100%;border-collapse:collapse;margin:6px 0 12px}'
-  +'.dv-table th,.dv-table td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}'
-  +'.totals{margin-top:8px;width:100%}.totals td{padding:6px 8px}'
-  +'.section-h3{background:#f5f5f5;border:1px solid #e6e6e6;border-radius:6px;padding:6px 8px;margin:18px 0 6px 0}'
-  +'.page-break{page-break-before:always}'
-  +'@media print{.no-print{display:none !important}.sheet{box-shadow:none;margin:0}}';
+    'body{font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;color:#222;margin:0;background:#fff}'
+    +'.sheet{width:210mm;margin:0 auto;padding:18mm 16mm}'
+    +'.row{display:flex;justify-content:space-between;gap:16px}'
+    +'.box{border:1px solid #ddd;border-radius:8px;padding:10px;background:#fafafa}'
+    +'.muted{color:#666}'
+    +'.sec-title{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;margin:18px 0 6px 0;font-weight:600}'
+    +'.dv-table{width:100%;border-collapse:collapse;margin:6px 0 12px}'
+    +'.dv-table th,.dv-table td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}'
+    +'.totals{margin-top:8px;width:100%}.totals td{padding:6px 8px}'
+    +'@media print{.no-print{display:none !important}.sheet{box-shadow:none;margin:0}}';
 
-  function blockCompany(c){
-    const rs=(c.raison_sociale||c.nom_commercial||'').trim();
-    const adr=[c.adresse, c.code_postal||c.cp, c.ville].filter(Boolean).join(' ');
-    const L=[]; if(rs) L.push('<strong>'+_esc(rs)+'</strong>');
-    if(adr) L.push(_esc(adr));
-    if(c.pays) L.push(_esc(c.pays));
-    if(c.telephone) L.push('Tél : '+_esc(c.telephone));
-    if(c.email) L.push('Email : '+_esc(c.email));
-    if(c.site) L.push(_esc(c.site));
-    if(c.siren) L.push('SIREN : '+_esc(c.siren));
-    if(c.tva_intracom) L.push('TVA : '+_esc(c.tva_intracom));
+  function _companyBlock(c){
+    const adr = [c.adresse, c.cp||c.code_postal, c.ville].filter(Boolean).join(' ');
+    const L=[]; if(c.raison_sociale||c.nom_commercial) L.push('<strong>'+_esc16(c.raison_sociale||c.nom_commercial)+'</strong>');
+    if(adr) L.push(_esc16(adr));
+    if(c.telephone) L.push('Tél : '+_esc16(c.telephone));
+    if(c.email)     L.push('Email : '+_esc16(c.email));
+    if(c.siren)     L.push('SIREN : '+_esc16(c.siren));
+    if(c.tva_intracom) L.push('TVA : '+_esc16(c.tva_intracom));
     return L.join('<br>');
   }
-  function blockClient(c){
-    const L=[]; if(c.nom) L.push('<strong>'+_esc(c.nom)+'</strong>');
-    if(c.adresse) L.push(_esc(c.adresse));
-    const cpv=[c.cp,c.ville].filter(Boolean).join(' '); if(cpv) L.push(_esc(cpv));
-    if(c.tel) L.push('Tél : '+_esc(c.tel)); if(c.email) L.push('Email : '+_esc(c.email));
+  function _clientBlock(c){
+    const L=[]; if(c.nom) L.push('<strong>'+_esc16(c.nom)+'</strong>');
+    if(c.adresse) L.push(_esc16(c.adresse));
+    const cpv=[c.cp,c.ville].filter(Boolean).join(' ');
+    if(cpv) L.push(_esc16(cpv));
+    if(c.tel) L.push('Tél : '+_esc16(c.tel));
+    if(c.email) L.push('Email : '+_esc16(c.email));
     return L.join('<br>');
   }
 
   const html =
-'<!doctype html><html lang="fr"><head><meta charset="utf-8"/><title>'+_esc(devName)+' — '+_esc(ref)+'</title><style>'+style+'</style></head><body>'
+'<!doctype html><html lang="fr"><head><meta charset="utf-8"/>'
++'<title>'+_esc16(devName)+' — '+_esc16(ref)+'</title>'
++'<style>'+style+'</style></head><body>'
 +'<div class="sheet">'
 +  '<div class="row">'
-+    '<div style="flex:1 1 auto"><div>'+logoHTML+'</div><div style="margin-top:8px" class="muted">'+blockCompany(company)+'</div></div>'
-+    '<div class="box" style="min-width:280px;">'
-+      '<h2>Devis</h2>'
-+      '<div>Référence : <strong>'+_esc(ref)+'</strong></div>'
-+      '<div>Date : '+_esc(_todayFR())+'</div>'
-+      '<div style="margin-top:6px;">Destinataire :</div>'
-+      '<div>'+blockClient(cli)+'</div>'
-+    '</div>'
++    '<div style="flex:1 1 auto"><div>'+logoHTML+'</div><div style="margin-top:8px" class="muted">'+_companyBlock(company)+'</div></div>'
++    '<div class="box" style="min-width:280px;"><h2>Devis</h2><div>Référence : <strong>'+_esc16(ref)+'</strong></div><div>Date : '+_esc16(_todayFR16())+'</div><div style="margin-top:6px;">Destinataire :</div><div>'+_clientBlock(cli)+'</div></div>'
 +  '</div>'
-+  '<div style="margin-top:14px;"><h1 style="font-size:20px;">'+_esc(devName)+'</h1><div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div></div>'
++  '<div style="margin-top:14px;"><h1 style="font-size:20px;margin:0 0 6px 0">'+_esc16(devName)+'</h1><div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div></div>'
 +  '<div style="margin-top:10px;">'+(sectionsHTML || '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
 +  '<table class="totals" style="margin-top:6px;">'
-+    '<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+_euro(totalHT)+'</strong></td></tr>'
-+    '<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+_esc(String(taux))+' %</td></tr>'
-+    +(tvaOn ? ('<tr><td style="text-align:right">TVA</td><td style="text-align:right">'+_euro(totalTVA)+'</td></tr>') : '')
-+    '<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+_euro(totalTTC)+'</strong></td></tr>'
++    '<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+_euro16(totalHT)+'</strong></td></tr>'
++    '<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+_esc16(String(taux))+' %</td></tr>'
++    +(tvaOn ? ('<tr><td style="text-align:right">TVA</td><td style="text-align:right">'+_euro16(totalTVA)+'</td></tr>') : '')
++    '<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+_euro16(totalTTC)+'</strong></td></tr>'
 +  '</table>'
-+'</div>'
-+'<div class="sheet page-break">'
-+  '<h3>Conditions générales</h3>'
-+  '<div class="box" style="white-space:pre-wrap">'+_esc(cgv)+'</div>'
++  '<div style="margin-top:16px;"><h3>Conditions générales</h3><div class="box" style="white-space:pre-wrap">'+_esc16(cgv)+'</div></div>'
 +  '<div class="no-print" style="margin-top:14px;display:flex;gap:8px;"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button><button onclick="window.close()">Fermer</button></div>'
-+'</div>'
-+'</body></html>';
++'</div></body></html>';
 
   return html;
 }
 
+/* ======================================================
+   §4 • UI + Génération
+   ====================================================== */
+function pageDevisPDF16(){
+  const cli = _getClient16();
+  const cgv = _getCGV16();
+  const prefs = _rd16(KEY_PREFS_V1, {});
+  const devName = (window.devis && devis.__name) ? devis.__name : 'Devis';
+  const ref = (prefs.numerotation_prefix||'DEV-') + _pad4_16(Math.max(1,parseInt(prefs.numerotation_courante||1,10)));
+
+  view(
+    '<div class="dv-wrap">'
+    +  '<div class="card">'
+    +     (typeof b==='function' ? b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back') : '')
+    +     '<h2>Aperçu du devis (PDF)</h2>'
+    +     '<p class="dv-note">Référence : '+_esc16(ref)+' — Titre : '+_esc16(devName)+'</p>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Client</h3>'
+    +    '<div class="dv-grid">'
+    +      '<div class="dv-field"><label>Nom / Société</label><input id="dv-cli-nom" value="'+_esc16(cli.nom)+'"/></div>'
+    +      '<div class="dv-field"><label>Email</label><input id="dv-cli-email" value="'+_esc16(cli.email)+'"/></div>'
+    +      '<div class="dv-field"><label>Téléphone</label><input id="dv-cli-tel" value="'+_esc16(cli.tel)+'"/></div>'
+    +      '<div class="dv-field"><label>Adresse</label><input id="dv-cli-adr" value="'+_esc16(cli.adresse)+'"/></div>'
+    +      '<div class="dv-field"><label>Code postal</label><input id="dv-cli-cp" value="'+_esc16(cli.cp)+'"/></div>'
+    +      '<div class="dv-field"><label>Ville</label><input id="dv-cli-ville" value="'+_esc16(cli.ville)+'"/></div>'
+    +    '</div>'
+    +    '<div class="dv-actions">'+(typeof b==='function' ? b('Enregistrer le client','_dvSaveClient16()','btn') : '<button onclick="_dvSaveClient16()">Enregistrer le client</button>')+'</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Conditions générales (CGV)</h3>'
+    +    '<textarea id="dv-cgv" rows="8" style="width:100%;">'+_esc16(cgv)+'</textarea>'
+    +    '<div class="dv-actions">'+(typeof b==='function' ? b('Enregistrer les CGV','_dvSaveCGV16()','btn') : '<button onclick="_dvSaveCGV16()">Enregistrer les CGV</button>')+'</div>'
+    +  '</div>'
+
+    +  '<div class="card">'
+    +    '<h3>Génération</h3>'
+    +    '<div class="dv-actions">'
+    +      (typeof b==='function' ? b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary') : '<button onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>')
+    +    '</div>'
+    +  '</div>'
+    +'</div>'
+  );
+}
+function _dvSaveClient16(){
+  const cli = {
+    nom: (document.getElementById('dv-cli-nom')||{}).value || '',
+    email: (document.getElementById('dv-cli-email')||{}).value || '',
+    tel: (document.getElementById('dv-cli-tel')||{}).value || '',
+    adresse: (document.getElementById('dv-cli-adr')||{}).value || '',
+    cp: (document.getElementById('dv-cli-cp')||{}).value || '',
+    ville: (document.getElementById('dv-cli-ville')||{}).value || ''
+  };
+  _setClient16(cli);
+  alert('Client enregistré.');
+}
+function _dvSaveCGV16(){
+  const txt = (document.getElementById('dv-cgv')||{}).value || '';
+  _setCGV16(txt);
+  alert('CGV enregistrées.');
+}
 function buildDevisPDF16(){
   try{
-    const html=_buildPrintableHTML16();
-    const w=window.open('','_blank'); if(!w){ alert('Autorisez les popups pour voir le PDF.'); return; }
+    // Utilise notre constructeur robuste (défini au §3)
+    const html = _buildPrintableHTML16();
+    const w = window.open('', '_blank');
+    if(!w){ alert('Impossible d’ouvrir l’aperçu. Autorise les pop-ups.'); return; }
     w.document.open('text/html'); w.document.write(html); w.document.close();
     setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 300);
-  }catch(err){ alert('Erreur génération PDF : '+(err && err.message ? err.message : String(err))); }
+  }catch(err){
+    alert('Erreur PDF : '+(err && err.message ? err.message : String(err)));
+  }
 }
 
-/* =========================================
-   16X.5 • Injection boutons (Estimatif & Totaux)
-   ========================================= */
-(function injectButtons16X(){
-  function appendButtons(){
+/* ======================================================
+   §5 • Injection unique des boutons (Estimatif & Totaux)
+   ====================================================== */
+(function injectButtons16(){
+  function addBlock(){
     const app=document.getElementById('app'); if(!app) return;
-    if(app.innerHTML.indexOf('buildDevisPDF16()')!==-1) return;
-    app.innerHTML +=
-      '<div class="card" style="margin-top:12px;">'
-      +  '<h3>Génération de devis (PDF)</h3>'
-      +  '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-      +    '<button class="btn" onclick="pageDevisPDF16()">Aperçu du devis (PDF)</button>'
-      +    '<button class="btn primary" onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>'
-      +  '</div>'
-      +'</div>';
-  }
-  const e=window.pageEstimatif, t=window.pageTotaux;
-  if(typeof e==='function'){ window.pageEstimatif=function(){ e(); appendButtons(); }; }
-  if(typeof t==='function'){ window.pageTotaux=function(){ t(); appendButtons(); }; }
-})();
 
-/* =========================================
-   16X.6 • “Nouveau devis” : override propre
-   ========================================= */
-(function overrideNewDevis16X(){
-  const old = window.actionNouveauDevis;
-  window.actionNouveauDevis = function(){
-    if(!confirm('Créer un nouveau devis ? Le devis actuel non sauvegardé sera perdu.')) return;
-    window.devis = { __id: 'dv_'+Date.now()+'_'+Math.random().toString(36).slice(2,6), __name: 'Nouveau devis', __tva:{}, __client:{} };
-    if(typeof saveLocal==='function') saveLocal();
-    pageClientNewDevis();
-  };
-})();
-
-/* =========================================
-   16X.7 • Expose global
-   ========================================= */
-Object.assign(window,{
-  // Annuaire
-  pageClients, pageClientNew, pageClientEdit, clientDeleteUI, attachClientToCurrent,
-  // Nouveau devis
-  pageClientNewDevis,
-  // Devis PDF
-  pageDevisPDF16, buildDevisPDF16
-});
-</script>
-
-  <!-- =============================
-     CHAPITRE 16Z — Anti-doublons & PDF Reinjection (safe)
-     ============================= -->
-<script>
-(function(){
-
-  /* 1) Neutraliser définitivement les anciennes fonctions de duplication */
-  const NOP = function(){ /* neutralisé */ };
-  ['repriceCurrentDevisV10',
-   'duplicateDevisWithCurrentTarifs',
-   'duplicateDevisWithCurrentTarifs_REPRICE'
-  ].forEach(function(fn){
-    try{ if (typeof window[fn] === 'function') window[fn] = NOP; }catch(e){}
-  });
-
-  /* 2) Nettoyer l’UI : retirer les vieux boutons réinjectés par d’anciens chapitres */
-  function stripLegacyButtons(){
-    var app = document.getElementById('app'); if(!app) return;
-    var killers = [
-      'repriceCurrentDevisV10(',
-      'duplicateDevisWithCurrentTarifs_REPRICE(',
-      'duplicateDevisWithCurrentTarifs('
-    ];
-    // supprime les <button> ciblés
-    app.querySelectorAll('button').forEach(function(btn){
-      var oc = (btn.getAttribute('onclick')||'');
-      if (killers.some(function(k){ return oc.indexOf(k) !== -1; })){
-        btn.remove();
-      }
-    });
-    // supprime les .row devenues vides
-    app.querySelectorAll('.row').forEach(function(row){
-      if(!row.querySelector('button')) row.parentNode && row.parentNode.removeChild(row);
-    });
-  }
-
-  /* 3) Ré-injecter la carte PDF si absente (utilise tes fonctions si présentes) */
-  function ensurePdfBlock(){
-    var app = document.getElementById('app'); if(!app) return;
-    if (app.innerHTML.indexOf('buildDevisPDF16()') !== -1 ||
-        app.innerHTML.indexOf('pageDevisPDF16()') !== -1) {
-      return; // déjà là
+    // Nettoie d’éventuels anciens blocs 16
+    const marker = 'buildDevisPDF16()';
+    if(app.innerHTML.indexOf(marker)!==-1){
+      // déjà présent → ne rien dupliquer
+      return;
     }
-    // Petite tolérance : si tes fonctions n’existent pas, on met un fallback d’alerte
-    if (typeof window.pageDevisPDF16 !== 'function'){
-      window.pageDevisPDF16 = function(){ alert('Fonction pageDevisPDF16 introuvable dans ce projet.'); };
-    }
-    if (typeof window.buildDevisPDF16 !== 'function'){
-      window.buildDevisPDF16 = function(){ alert('Fonction buildDevisPDF16 introuvable dans ce projet.'); };
-    }
-
-    // Ajoute une carte dédiée
+    // Ajoute une carte claire, sans regex fragiles
     app.innerHTML +=
       '<div class="card" style="margin-top:12px;">'
       +  '<h3>Devis (PDF)</h3>'
@@ -5601,232 +5424,30 @@ Object.assign(window,{
       +'</div>';
   }
 
-  /* 4) Wrapper des pages Estimatif / Totaux pour appliquer strip+reinjection à chaque rendu */
   function wrapOnce(name){
-    var orig = window[name];
-    if (typeof orig !== 'function') return;
-    if (orig.__cleanWrapped) return;
-    function wrapped(){
+    const orig = window[name];
+    if(typeof orig!=='function') return;
+    if(orig.__pdfInjectWrapped) return;
+    window[name] = function(){
       orig.apply(this, arguments);
-      // ordre : d’abord on enlève les boutons legacy, puis on garantit la carte PDF
-      stripLegacyButtons();
-      ensurePdfBlock();
-    }
-    wrapped.__cleanWrapped = true;
-    window[name] = wrapped;
+      addBlock();
+    };
+    window[name].__pdfInjectWrapped = true;
   }
 
   wrapOnce('pageEstimatif');
   wrapOnce('pageTotaux');
 
-  // 5) Coup de balai immédiat si une page est déjà affichée
-  setTimeout(function(){
-    stripLegacyButtons();
-    ensurePdfBlock();
-  }, 0);
-
+  // Si l’écran est déjà affiché, on tente une injection immédiate
+  setTimeout(addBlock, 0);
 })();
-</script>
 
-  <!-- =============================
-     CHAPITRE 16PDF-MIN — Fallback PDF sûr
-     - Fournit pageDevisPDF16() et buildDevisPDF16() si absents
-     - Réutilise _buildPrintableHTML16() si dispo
-     - Sinon, génère un HTML imprimable robuste (titres de section avec bande grise)
-     ============================= -->
-<script>
-(function(){
-  // Ne pas écraser si déjà présents
-  if (typeof window.pageDevisPDF16 === 'function' &&
-      typeof window.buildDevisPDF16 === 'function') return;
-
-  // --------- Helpers sûrs (sans dépendances externes) ----------
-  function _num(v){ return Number.isFinite(+v) ? +v : 0; }
-  function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]); }
-  function _euro(n){
-    const v=_num(n);
-    try{ return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }
-    catch(e){ return (Math.round(v*100)/100)+' €'; }
-  }
-  function _today(){
-    try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }
-    catch(e){ return new Date().toLocaleDateString(); }
-  }
-  function _rd(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-
-  // Fallback de collecte des lignes si groupDevis/sortedItemsForPiece ne sont pas définis
-  function _collectLines(){
-    const out = [];
-    let total = 0;
-    const src = (typeof window.devis==='object' && window.devis) ? window.devis : {};
-    for (const k in src){
-      if (k.indexOf('__')===0) continue;
-      const sec = src[k]; if(!sec || !Array.isArray(sec.items)) continue;
-      const items = (typeof window.sortedItemsForPiece==='function')
-        ? window.sortedItemsForPiece(k, sec.items)
-        : sec.items.slice();
-      items.forEach(it=>{
-        const q=_num(it.qty), pu=_num(it.prixU), t=_num(q*pu);
-        total += t;
-        const left = it.intervention ? (it.intervention+' — ') : '';
-        const pose = (it.intervention==='Création' && it.pose) ? (' — '+String(it.pose).toLowerCase()) : '';
-        out.push({
-          piece: (typeof window.pieceDisplayLabel==='function' ? window.pieceDisplayLabel(k) : k),
-          designation: left + (it.designation||'Élément') + pose,
-          qty:q, pu:pu, total:t
-        });
-      });
-    }
-    return { lines: out, total };
-  }
-
-  // --------- Génération HTML fallback (avec bande grise sur titres de section) ----------
-  function _fallbackPrintableHTML(){
-    const prefs   = _rd('appPrefs_v1', {});
-    const company = _rd('companyConfig_v1', {});
-    const cli     = _rd('devis_last_client_v1', {nom:'',adresse:'',cp:'',ville:'',tel:'',email:''});
-    const cgv     = _rd('devis_cgv_v1', '');
-    const title   = (window.devis && devis.__name) ? String(devis.__name) : 'Devis';
-    const prefix  = prefs.numerotation_prefix || 'DEV-';
-    const numCour = Math.max(1, parseInt(prefs.numerotation_courante||1,10));
-    const ref     = (window.devis && devis.__ref) ? String(devis.__ref) : (prefix + String(numCour).padStart(4,'0'));
-
-    const pack = _collectLines();
-    // groupement par pièce
-    const byPiece = {};
-    pack.lines.forEach(L=>{ (byPiece[L.piece]||(byPiece[L.piece]=[])).push(L); });
-
-    let sections = '';
-    Object.keys(byPiece).forEach(piece=>{
-      const rows = byPiece[piece].map(L =>
-        '<tr>'
-          +'<td>'+_esc(L.designation)+'</td>'
-          +'<td style="text-align:right">'+L.qty+'</td>'
-          +'<td style="text-align:right">'+_euro(L.pu)+'</td>'
-          +'<td style="text-align:right">'+_euro(L.total)+'</td>'
-        +'</tr>'
-      ).join('');
-      const st = byPiece[piece].reduce((s,x)=> _num(s)+_num(x.total), 0);
-
-      sections +=
-        '<div class="sec-title">'+_esc(piece)+'</div>'
-        +'<table class="dv-table"><thead><tr>'
-        +'<th>Désignation</th><th style="width:70px;text-align:right">Qté</th>'
-        +'<th style="width:110px;text-align:right">PU</th><th style="width:130px;text-align:right">Total</th>'
-        +'</tr></thead><tbody>'+rows+'</tbody>'
-        +'<tfoot><tr><td colspan="3" style="text-align:right"><strong>Sous-total</strong></td>'
-        +'<td style="text-align:right"><strong>'+_euro(st)+'</strong></td></tr></tfoot></table>';
-    });
-
-    const tvaOn    = !!prefs.tva_applicable;
-    const taux     = _num(prefs.taux_tva || 20);
-    const totalHT  = _num(pack.total);
-    const totalTVA = tvaOn ? _num(totalHT * (taux/100)) : 0;
-    const totalTTC = _num(totalHT + totalTVA);
-
-    const logoHTML = company.logo_dataurl
-      ? '<img src="'+company.logo_dataurl+'" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;background:#fff" alt="Logo"/>'
-      : '';
-
-    const style =
-      'body{font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;color:#222;margin:0;background:#fff}'
-     +'.sheet{width:210mm;margin:0 auto;padding:18mm 16mm}'
-     +'.row{display:flex;justify-content:space-between;gap:16px}'
-     +'.box{border:1px solid #ddd;border-radius:8px;padding:10px;background:#fafafa}'
-     +'.muted{color:#666}'
-     +'.sec-title{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;margin:18px 0 6px 0;font-weight:600}'
-     +'.dv-table{width:100%;border-collapse:collapse;margin:6px 0 12px}'
-     +'.dv-table th,.dv-table td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}'
-     +'.totals{margin-top:8px;width:100%}.totals td{padding:6px 8px}'
-     +'@media print{.no-print{display:none !important}.sheet{box-shadow:none;margin:0}}';
-
-    function blockCompany(c){
-      const adr = [c.adresse, c.cp||c.code_postal, c.ville].filter(Boolean).join(' ');
-      const L=[]; if(c.raison_sociale||c.nom_commercial) L.push('<strong>'+_esc(c.raison_sociale||c.nom_commercial)+'</strong>');
-      if(adr) L.push(_esc(adr));
-      if(c.telephone) L.push('Tél : '+_esc(c.telephone));
-      if(c.email) L.push('Email : '+_esc(c.email));
-      if(c.siren) L.push('SIREN : '+_esc(c.siren));
-      if(c.tva_intracom) L.push('TVA : '+_esc(c.tva_intracom));
-      return L.join('<br>');
-    }
-    function blockClient(c){
-      const L=[]; if(c.nom) L.push('<strong>'+_esc(c.nom)+'</strong>');
-      if(c.adresse) L.push(_esc(c.adresse));
-      const cpv = [c.cp,c.ville].filter(Boolean).join(' ');
-      if(cpv) L.push(_esc(cpv));
-      if(c.tel) L.push('Tél : '+_esc(c.tel));
-      if(c.email) L.push('Email : '+_esc(c.email));
-      return L.join('<br>');
-    }
-
-    return '<!doctype html><html lang="fr"><head><meta charset="utf-8"/>'
-      +'<title>'+_esc(title)+' — '+_esc(ref)+'</title>'
-      +'<style>'+style+'</style></head><body>'
-      +'<div class="sheet">'
-        +'<div class="row">'
-          +'<div style="flex:1 1 auto"><div>'+logoHTML+'</div><div style="margin-top:8px" class="muted">'+blockCompany(company)+'</div></div>'
-          +'<div class="box" style="min-width:280px;">'
-            +'<h2>Devis</h2>'
-            +'<div>Référence : <strong>'+_esc(ref)+'</strong></div>'
-            +'<div>Date : '+_esc(_today())+'</div>'
-            +'<div style="margin-top:6px;">Destinataire :</div>'
-            +'<div>'+blockClient(cli)+'</div>'
-          +'</div>'
-        +'</div>'
-        +'<div style="margin-top:14px;">'
-          +'<h1 style="font-size:20px;margin:0 0 6px 0">'+_esc(title)+'</h1>'
-          +'<div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div>'
-        +'</div>'
-        +'<div style="margin-top:10px;">'+(sections || '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
-        +'<table class="totals" style="margin-top:6px;">'
-          +'<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+_euro(totalHT)+'</strong></td></tr>'
-          +'<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+_esc(String(taux))+' %</td></tr>'
-          +(tvaOn ? ('<tr><td style="text-align:right">TVA</td><td style="text-align:right">'+_euro(totalTVA)+'</td></tr>') : '')
-          +'<tr><td style="text-align:right"><strong>Total TTC</strong></td><td style="text-align:right"><strong>'+_euro(totalTTC)+'</strong></td></tr>'
-        +'</table>'
-        +'<div style="margin-top:16px;"><h3>Conditions générales</h3><div class="box" style="white-space:pre-wrap">'+_esc(cgv)+'</div></div>'
-        +'<div class="no-print" style="margin-top:14px;display:flex;gap:8px;">'
-          +'<button onclick="window.print()">Imprimer / Enregistrer en PDF</button>'
-          +'<button onclick="window.close()">Fermer</button>'
-        +'</div>'
-      +'</div>'
-      +'</body></html>';
-  }
-
-  // --------- Fonctions publiques attendues ----------
-  if (typeof window.buildDevisPDF16 !== 'function'){
-    window.buildDevisPDF16 = function(){
-      try{
-        // Si ton constructeur “premium” existe, on l’utilise ; sinon fallback
-        const html = (typeof window._buildPrintableHTML16==='function')
-          ? window._buildPrintableHTML16()
-          : _fallbackPrintableHTML();
-        const w = window.open('', '_blank');
-        if(!w){ alert('Impossible d’ouvrir l’aperçu. Autorisez les popups.'); return; }
-        w.document.open('text/html'); w.document.write(html); w.document.close();
-        setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 300);
-      }catch(err){
-        alert('Erreur génération PDF : '+(err && err.message ? err.message : String(err)));
-      }
-    };
-  }
-
-  if (typeof window.pageDevisPDF16 !== 'function'){
-    // Page “aperçu” ultra simple : explique + bouton imprimer direct
-    window.pageDevisPDF16 = function(){
-      var app = document.getElementById('app'); if(!app) return;
-      app.innerHTML =
-        '<div class="card">'+(typeof b==='function'? b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back') : '')+
-        '<h2>Aperçu du devis (PDF)</h2>'+
-        '<p class="muted">Clique sur “Générer le PDF (tout compris)” pour ouvrir l’aperçu imprimable puis “Enregistrer en PDF”.</p>'+
-        '<div class="row" style="gap:8px;flex-wrap:wrap;">'+
-          (typeof b==='function'
-            ? b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary')
-            : '<button class="btn" onclick="buildDevisPDF16()">Générer le PDF (tout compris)</button>')+
-        '</div>'+
-        '</div>';
-    };
-  }
-})();
+/* ======================
+   §6 • Expose
+   ====================== */
+Object.assign(window, {
+  pageDevisPDF16,
+  buildDevisPDF16,
+  _buildPrintableHTML16  // utile si d’autres chapitres veulent réutiliser
+});
 </script>
