@@ -5604,3 +5604,11 @@ function buildDevisPDF16(){
   setTimeout(addBlock, 0);
 })();
 </script>
+  <script>
+/* §6 • Expose (assure la présence en global) */
+try {
+  if (typeof window.pageDevisPDF16 !== 'function') window.pageDevisPDF16 = pageDevisPDF16;
+  if (typeof window.buildDevisPDF16 !== 'function') window.buildDevisPDF16 = buildDevisPDF16;
+  if (typeof window._buildPrintableHTML16 !== 'function') window._buildPrintableHTML16 = _buildPrintableHTML16;
+} catch(e) { /* no-op */ }
+</script>
