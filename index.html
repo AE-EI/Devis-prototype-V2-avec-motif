@@ -4396,8 +4396,8 @@ Object.assign(window,{
 <!-- =============================
      CHAPITRE 13.9 — ACCUEIL TARIFS (remplace 13A)
      - Page "Paramétrage" (pageTarifsAccueil)
-     - Redirige vers : Catalogue prestation, Préférences, Configuration entreprise
-     - Appels SÉCURISÉS (aucune erreur si une page n'est pas chargée)
+     - Accès : Catalogue prestation, Préférences, Configuration entreprise
+     - Sécurités : aucun crash si une page cible n'est pas chargée
      ============================= -->
 <style>
   .tarifs-wrap .card{ margin-bottom:16px; }
@@ -4406,26 +4406,26 @@ Object.assign(window,{
 
 <script>
 (function(){
-  // Utilitaires locaux
+  /* Utilitaires locaux, sans effets de bord */
   function has(fn){ return typeof window[fn] === 'function'; }
   function btn(label, call, cls){
-    // Réutilise ton builder global 'b' si présent, sinon bouton HTML
+    /* Réutilise ton builder b() s'il existe, sinon génère un <button> classique */
     if (has('b')) return b(label, call, cls || 'btn');
     return '<button class="'+(cls||'btn')+'" onclick="'+call+'">'+label+'</button>';
   }
 
-  // Appels protégés (n'exceptionnent pas si la cible n'existe pas)
-  var callCatalogue     = '(window.pageCataloguePrestation ? pageCataloguePrestation() : (alert("Catalogue indisponible : le Chapitre 13 n\\'est pas chargé ou contient une erreur."),0))';
-  var callPreferences   = '(window.pagePreferences ? pagePreferences() : (alert("Préférences indisponibles."),0))';
-  var callEntreprise    = '(window.pageConfigEntreprise ? pageConfigEntreprise() : (alert("Configuration entreprise indisponible."),0))';
-  var callBack          = '(window.pageMain ? pageMain() : 0)';
+  /* Appels protégés (on n'exceptionne pas si la cible n'existe pas) */
+  var callCatalogue   = '(window.pageCataloguePrestation ? pageCataloguePrestation() : (alert("Catalogue indisponible : le Chapitre 13 n\\'est pas chargé ou comporte une erreur."),0))';
+  var callPreferences = '(window.pagePreferences ? pagePreferences() : (alert("La page Préférences n\\'est pas disponible."),0))';
+  var callEntreprise  = '(window.pageConfigEntreprise ? pageConfigEntreprise() : (alert("La page Configuration entreprise n\\'est pas disponible."),0))';
+  var callBackMain    = '(window.pageMain ? pageMain() : 0)';
 
-  // --- Page Paramétrage ---
+  /* Page Paramétrage */
   function pageTarifsAccueil(){
     var html =
       '<div class="tarifs-wrap">'
     +   '<div class="card">'
-    +     (has('pageMain') ? btn('Retour', callBack, 'btn back') : '')
+    +     (has('pageMain') ? btn('Retour', callBackMain, 'btn back') : '')
     +     '<h2>Tarifs & paramètres</h2>'
     +     '<p class="muted">Accès centralisé aux réglages de pose, de TVA et aux informations entreprise.</p>'
     +   '</div>'
@@ -4456,14 +4456,13 @@ Object.assign(window,{
     + '</div>';
 
     if (has('view')) view(html);
-    else (document.getElementById('app')||document.body).innerHTML = html;
+    else (document.getElementById('app')||document.body).innerHTML = html; // fallback
   }
 
-  // Expose uniquement la page
+  /* Expose uniquement la page (aucun auto-run) */
   Object.assign(window, { pageTarifsAccueil });
 })();
 </script>
-
 
 
  
