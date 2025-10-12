@@ -5257,15 +5257,10 @@ Object.assign(window,{
 
 
 <!-- =============================
-     CHAPITRE 16 : DEVIS (PDF) — V16.1 CLEAN
-     Index :
-       §0  • Clés & helpers
-       §1  • Données client & CGV (LS)
-       §2  • Collecte des lignes
-       §3  • Constructeur HTML imprimable
-       §4  • UI : pageDevisPDF16() + buildDevisPDF16()
-       §5  • Injection unique des boutons (Estimatif & Totaux)
-       §6  • Expose (window)
+     CHAPITRE 16 : DEVIS (PDF) — V16.2 SOLIDE
+     - Aucune balise <script> imbriquée
+     - Boutons PDF injectés sur Estimatif & Totaux (sans doublons)
+     - Constructeur HTML robuste
      ============================= -->
 <style>
   .dv-wrap .card{ margin-bottom:16px; }
@@ -5276,10 +5271,10 @@ Object.assign(window,{
   .dv-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
 </style>
 
-<!-- =============================
-     §0→§4 : cœur PDF
-     ============================= -->
 <script>
+/* ======================
+   §0 • Clés & helpers
+   ====================== */
 const KEY_DEVIS_CGV  = 'devis_cgv_v1';
 const KEY_DEVIS_LASTCLIENT = 'devis_last_client_v1';
 const KEY_PREFS_V1   = 'appPrefs_v1';
@@ -5293,7 +5288,9 @@ function _euro16(n){ const v=_num16(n); try{ return v.toLocaleString('fr-FR',{mi
 function _todayFR16(){ try{ return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'}); }catch(e){ return new Date().toLocaleDateString(); } }
 function _pad4_16(n){ return String(n).padStart(4,'0'); }
 
-/* §1 • Données client & CGV (LS) */
+/* ==================================
+   §1 • Données client & CGV (LS)
+   ================================== */
 function _getClient16(){ return _rd16(KEY_DEVIS_LASTCLIENT, {nom:'',adresse:'',cp:'',ville:'',tel:'',email:''}); }
 function _setClient16(c){ _wr16(KEY_DEVIS_LASTCLIENT, c||{}); }
 function _getCGV16(){
@@ -5307,7 +5304,9 @@ function _getCGV16(){
 }
 function _setCGV16(txt){ _wr16(KEY_DEVIS_CGV, String(txt||'')); }
 
-/* §2 • Collecte des lignes */
+/* ==================================
+   §2 • Collecte des lignes (fallback)
+   ================================== */
 function _pieceLabel16(key){
   return (typeof pieceDisplayLabel === 'function') ? pieceDisplayLabel(key) : key;
 }
@@ -5333,7 +5332,9 @@ function _collectLines16(){
   return { lines: out, total };
 }
 
-/* §3 • Constructeur HTML imprimable */
+/* ==================================
+   §3 • Constructeur HTML imprimable
+   ================================== */
 function _buildPrintableHTML16(){
   const prefs   = _rd16(KEY_PREFS_V1, {});
   const company = _rd16(KEY_COMPANY_V1, {});
@@ -5347,6 +5348,7 @@ function _buildPrintableHTML16(){
 
   const pack = _collectLines16();
 
+  // Groupement par pièce
   const byPiece = {};
   pack.lines.forEach(L=>{ (byPiece[L.piece]||(byPiece[L.piece]=[])).push(L); });
 
@@ -5375,6 +5377,7 @@ function _buildPrintableHTML16(){
       + '</table>';
   });
 
+  // Totaux & TVA
   const tvaOn    = !!prefs.tva_applicable;
   const taux     = _num16(prefs.taux_tva || 20);
   const totalHT  = _num16(pack.total);
@@ -5427,7 +5430,7 @@ function _buildPrintableHTML16(){
 +    '<div class="box" style="min-width:280px;"><h2>Devis</h2><div>Référence : <strong>'+_esc16(ref)+'</strong></div><div>Date : '+_esc16(_todayFR16())+'</div><div style="margin-top:6px;">Destinataire :</div><div>'+_clientBlock(cli)+'</div></div>'
 +  '</div>'
 +  '<div style="margin-top:14px;"><h1 style="font-size:20px;margin:0 0 6px 0">'+_esc16(devName)+'</h1><div class="muted">Devis en prix global par ligne (fournitures et pose incluses).</div></div>'
-+  '<div style="margin-top:10px;">'+(Object.keys(byPiece).length? sectionsHTML : '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
++  '<div style="margin-top:10px;">'+(sectionsHTML || '<div class="muted">Aucune ligne à afficher.</div>')+'</div>'
 +  '<table class="totals" style="margin-top:6px;">'
 +    '<tr><td style="text-align:right"><strong>Total HT</strong></td><td style="width:150px;text-align:right"><strong>'+_euro16(totalHT)+'</strong></td></tr>'
 +    '<tr><td style="text-align:right" class="muted">Taux de TVA</td><td style="text-align:right" class="muted">'+_esc16(String(taux))+' %</td></tr>'
@@ -5441,7 +5444,9 @@ function _buildPrintableHTML16(){
   return html;
 }
 
-/* §4 • UI + Génération */
+/* ==================================
+   §4 • UI + Génération
+   ================================== */
 function pageDevisPDF16(){
   const cli = _getClient16();
   const cgv = _getCGV16();
@@ -5513,17 +5518,14 @@ function buildDevisPDF16(){
     alert('Erreur PDF : '+(err && err.message ? err.message : String(err)));
   }
 }
-</script>
 
-<!-- =============================
-     §5 : injection des boutons (séparé)
-     ============================= -->
-<script>
-(function injectButtons16(){
+/* ==================================
+   §5 • Injection des boutons (sans doublons)
+   ================================== */
+(function injectButtons16Once(){
   function addBlock(){
-    const app = document.getElementById('app'); if(!app) return;
-    if (app.innerHTML.indexOf('buildDevisPDF16()') !== -1) return;
-
+    const app=document.getElementById('app'); if(!app) return;
+    if(app.innerHTML.indexOf('buildDevisPDF16()')!==-1) return;
     app.innerHTML +=
       '<div class="card" style="margin-top:12px;">'
       +  '<h3>Devis (PDF)</h3>'
@@ -5535,37 +5537,21 @@ function buildDevisPDF16(){
   }
   function wrap(name){
     const orig = window[name];
-    if (typeof orig !== 'function') return;
-    if (orig.__pdfInjectWrapped) return;
+    if(typeof orig!=='function' || orig.__pdfInjectWrapped) return;
     window[name] = function(){
       orig.apply(this, arguments);
       addBlock();
     };
     window[name].__pdfInjectWrapped = true;
   }
-  function hookLate(name){
-    if (typeof window[name] === 'function'){ wrap(name); return; }
-    let _val;
-    try{
-      Object.defineProperty(window, name, {
-        configurable:true,
-        get(){ return _val; },
-        set(v){ _val = v; wrap(name); }
-      });
-    }catch(e){
-      const iv = setInterval(()=>{ if(typeof window[name]==='function'){ wrap(name); clearInterval(iv);} }, 50);
-    }
-  }
-  hookLate('pageEstimatif');
-  hookLate('pageTotaux');
+  wrap('pageEstimatif');
+  wrap('pageTotaux');
   setTimeout(addBlock, 0);
 })();
-</script>
 
-<!-- =============================
-     §6 : expose (séparé)
-     ============================= -->
-<script>
+/* ==================================
+   §6 • Expose (window)
+   ================================== */
 Object.assign(window, {
   pageDevisPDF16,
   buildDevisPDF16,
