@@ -5504,20 +5504,20 @@ function buildDevisPDF16(){
   }
 }
 
+<script>
 /* ======================================================
-   §5 • Injection unique des boutons (Estimatif & Totaux)
+   §5 • Injection robuste des boutons (Estimatif & Totaux)
+   - Wrap si la fonction existe déjà
+   - Sinon, hook via defineProperty dès qu’elle est définie
+   - Aucune regex fragile, pas de doublon
    ====================================================== */
-(function injectButtons16(){
+(function injectButtons16Robuste(){
   function addBlock(){
-    const app=document.getElementById('app'); if(!app) return;
+    const app = document.getElementById('app');
+    if (!app) return;
+    // déjà présent ? on ne duplique pas
+    if (app.innerHTML.indexOf('buildDevisPDF16()') !== -1) return;
 
-    // Nettoie d’éventuels anciens blocs 16
-    const marker = 'buildDevisPDF16()';
-    if(app.innerHTML.indexOf(marker)!==-1){
-      // déjà présent → ne rien dupliquer
-      return;
-    }
-    // Ajoute une carte claire, sans regex fragiles
     app.innerHTML +=
       '<div class="card" style="margin-top:12px;">'
       +  '<h3>Devis (PDF)</h3>'
@@ -5528,30 +5528,50 @@ function buildDevisPDF16(){
       +'</div>';
   }
 
-  function wrapOnce(name){
-    const orig = window[name];
-    if(typeof orig!=='function') return;
-    if(orig.__pdfInjectWrapped) return;
-    window[name] = function(){
-      orig.apply(this, arguments);
+  function wrap(name, fn){
+    if (typeof fn !== 'function') return fn;
+    if (fn.__pdfInjectWrapped)   return fn;
+    function wrapped(){
+      fn.apply(this, arguments);
+      // injection après rendu de la page
       addBlock();
-    };
-    window[name].__pdfInjectWrapped = true;
+    }
+    wrapped.__pdfInjectWrapped = true;
+    return wrapped;
   }
 
-  wrapOnce('pageEstimatif');
-  wrapOnce('pageTotaux');
+  function hookLate(name){
+    // Si déjà définie → wrap tout de suite
+    if (typeof window[name] === 'function'){
+      window[name] = wrap(name, window[name]);
+      return;
+    }
+    // Sinon, on place un setter pour capter la vraie définition plus tard
+    let _val;
+    try{
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get(){ return _val; },
+        set(v){
+          _val = wrap(name, v);
+        }
+      });
+    }catch(e){
+      // fallback si defineProperty échoue : poll de wrap
+      const iv = setInterval(()=>{
+        if (typeof window[name] === 'function' && !window[name].__pdfInjectWrapped){
+          window[name] = wrap(name, window[name]);
+          clearInterval(iv);
+        }
+      }, 50);
+    }
+  }
 
-  // Si l’écran est déjà affiché, on tente une injection immédiate
+  // Cible les deux écrans
+  hookLate('pageEstimatif');
+  hookLate('pageTotaux');
+
+  // Si on est DÉJÀ sur l’un de ces écrans au moment du chargement
   setTimeout(addBlock, 0);
 })();
-
-/* ======================
-   §6 • Expose
-   ====================== */
-Object.assign(window, {
-  pageDevisPDF16,
-  buildDevisPDF16,
-  _buildPrintableHTML16  // utile si d’autres chapitres veulent réutiliser
-});
 </script>
