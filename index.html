@@ -32,23 +32,6 @@
     .badge{ display:inline-block; padding:2px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:#444; background:#fafafa; }
   </style>
 
-  <style>
-/* Toast “Sauvegardé” en bas à gauche */
-.save-toast{
-  position:fixed; left:12px; bottom:12px; z-index:9999;
-  background:#e8f5e9; border:1px solid #c8e6c9; color:#256029;
-  padding:8px 12px; border-radius:10px; font-size:14px;
-  box-shadow:0 2px 8px rgba(0,0,0,.08);
-  transition:opacity .25s ease, transform .25s ease;
-}
-.save-toast.hide{ opacity:0; transform:translateY(6px); }
-
-/* Cadre “OK” pour confirmation visuelle locale */
-.ok-banner{
-  border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
-  padding:8px 10px; border-radius:8px; font-size:14px; margin:8px 0;
-}
-</style>
   <!-- JSZip (exports ZIP) -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
@@ -80,119 +63,20 @@
     }
   })();
   </script>
+
+
+
+
+  
   <!-- =============================
-     CHAPITRE 1 : BOOTSTRAP & INFRA — V3.1
-     (sécurise le démarrage + helpers UI génériques)
+     CHAPITRE 2 : ÉTAT & HELPERS
+     Index :
+       §2.1 • Gestion erreurs globales
+       §2.2 • État global & contexte courant
+       §2.3 • Identifiants & helpers DOM/UI
+       §2.4 • Libellés de pièces (build/format)
+       §2.5 • Persistance locale (save/load)
      ============================= -->
-<script>
-(function Chapter1Bootstrap(){
-  // =============================
-  // 1) UI d'erreur globale (unique)
-  // =============================
-  if (!window.__md_err_ui_installed__) {
-    window.__md_err_ui_installed__ = true;
-    window.addEventListener('error', function (e) {
-      try{
-        var el = document.getElementById('app');
-        if (!el) return;
-        var msg = (e && e.message) ? e.message : 'Erreur inconnue';
-        var file = (e && e.filename) ? e.filename : '';
-        var l = (e && e.lineno) || 0, c = (e && e.colno) || 0;
-        el.innerHTML =
-          '<div class="card"><h2>Erreur JS</h2><pre>'
-          + msg + '\n' + file + ':' + l + ':' + c
-          + '</pre></div>';
-      }catch(_){}
-    });
-  }
-
-  // =============================
-  // 2) Helpers UI (non intrusifs)
-  // =============================
-
-  // a) Toast "Sauvegardé" — utilise tes styles .save-toast
-  function ensureToast(){
-    var id='save-toast';
-    var el=document.getElementById(id);
-    if(!el){
-      el=document.createElement('div');
-      el.id=id; el.className='save-toast hide';
-      el.textContent='Sauvegardé';
-      document.body.appendChild(el);
-    }
-    return el;
-  }
-  // Exposé global (si absent)
-  if (typeof window.showSaveToast !== 'function') {
-    window.showSaveToast = function(msg){
-      var el = ensureToast();
-      if (msg) el.textContent = msg;
-      el.classList.remove('hide');
-      // auto-hide après 1.8 s
-      clearTimeout(el.__tHide);
-      el.__tHide = setTimeout(function(){ el.classList.add('hide'); }, 1800);
-    };
-  }
-
-  // b) Bandeau OK (retourne du HTML — à insérer dans tes vues)
-  if (typeof window.okBannerHtml !== 'function') {
-    window.okBannerHtml = function(text){
-      return '<div class="ok-banner">'+ (text||'Enregistré ✅') +'</div>';
-    };
-  }
-
-  // =============================
-  // 3) Bootstrap robuste pageMain()
-  // =============================
-  // Placeholder inoffensif pour éviter "ReferenceError" si d'autres scripts
-  // tentent d'appeler pageMain avant que le Chapitre 4 ne la définisse.
-  if (typeof window.pageMain !== 'function') {
-    window.pageMain = function(){ /* remplacée par le Chapitre 4 quand chargé */ };
-  }
-
-  function tryBoot(){
-    try{
-      var fn = window.pageMain;
-      // On attend que la vraie implémentation ait remplacé le placeholder
-      if (typeof fn === 'function' && fn.toString().indexOf('remplacée par le Chapitre 4') === -1) {
-        // Optionnel : si un devis vide, on restaure le dernier (si la fonction existe)
-        if (typeof window.recoverSavedIfEmpty === 'function') {
-          try { window.recoverSavedIfEmpty(); } catch(_){}
-        }
-        fn(); // lance l’accueil
-        return;
-      }
-    }catch(_){}
-    setTimeout(tryBoot, 30);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', tryBoot);
-  } else {
-    tryBoot();
-  }
-})();
-</script>
-
-
-
-
-
-
-
-  
-
-  
-
-  <!-- =============================
-   CHAPITRE 2 : ÉTAT & HELPERS — v2 (avec autosauvegarde)
-   Index :
-     §2.1 • Gestion erreurs globales
-     §2.2 • État global & contexte courant
-     §2.3 • Identifiants & helpers DOM/UI
-     §2.4 • Libellés de pièces (build/format)
-     §2.5 • Persistance locale (save/load + autosave)
-   ============================= -->
 <script>
 // §2.1 • Gestion erreurs globales
 window.addEventListener('error', function (e) {
@@ -207,7 +91,7 @@ window.addEventListener('error', function (e) {
 });
 
 // §2.2 • État global & contexte courant
-var devis = {}; // contiendra aussi __id, __name, __ts, __tabCounter
+var devis = {}; // contiendra aussi __id, __name, __tabCounter
 var ctx   = { piece:null, category:null, intervention:null, pose:null, designation:null };
 
 // §2.3 • Identifiants & helpers DOM/UI
@@ -223,7 +107,7 @@ function view(html, noFooter){
   if(!noFooter){
     html += '<div class="row" style="margin-top:16px; gap:12px;">'
           + b('⬅️ Accueil','confirmBackHome()','btn back')
-          + b('💾 Sauvegarder devis','saveCurrentDevis ? saveCurrentDevis() : saveLocal()','btn primary')
+          + b('💾 Sauvegarder devis','saveCurrentDevis()','btn primary')
           + '</div>';
   }
   $app().innerHTML = html;
@@ -267,85 +151,23 @@ function formatPieceLabel(key){
   return buildPieceLabel(base, s.qualificatif, s.etage);
 }
 
-// §2.5 • Persistance locale (save/load) — autosave + snapshot
-var _saveDebounce = null;
-var _lastToastAt = 0;
-
-function _ensureSaveStyles(){
-  if (document.getElementById('save-toast-style')) return;
-  var css = '.save-toast{position:fixed;left:12px;bottom:12px;z-index:9999;background:#e8f5e9;border:1px solid #c8e6c9;color:#256029;padding:8px 12px;border-radius:10px;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:opacity .25s ease,transform .25s ease;}'
-          + '.save-toast.hide{opacity:0;transform:translateY(6px);}';
-  var st = document.createElement('style'); st.id='save-toast-style'; st.textContent = css;
-  document.head.appendChild(st);
+// §2.5 • Persistance locale (save/load)
+function ensureSection(key){
+  if(!devis[key]) devis[key] = { items:[], note:'', qualificatif:'', etage:'' };
 }
-
-function showSavedOK(msg){
-  try{
-    _ensureSaveStyles();
-    var t = document.createElement('div');
-    t.className = 'save-toast hide';
-    t.textContent = msg || 'Brouillon sauvegardé';
-    document.body.appendChild(t);
-    void t.offsetHeight; // reflow
-    t.classList.remove('hide');
-    setTimeout(function(){ t.classList.add('hide'); }, 1200);
-    setTimeout(function(){ t.remove(); }, 1600);
-  }catch(e){}
+function saveLocal(){
+  try { localStorage.setItem('devis', JSON.stringify(devis)); } catch(e){}
 }
-
-/* Écriture immédiate (utilisée par le debounce et le snapshot périodique) */
-function _saveLocalNow(silent){
-  try{
-    localStorage.setItem('devis', JSON.stringify(devis));
-    localStorage.setItem('devis_last_ts', Date.now());
-    if(!silent){
-      var now = Date.now();
-      if (now - _lastToastAt > 2000){ _lastToastAt = now; showSavedOK('Brouillon sauvegardé'); }
-    }
-  }catch(e){}
-}
-
-/* API publique : saveLocal() — debounce 500 ms */
-function saveLocal(opts){
-  clearTimeout(_saveDebounce);
-  _saveDebounce = setTimeout(function(){ _saveLocalNow(!!(opts && opts.silent)); }, 500);
-}
-
-/* Lecture robuste + récupération éventuelle du snapshot autosave */
 function loadLocal(){
-  try{
-    var cur  = JSON.parse(localStorage.getItem('devis') || 'null') || {};
-    var snap = JSON.parse(localStorage.getItem('devis_autosave') || 'null') || null;
-    var tCur  = +(localStorage.getItem('devis_last_ts') || 0);
-    var tSnap = +(localStorage.getItem('devis_autosave_ts') || 0);
-    // si le snapshot est plus récent, on le préfère (ex: crash avant le debounce)
-    devis = (snap && tSnap > tCur) ? snap : cur;
-  }catch(e){ devis = {}; }
+  try { devis = JSON.parse(localStorage.getItem('devis') || '{}') || {}; }
+  catch(e){ devis = {}; }
   ensureId();
 }
-
-/* Snapshot périodique (toutes les 10 s) */
-(function autoSnapshot(){
-  try{
-    setInterval(function(){
-      try{
-        localStorage.setItem('devis_autosave', JSON.stringify(devis));
-        localStorage.setItem('devis_autosave_ts', Date.now());
-      }catch(e){}
-    }, 10000);
-  }catch(e){}
-})();
 </script>
 
 
 
 
-
-
-
-
-
-  
   
 <!-- =============================
      CHAPITRE 3 : CONSTANTES + PRIX
@@ -533,482 +355,293 @@ function getPrix(designation, intervention){
 
 
 
-
-
-
   
 
   
 
   
-<!-- ================================
-     CHAPITRE 4 : MENU & SAUVEGARDES — V11.1
-     ================================ -->
+<!-- =============================
+     CHAPITRE 4 : MENU PRINCIPAL & SAUVEGARDES (robuste)
+     Index :
+       §4.0 • Clés & helpers de stockage
+       §4.1 • Accueil principal (avec bouton Paramétrage)
+       §4.2 • Nouveau devis / Ouverture / Suppression
+       §4.3 • Sauvegarde (nommage, dédoublonnage, MAJ)
+       §4.4 • Export / Import (.json) avec fusion non destructive
+       §4.5 • Routines internes : backup miroir, merge, recovery
+     ============================= -->
 <script>
-// ==============================
-// §4.0 • Stockage & helpers
-// ==============================
-const KEY_SAVED_LIST = 'savedDevis_v1';  // bibliothèque (liste de devis)
-const KEY_CURRENT    = 'devis';          // devis courant (objet global existant)
-
-/* Lecture / écriture JSON LS */
-function _readLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-function _writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
-
-/* Bibliothèque des devis sauvegardés */
-function _getSavedList(){ return _readLS(KEY_SAVED_LIST, []); }
-function _setSavedList(list){ _writeLS(KEY_SAVED_LIST, Array.isArray(list)? list : []); }
-
-/* Génère un id court */
-function _shortId(){ return Math.random().toString(36).slice(2,8)+'-'+Date.now().toString(36).slice(-4); }
-
-/* Nom d’affichage sûr */
-function _friendlyName(dv){
-  const n = (dv && (dv.__name || dv.nom || 'Devis')).toString().trim() || 'Devis';
-  const t = dv && dv.__ts ? new Date(dv.__ts).toLocaleDateString('fr-FR') : '';
-  return t ? n+' — '+t : n;
+// === §4.0 • Clés & helpers de stockage =========================
+const STORE_KEYS = {
+  current: 'devis',
+  saved:   'savedDevisList',
+  backup:  'savedDevisListBackup'
+};
+function readJSON(key, fallback){
+  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
+  catch(e){ return fallback; }
+}
+function writeJSON(key, value){
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){}
 }
 
-/* Clone simple */
-function _clone(x){ return JSON.parse(JSON.stringify(x)); }
-
-/* Total rapide (sans TVA) pour l’aperçu liste */
-function _quickTotal(dv){
-  let sum=0; if(!dv) return 0;
-  for(const k in dv){
-    if(k.indexOf('__')===0) continue;
-    const s=dv[k]; const items=(s&&s.items)||[];
-    for(let i=0;i<items.length;i++){ const it=items[i]; sum += ((+it.prixU||0) * (+it.qty||0)); }
-  }
-  return sum;
+// Petit helper HTML safe (listes)
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-// ==================================================
-// §4.1 • Menu principal
-// ==================================================
+// Bouton Paramétrage (sécurisé si le Chap.8 n'est pas chargé)
+function openTarifs(){
+  if (typeof pageTarifsAccueil === 'function') pageTarifsAccueil();
+  else alert('Le chapitre Paramétrage (8) n’est pas encore chargé.');
+}
+
+// === §4.1 • Accueil principal =================================
 function pageMain(){
+  // view() & b() sont définis dans les chapitres communs (2.x)
   view(
     '<div class="card">'
       + '<h2>Menu principal</h2>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-        + b('➕ Nouveau devis','pageND_Accueil()','btn primary')
-        + b('📁 Mes devis sauvegardés','pageSavedDevis()','btn')
+      + '<div class="row">'
+        + b('➕ Nouveau devis','actionNouveauDevis()','btn primary')
+        + b('📂 Mes devis sauvegardés','pageSavedDevis()','btn')
+        + b('⚙️ Paramétrage des tarifs','openTarifs()','btn')
       + '</div>'
     + '</div>'
-
-    + '<div class="card" style="margin-top:12px;">'
-      + '<div class="section-title">Configuration</div>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-        + b('Paramétrage',
-            '(typeof pageTarifsAccueil==="function")?pageTarifsAccueil():'+
-            '((typeof pageParametrageAccueil==="function")?pageParametrageAccueil():alert("Module Paramétrage non chargé."))',
-            'btn')
-      + '</div>'
-    + '</div>'
-  );
+  , true);
 }
 
-// ==================================================
-// §4.1bis • Nouveau devis (écran client + annuaire)
-// ==================================================
-function pageND_Accueil(){
-  // Crée le conteneur de devis si absent
-  if(!window.devis || typeof devis!=='object') window.devis = {};
-  if(!devis.__id) devis.__id = _shortId();
+// === §4.2 • Nouveau devis / Ouverture / Suppression ===========
+function actionNouveauDevis(){
+  // genId(), saveLocal(), pageHome() → chapitres 2 & 5
+  devis = { __id: genId(), __name: '' };
+  saveLocal();
+  pageHome();
+}
 
-  const c = devis.__client || { nom:'', adresse:'', cp:'', ville:'', email:'', tel:'' };
+function pageSavedDevis(){
+  var saved = getSavedList();
 
-  function f(label,id,val,ph){
-    return '<div class="field"><label>'+label+'</label>'
-         + '<input id="'+id+'" value="'+(val?String(val).replace(/"/g,'&quot;'):'')+'" placeholder="'+(ph||'')+'"/></div>';
+  if(!saved.length){
+    return view(
+      '<div class="card">'
+        + b('⬅️ Retour','pageMain()','btn back')
+        + '<h2>Mes devis sauvegardés</h2>'
+        + '<p class="muted">Aucun devis sauvegardé.</p>'
+        + '<div class="row" style="margin-top:10px;">'
+          + b('⬆️ Importer…','importSavedDevisUI()','btn')
+        + '</div>'
+      + '</div>'
+    , true);
   }
 
-  view(
-    '<div class="card">'
-      + b('Retour','pageMain()','btn back')
-      + '<h2>Nouveau devis — Client</h2>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
-        + b('📇 Ouvrir l’annuaire client',
-            '(typeof pageAnnuaireClients==="function")?pageAnnuaireClients():alert("L’annuaire client n’est pas chargé dans cette page.")',
-            'btn')
-      + '</div>'
-      + '<div class="param-grid">'
-        + f('Nom / Société','ndc_nom', c.nom, 'Ex: M. Martin / SARL …')
-        + f('Adresse','ndc_adr', c.adresse, 'N°, voie…')
-        + f('Code postal','ndc_cp', c.cp, '75000')
-        + f('Ville','ndc_ville', c.ville, 'Paris')
-        + f('Email','ndc_mail', c.email, 'contact@exemple.fr')
-        + f('Téléphone','ndc_tel', c.tel, '+33 6 …')
-      + '</div>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px;">'
-        + b('Enregistrer & continuer','nd_saveClientAndGo()','btn primary')
-      + '</div>'
-    + '</div>'
-  );
-}
-
-function nd_saveClientAndGo(){
-  // Récupère les valeurs
-  function v(id){ const el=document.getElementById(id); return (el?el.value:'').trim(); }
-  const client = {
-    nom: v('ndc_nom'),
-    adresse: v('ndc_adr'),
-    cp: v('ndc_cp'),
-    ville: v('ndc_ville'),
-    email: v('ndc_mail'),
-    tel: v('ndc_tel')
-  };
-  // Enregistre dans le devis courant
-  if(!window.devis || typeof devis!=='object') window.devis = {};
-  if(!devis.__id) devis.__id = _shortId();
-  devis.__client = client;
-  devis.__name = client.nom ? ('Devis — '+client.nom) : (devis.__name || 'Nouveau devis');
-  devis.__ts = Date.now();
-
-  // Persistance locale si dispo (fourni par Chapitre 2)
-  if (typeof saveLocal === 'function') try{ saveLocal(); }catch(e){}
-
-  // Enchaîner sans recharger
-  if (typeof pageHome === 'function') pageHome();
-  else view('<div class="card"><h2>Client enregistré</h2><p>Le module principal n’est pas encore chargé. Ré-ouvrez l’accueil une fois les scripts chargés.</p></div>', true);
-}
-
-// ==================================================
-// §4.2 • Devis sauvegardés (bibliothèque)
-// ==================================================
-function pageSavedDevis(){
-  const list = _getSavedList();
-  const rows = list.length ? list.map(it=>{
-    const total = euro(_quickTotal(it.data));
-    return (
-      '<div class="pill" style="width:100%;align-items:center;">'
-      +  '<div style="flex:1 1 auto;"><strong>'+_friendlyName(it.data)+'</strong>'
-      +  '<div class="muted" style="font-size:13px;">ID: '+it.id+' • '+total+'</div></div>'
-      +  b('Ouvrir','loadDevis('+JSON.stringify(it.id)+')','btn')
-      +  b('Supprimer','deleteDevis('+JSON.stringify(it.id)+')','btn')
-      +'</div>'
-    );
-  }).join('') : '<p class="muted">Aucun devis sauvegardé.</p>';
+  var list = saved.map(function(d,i){
+    var title = escapeHtml(d.name || ('Devis '+(i+1)));
+    var date  = escapeHtml(d.date || '');
+    return '<div class="pill" style="width:100%; justify-content:space-between;">'
+         +   '<span><strong>'+title+'</strong> <small class="muted">'+date+'</small></span>'
+         +   '<span>'
+         +     b('Ouvrir','loadDevis('+i+')','btn')
+         +     b('Supprimer','deleteDevis('+i+')','btn')
+         +   '</span>'
+         + '</div>';
+  }).join('');
 
   view(
     '<div class="card">'
-      + b('Retour','pageMain()','btn back')
+      + b('⬅️ Retour','pageMain()','btn back')
       + '<h2>Mes devis sauvegardés</h2>'
-      + '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">'
-        + b('💾 Sauvegarder le devis courant','saveCurrentDevis()','btn primary')
-        + b('⬇️ Exporter la bibliothèque (.json)','exportSavedDevis()','btn')
-        + b('⬆️ Importer une bibliothèque','importSavedDevisUI()','btn')
+      + '<div class="list">'+list+'</div>'
+      + '<div class="row" style="margin-top:12px;">'
+        + b('💾 Exporter tout (.json)','exportSavedDevis()','btn')
+        + b('⬆️ Importer…','importSavedDevisUI()','btn')
       + '</div>'
     + '</div>'
-    + '<div class="card" style="margin-top:12px;">'
-      + '<h3>Liste</h3>'
-      + rows
-    + '</div>'
-  );
+  , true);
 }
 
-/* Sauvegarde le devis courant dans la bibliothèque */
-function saveCurrentDevis(){
-  if(!window.devis){ alert('Aucun devis courant.'); return; }
-  const list=_getSavedList();
-  const dv=_clone(window.devis);
-  if(!dv.__id) dv.__id=_shortId();
-  dv.__ts = Date.now();
-  // remplace si même __id, sinon ajoute
-  const idx=list.findIndex(x=>x.id===dv.__id);
-  const pack={ id: dv.__id, data: dv };
-  if(idx>=0) list[idx]=pack; else list.unshift(pack);
-  _setSavedList(list);
-  alert('✅ Devis sauvegardé dans la bibliothèque.');
-  pageSavedDevis();
+function loadDevis(idx){
+  var saved = getSavedList();
+  if(!saved[idx]) return pageSavedDevis();
+  devis = saved[idx].data || {};
+  ensureId();
+  saveLocal();
+  pageHome();
 }
 
-/* Charger un devis depuis la bibliothèque */
-function loadDevis(id){
-  const list=_getSavedList();
-  const it=list.find(x=>x.id===id);
-  if(!it){ alert('Introuvable.'); return; }
-  window.devis = _clone(it.data||{});
-  if (typeof saveLocal === 'function') try{ saveLocal(); }catch(e){}
-  if (typeof pageHome === 'function') pageHome();
-  else pageMain();
-}
-
-/* Supprimer un devis de la bibliothèque */
-function deleteDevis(id){
+function deleteDevis(idx){
   if(!confirm('Supprimer ce devis sauvegardé ?')) return;
-  const list=_getSavedList().filter(x=>x.id!==id);
-  _setSavedList(list);
+  var saved = getSavedList();
+  saved.splice(idx,1);
+  setSavedList(saved);
+  makeSavedBackup(saved);
   pageSavedDevis();
 }
 
-/* Export / Import de la bibliothèque */
-function exportSavedDevis(){
-  const raw = JSON.stringify(_getSavedList(), null, 2);
-  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href=url; a.download='mes_devis.json'; a.click(); URL.revokeObjectURL(url);
+// === §4.3 • Sauvegarde complète (+ backup automatique) ========
+function saveCurrentDevis(){
+  ensureId();
+  var saved = getSavedList();
+
+  // Cherche par __id (mise à jour si trouvé)
+  var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
+
+  // Détermine/valide le nom
+  var name = (devis.__name||'').trim();
+  if(i < 0 && !name){
+    name = (prompt('Nom du devis :','')||'').trim();
+    if(!name){ alert('Sauvegarde annulée.'); return; }
+  }
+  devis.__name = name || (saved[i]?.name) || ('Devis '+new Date().toLocaleDateString());
+
+  var record = { name: devis.__name, date: new Date().toLocaleString(), data: devis };
+
+  if(i >= 0){
+    saved[i] = record;
+  } else {
+    // Dédoublonnage par nom (évite 2 entrées strictement homonymes)
+    var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === devis.__name.toLowerCase(); });
+    if(j >= 0){
+      if(!confirm('Un devis « '+devis.__name+' » existe déjà. L\'écraser ?')) return;
+      saved[j] = record;
+    } else {
+      saved.push(record);
+    }
+  }
+
+  setSavedList(saved);
+  makeSavedBackup(saved);
+  alert('✅ Devis sauvegardé.');
 }
+
+// === §4.4 • Export / Import ===================================
+function exportSavedDevis(){
+  var saved = getSavedList();
+  var payload = {
+    _kind: 'MiniDevisSaved',
+    version: 1,
+    origin: location.origin,
+    exported_at: new Date().toISOString(),
+    items: saved
+  };
+  var blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json;charset=utf-8'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url;
+  a.download = 'minidevis_sauvegardes_'+(new Date().toISOString().slice(0,19).replace(/[:T]/g,'-'))+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function importSavedDevisUI(){
-  const input=document.createElement('input');
-  input.type='file'; input.accept='application/json';
-  input.onchange = ()=>{
-    const f=input.files && input.files[0]; if(!f) return;
-    const rd=new FileReader();
-    rd.onload=()=>{
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json';
+  input.onchange = function(){
+    var f = input.files && input.files[0];
+    if(!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){
       try{
-        const arr=JSON.parse(rd.result||'[]'); if(!Array.isArray(arr)) throw new Error('format');
-        // merge par id
-        const cur=_getSavedList();
-        arr.forEach(p=>{
-          const idx=cur.findIndex(x=>x.id===p.id);
-          if(idx>=0) cur[idx]=p; else cur.push(p);
-        });
-        _setSavedList(cur);
-        alert('✅ Bibliothèque importée.');
+        var json = JSON.parse(rd.result||'null');
+        var items = Array.isArray(json?.items) ? json.items : (Array.isArray(json)? json : null);
+        if(!items){ alert('Fichier non reconnu.'); return; }
+        var merged = mergeSavedLists(getSavedList(), items);
+        setSavedList(merged);
+        makeSavedBackup(merged);
+        alert('✅ Import terminé : '+items.length+' enregistrement(s) lu(s).');
         pageSavedDevis();
-      }catch(e){ alert('❌ Import impossible.'); }
+      }catch(e){
+        alert('Erreur d’import : '+e.message);
+      }
     };
-    rd.readAsText(f,'utf-8');
+    rd.readAsText(f, 'utf-8');
   };
   input.click();
 }
 
-/* Restaure automatiquement le dernier devis si rien n’est présent (utilisé par init) */
+// === §4.5 • Routines internes (backup, merge, recovery) =======
+function getSavedList(){ return readJSON(STORE_KEYS.saved, []); }
+function setSavedList(list){ writeJSON(STORE_KEYS.saved, Array.isArray(list)?list:[]); }
+
+// Sauvegarde miroir (pour récupération si effacement accidentel)
+function makeSavedBackup(list){
+  writeJSON(STORE_KEYS.backup, {
+    saved: Array.isArray(list)?list:[],
+    host: location.host,
+    t: Date.now()
+  });
+}
+
+// Appeler recoverSavedIfEmpty() au boot (cf. init() du Chap. 10)
 function recoverSavedIfEmpty(){
-  try{
-    if(window.devis && Object.keys(window.devis).length>0) return; // déjà chargé
-    const list=_getSavedList();
-    if(!list.length) return;
-    window.devis = _clone(list[0].data||{});
-    if (typeof saveLocal === 'function') try{ saveLocal(); }catch(e){}
-  }catch(e){}
-}
-
-// ==================================================
-// §4.3 • Expose (global)
-// ==================================================
-Object.assign(window, {
-  pageMain,
-  pageND_Accueil,
-  nd_saveClientAndGo,
-  pageSavedDevis,
-  saveCurrentDevis,
-  exportSavedDevis,
-  importSavedDevisUI,
-  loadDevis,
-  deleteDevis,
-  recoverSavedIfEmpty
-});
-</script>
-
-<!-- === Adaptateur Annuaire client + fallback intégré ================== -->
-<script>
-/* Stockage clients (clé locale unique) */
-const KEY_CLIENTS_V1 = 'clients_v1';
-function _readClients(){ try{ return JSON.parse(localStorage.getItem(KEY_CLIENTS_V1)||'null') || []; }catch(e){ return []; } }
-function _writeClients(list){ try{ localStorage.setItem(KEY_CLIENTS_V1, JSON.stringify(list||[])); }catch(e){} }
-
-/* 1) Point d’entrée appelé par le bouton du flux « Nouveau devis » */
-function pageAnnuaireClients(){
-  // essaie d’ouvrir un annuaire déjà présent dans l’app
-  const fns = [window.pageClientsHome, window.pageAnnuaireAccueil, window.pageAnnuaire, window.pageClients, window.pageClientsAccueil];
-  const fn = fns.find(f => typeof f === 'function');
-  if (fn){ fn(); return; }
-  // sinon, fallback embarqué
-  pageAnnuaireFallback();
-}
-
-/* 2) Fallback : mini-annuaire intégré */
-function pageAnnuaireFallback(){
-  const list = _readClients();
-  const rows = list.length ? list.map((c,i)=>{
-    const nom = (c.nom||c.societe||'Client sans nom').trim();
-    const adr = [c.adresse, c.cp, c.ville].filter(Boolean).join(' ');
-    const tel = (c.tel||c.telephone||'').trim();
-    return (
-      '<div class="card" style="margin-bottom:8px;">'
-        +'<div class="row" style="justify-content:space-between;align-items:center;">'
-          +'<div>'
-            +'<div><strong>'+_esc(nom)+'</strong></div>'
-            + (adr? '<div class="muted">'+_esc(adr)+'</div>' : '')
-            + (tel? '<div class="muted">'+_esc(tel)+'</div>' : '')
-          +'</div>'
-          +'<div class="row" style="gap:8px;">'
-            + b('Sélectionner', 'fallbackUseClient('+i+')', 'btn primary')
-            + b('Éditer', 'fallbackEditClient('+i+')', 'btn')
-            + b('Supprimer', 'fallbackDelClient('+i+')', 'btn')
-          +'</div>'
-        +'</div>'
-      +'</div>'
-    );
-  }).join('') : '<p class="muted">Aucun client enregistré.</p>';
-
-  view(
-    '<div class="card">'
-      + b('Retour','returnToNewDevis()','btn back')
-      + '<h2>Annuaire client (fallback)</h2>'
-      + '<div class="muted" style="margin-bottom:8px;">Version minimale intégrée — si ton annuaire complet est présent dans une autre page, le bouton l’ouvrira automatiquement.</div>'
-      + b('➕ Nouveau client','fallbackNewClient()','btn')
-    + '</div>'
-    + rows
-  );
-}
-
-/* 3) Actions fallback */
-function fallbackNewClient(){
-  const c = { nom:'', societe:'', adresse:'', cp:'', ville:'', email:'', tel:'' };
-  fallbackEditForm(c, -1);
-}
-function fallbackEditClient(i){
-  const list = _readClients(); const c = list[i]; if(!c){ alert('Client introuvable.'); return; }
-  fallbackEditForm(Object.assign({}, c), i);
-}
-function fallbackDelClient(i){
-  if(!confirm('Supprimer ce client ?')) return;
-  const list = _readClients(); list.splice(i,1); _writeClients(list); pageAnnuaireFallback();
-}
-function fallbackEditForm(c, idx){
-  view(
-    '<div class="card">'
-      + b('Retour','pageAnnuaireFallback()','btn back')
-      + '<h2>'+ (idx<0?'Nouveau client':'Modifier le client') +'</h2>'
-      + '<div class="grid" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));">'
-        + field('Nom / Société','c-nom', c.nom||c.societe||'')
-        + field('Adresse','c-adr', c.adresse||'')
-        + field('Code postal','c-cp', c.cp||'')
-        + field('Ville','c-ville', c.ville||'')
-        + field('Email','c-mail', c.email||'')
-        + field('Téléphone','c-tel', c.tel||c.telephone||'')
-      + '</div>'
-      + '<div class="row" style="margin-top:10px;gap:8px;">'
-        + b('Enregistrer','fallbackSaveClient('+idx+')','btn primary')
-        + b('Annuler','pageAnnuaireFallback()','btn')
-      + '</div>'
-    + '</div>'
-  );
-  function field(lbl,id,val){ return '<div class="field"><label>'+_esc(lbl)+'</label><input id="'+id+'" value="'+_esc(val)+'"/></div>'; }
-}
-function fallbackSaveClient(idx){
-  const c = {
-    nom: (document.getElementById('c-nom').value||'').trim(),
-    societe: (document.getElementById('c-nom').value||'').trim(),
-    adresse: (document.getElementById('c-adr').value||'').trim(),
-    cp: (document.getElementById('c-cp').value||'').trim(),
-    ville: (document.getElementById('c-ville').value||'').trim(),
-    email: (document.getElementById('c-mail').value||'').trim(),
-    tel: (document.getElementById('c-tel').value||'').trim()
-  };
-  const list = _readClients();
-  if(idx<0) list.push(c); else list[idx]=c;
-  _writeClients(list);
-  pageAnnuaireFallback();
-}
-function fallbackUseClient(i){
-  const list = _readClients(); const c = list[i]; if(!c){ alert('Client introuvable.'); return; }
-  // pose le client dans le devis courant
-  if(!devis.__client) devis.__client = {};
-  Object.assign(devis.__client, c);
-  saveLocal();
-  returnToNewDevis(true);
-}
-
-/* 4) Retour au flux « Nouveau devis » (sans perdre le formulaire) */
-function returnToNewDevis(fromSelect){
-  // essaie d’appeler l’écran Nouveau devis (selon le nom que tu as)
-  if (typeof pageND_Accueil === 'function'){ pageND_Accueil(); return; }
-  if (typeof pageNouveauDevisAccueil === 'function'){ pageNouveauDevisAccueil(); return; }
-  if (typeof pageNouveauDevis === 'function'){ pageNouveauDevis(); return; }
-  // à défaut, retourne à l’accueil
-  if(fromSelect){ alert('Client sélectionné. Le formulaire « Nouveau devis » sera pré-rempli.'); }
-  if (typeof pageHome === 'function') pageHome();
-}
-
-/* petit échappement HTML */
-function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-</script>
-
-  
-
-
-
-
-  
-  
-
-
-
-<!-- =============================
-     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V10.2
-     (Prises = désignation = fourniture + migration des anciennes lignes)
-     ============================= -->
-
-<script>
-/* ============================================================
-   SOMMAIRE CHAPITRE 5
-   ------------------------------------------------------------
-   5.1 — Helpers globaux (ensureSection, badges, migration)
-   5.2 — Accueil (pageHome)
-   5.3 — Gestion des pièces : ouvrir, ajouter, supprimer
-   5.4 — Navigation catégories (Prises / Éclairage / Spécifique)
-   5.5 — Saisie one-shot (Prises, Éclairage, multi-pose)
-   5.6 — Spécifique & Notes
-   ============================================================ */
-
-
-/* === 5.1 — Helpers globaux ================================= */
-
-function ensureSection(name){
-  try{
-    if (!window.devis || typeof devis!=='object') window.devis = {};
-    if (!name || typeof name!=='string') name = 'Général';
-    if (!devis[name]) devis[name] = { items: [], total: 0 };
-    else if (!Array.isArray(devis[name].items)) devis[name].items = [];
-    return devis[name];
-  }catch(e){
-    console.error('ensureSection:', e);
-    alert('Impossible de créer la section "'+name+'".');
-    return { items: [], total: 0 };
+  var saved = getSavedList();
+  if(saved && saved.length) return; // rien à faire
+  var backup = readJSON(STORE_KEYS.backup, null);
+  if(backup && Array.isArray(backup.saved) && backup.saved.length){
+    if(confirm('Aucune sauvegarde active trouvée, mais une copie de secours est disponible. Restaurer ?')){
+      setSavedList(backup.saved);
+    }
   }
 }
 
+// Fusion non destructive par __id (priorité au plus récent via date)
+function mergeSavedLists(existing, incoming){
+  var map = new Map();
+  function put(rec){
+    var id = rec?.data?.__id || rec?.__id || genId();
+    var cur = map.get(id);
+    var recDate = new Date(rec?.date||0).getTime() || 0;
+    var curDate = new Date(cur?.date||0).getTime() || 0;
+    if(!cur || recDate >= curDate){
+      map.set(id, {
+        name: rec?.name || rec?.data?.__name || 'Devis',
+        date: rec?.date || new Date().toLocaleString(),
+        data: rec?.data || rec
+      });
+    }
+  }
+  (existing||[]).forEach(put);
+  (incoming||[]).forEach(put);
+  return Array.from(map.values());
+}
+</script>
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<!-- =============================
+     CHAPITRE 5 : ACCUEIL & FLUX PIÈCES — V5 one-page (MAJ : masquage pose/section hors Création)
+     Index :
+       §5.0 • Helpers & router
+       §5.1 • Accueil & liste des pièces
+       §5.2 • Ajout d’une pièce
+       §5.3 • Détail de pièce & catégories
+       §5.4 • Catégories & saisie one-shot (masquage dynamique)
+       §5.5 • Spécifique & notes
+     ============================= -->
+
+<!-- 5.0 — Helpers & router -->
+<script>
 function goVent(){
   if (typeof pageVentAccueil === 'function') pageVentAccueil();
   else alert('La section Ventilation n’est pas encore chargée.');
 }
 function _badge(txt){ return txt ? '<span class="badge">'+txt+'</span>' : ''; }
+</script>
 
-/* ---- Migration : anciennes lignes "Prise" -> fourniture ----
-   - Si category === 'Prises' ET (designation vide ou 'Prise')
-     alors on remplace par it.__fourniture si présent.
-*/
-function _migratePriseDesignations(){
-  if(!window.devis) return;
-  var changed = false;
-  Object.keys(devis).forEach(function(k){
-    if(k.indexOf('__')===0) return;
-    var sec = devis[k]; if(!sec || !Array.isArray(sec.items)) return;
-    sec.items.forEach(function(it){
-      if(String(it.category||'')==='Prises'){
-        var f = it.__fourniture || '';
-        if((!it.designation || it.designation==='Prise') && f){
-          it.designation = f;
-          changed = true;
-        }
-      }
-    });
-  });
-  if(changed && typeof saveLocal==='function') saveLocal();
-}
-
-
-/* === 5.2 — Accueil ========================================= */
-
+<!-- 5.1 — Accueil & liste des pièces -->
+<script>
 function pageHome(){
-  // Migration discrète des anciennes lignes "Prise"
-  _migratePriseDesignations();
-
   var keys = Object.keys(devis).filter(k=>k.indexOf('__')!==0);
   var listHtml = keys.length ? keys.map(function(key){
     var s = devis[key] || {};
@@ -1043,9 +676,6 @@ function pageHome(){
   );
 }
 
-
-/* === 5.3 — Gestion des pièces ============================== */
-
 function goPiece(key){
   ctx = { piece:key, category:null, intervention:null, pose:null, designation:null };
   ensureSection(key);
@@ -1062,7 +692,7 @@ function goPiece(key){
         var unitTxt = it.unit || 'u';
         var left = it.intervention ? (it.intervention+' — ') : '';
         return '<li>'
-          + left + (it.designation||'') + poseTxt
+          + left + it.designation + poseTxt
           +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
           + b('×','delLine('+JSON.stringify(key)+','+i+')','btn')
         +'</li>';
@@ -1087,28 +717,23 @@ function goPiece(key){
 }
 
 function delLine(key, idx){
-  (devis[key].items||[]).splice(idx,1);
-  saveLocal();
-  goPiece(key);
+  (devis[key].items||[]).splice(idx,1); saveLocal(); goPiece(key);
 }
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
-    delete devis[key];
-    saveLocal();
-    pageHome();
+    delete devis[key]; saveLocal(); pageHome();
   }
 }
+</script>
 
-/* === 5.3bis — Ajout d’une nouvelle pièce =================== */
-
+<!-- 5.2 — Ajout d’une pièce -->
+<script>
 function pageAddPiece(){
   var opts = PIECES_PREDEFINIES.map(p=>'<option value="'+p+'">'+p+'</option>').join('')
            + '<option value="__NEW__">➕ Créer une nouvelle pièce…</option>';
-
   var safeEtages = (window.ETAGES && Array.isArray(ETAGES) && ETAGES.length)
       ? ['(aucun)'].concat(ETAGES)
       : ['(aucun)','RDC','R+1','R+2','Sous-sol','Combles','Extérieur'];
-
   var etageOpts = safeEtages.map(e=>'<option value="'+e+'">'+e+'</option>').join('');
 
   view(
@@ -1127,11 +752,10 @@ function pageAddPiece(){
     + '</div>'
   );
 }
-
 function confirmPieceChoice(){
-  var sel = document.getElementById('piece-choice').value;
+  var sel    = document.getElementById('piece-choice').value;
   var qualif = (document.getElementById('piece-qualif').value || '').trim();
-  var etage = document.getElementById('piece-etage').value;
+  var etage  = document.getElementById('piece-etage').value;
   if(!sel) return;
   var base = sel;
   if(sel==='__NEW__'){
@@ -1144,8 +768,7 @@ function confirmPieceChoice(){
 }
 </script>
 
-
-<!-- === 5.4 — Navigation catégories ========================= -->
+<!-- 5.3 — Catégories & sous-menu Éclairage -->
 <script>
 function goCategory(cat){
   if (cat === 'Éclairage') return goEclairageSub();
@@ -1170,244 +793,219 @@ function setEclairageBranch(branch){
 }
 </script>
 
-
-<!-- === 5.5 — Saisie one-shot (Prises, Éclairage, Multi-pose) === -->
+<!-- 5.4 — Saisie “one-shot” (masquage dynamique pose/section hors Création) -->
 <script>
-const _BRANDS = {
-  "Schneider": ["Odace","Alréa","Unica"],
-  "Legrand": ["Céliane","Dooxie","Keva"],
-  "Hager": ["Gallery","Essensya","Cubyko","Ateha","1930"]
-};
-const _FOURNITURES_PRISES = ["Prise 2P+T","Prise 2P","Prise IP44","Sortie de câble"];
-
 function pageOneShotSelection(){
   var cat = ctx.category;
 
-  // Interventions
+  // 1) Interventions par catégorie
   var invs = [];
   if(cat==='Prises' || cat==='Circuit spécialisé'){
-    invs = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+    invs = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
   } else if(cat==='Éclairage/Luminaires'){
-    invs = ['Création','Remplacement luminaire','Recâblage avec remplacement luminaire','Recâblage sans remplacement luminaire'];
+    invs = [
+      'Création',
+      'Remplacement luminaire',
+      'Recâblage avec remplacement luminaire',
+      'Recâblage sans remplacement luminaire'
+    ];
   } else if(cat==='Éclairage/Commandes'){
-    invs = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage'];
+    invs = [
+      'Création',
+      'Remplacement appareillage',
+      'Recâblage avec remplacement appareillage',
+      'Recâblage sans remplacement appareillage'
+    ];
   } else {
     invs = ['Création'];
   }
   var invOpts = invs.map(i=>'<option value="'+i+'">'+i+'</option>').join('');
 
-  // Désignation & options par catégorie
-  var desigHtml='', extraHtml='', defaultDesignation='';
+  // 2) Désignation
+  var desigHtml = '', defaultDesignation = '';
   if(cat==='Prises'){
-    defaultDesignation='Prise';
-    var fOpt=_FOURNITURES_PRISES.map(x=>'<option>'+x+'</option>').join('');
-    var mOpt=Object.keys(_BRANDS).map(x=>'<option>'+x+'</option>').join('');
-    var gOpt=(_BRANDS["Schneider"]||[]).map(x=>'<option>'+x+'</option>').join('');
-    desigHtml=
-      '<div class="presta-grid">'
-      +  '<div class="field"><label>Fourniture</label><select id="fourn-prise">'+fOpt+'</select></div>'
-      +  '<div class="field"><label>Marque</label><select id="brand-prise">'+mOpt+'</select></div>'
-      +  '<div class="field"><label>Gamme</label><select id="range-prise">'+gOpt+'</select></div>'
-      +'</div>';
-  } else if(cat==='Éclairage/Luminaires'){
-    const pr=getPrestations(), L=pr.appareillage.luminaires;
-    const list=(L.baseTypes||[]).concat(L.customTypes||[]);
-    defaultDesignation=list[0]||'Point de centre';
-    desigHtml='<label>Désignation</label><select id="oneshot-desig">'+list.map(d=>'<option>'+d+'</option>').join('')+'</select>';
-    extraHtml=
-      '<div id="spot-extra" class="block" style="display:none;margin-top:10px;">'
-      +  '<div class="field"><label>Nombre de spots</label><input id="nb-spots" type="number" min="1" step="1" value="1" inputmode="numeric"/></div>'
-      +'</div>';
-  } else if(cat==='Éclairage/Commandes'){
-    const pr=getPrestations(), C=pr.appareillage.commandes;
-    const list=(C.baseTypes||[]).concat(C.customTypes||[]);
-    defaultDesignation=list[0]||'Allumage simple';
-    desigHtml='<label>Désignation</label><select id="oneshot-desig">'+list.map(d=>'<option>'+d+'</option>').join('')+'</select>';
+    defaultDesignation = 'Prise';
+    desigHtml = '<div class="pill"><strong>Désignation : Prise</strong></div>';
+  } else if(cat==='Éclairage/Luminaires' || cat==='Éclairage/Commandes'){
+    var list = DESIGNATIONS_PAR_CATEGORIE[cat] || ['Élément'];
+    defaultDesignation = list[0];
+    desigHtml = '<label style="margin-top:10px;">Désignation</label>'
+              + '<select id="oneshot-desig">'
+              + list.map(d=>'<option value="'+d+'">'+d+'</option>').join('')+'</select>';
+  } else if(cat==='Circuit spécialisé'){
+    defaultDesignation = 'Circuit spécialisé';
+    desigHtml = '<label style="margin-top:10px;">Libellé (optionnel)</label>'
+              + '<input id="oneshot-custom-desig" placeholder="ex : Four, PAC… (facultatif)" />';
   } else {
-    defaultDesignation='Élément';
-    desigHtml='<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
+    defaultDesignation = 'Élément';
+    desigHtml = '<label>Désignation</label><input id="oneshot-custom-desig" placeholder="Élément" />';
   }
 
-  // Type de pose (affiché en Création)
-  var poseOpts=POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
-  var poseBlock='<div id="oneshot-pose-wrap" class="block">'
-    + '<div class="field"><label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select></div>'
-    + '<div class="field"><label><input type="checkbox" id="multi-pose"/> Plusieurs types de pose</label></div>'
-    + '<div id="multi-pose-wrap" class="subcard" style="display:none;margin-top:8px;">'
-    +   '<div class="row gap8">'
-    +     '<select id="mp-pose">'+poseOpts+'</select>'
-    +     '<input id="mp-qty" type="number" min="1" step="1" value="1" inputmode="numeric"/>'
-    +     b("Ajouter","mpAdd()","btn")
-    +   '</div>'
-    +   '<div id="mp-list" style="margin-top:8px;"></div>'
-    + '</div>'
-    +'</div>';
+  // 3) Pose (sera masquée si intervention ≠ Création)
+  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  var poseBlock = '<div id="oneshot-pose-wrap">'
+                +   '<label>Type de pose</label><select id="oneshot-pose">'+poseOpts+'</select>'
+                + '</div>';
 
-  var qtyOpts=Array.from({length:20},(_,i)=>'<option '+(i===0?'selected':'')+'>'+(i+1)+'</option>').join('');
-  var backFn=(cat && cat.indexOf('Éclairage/')===0)?'goEclairageSub()':'goPiece('+JSON.stringify(ctx.piece)+')';
+  // 4) Section (CS uniquement, et masquée si intervention ≠ Création)
+  var sectionBlock = '';
+  if(cat==='Circuit spécialisé'){
+    var sectOpts = SECTIONS_CABLE.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
+    sectionBlock = '<div id="oneshot-section-wrap" style="margin-top:10px;">'
+                 +   '<label>Section</label><select id="oneshot-section">'+sectOpts+'</select>'
+                 + '</div>';
+  }
 
+  // 5) Quantité
+  var qtyOpts = Array.from({length:30},(_,i)=>'<option '+(i===0?'selected':'')+'>'+(i+1)+'</option>').join('');
+
+  // UI
+  var backFn = (cat && cat.indexOf('Éclairage/')===0) ? 'goEclairageSub()' : 'goPiece('+JSON.stringify(ctx.piece)+')';
   view(
     '<div class="card">'
       + b('Retour', backFn, 'btn back')
       + '<h2>'+cat+' — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       + '<label>Intervention</label><select id="oneshot-interv">'+invOpts+'</select>'
-      + desigHtml + (extraHtml||'') + poseBlock
-      + '<label style="margin-top:10px;">Quantité</label><select id="oneshot-qty">'+qtyOpts+'</select>'
+      + desigHtml
+      + poseBlock
+      + sectionBlock
+      + '<label style="margin-top:10px;">Quantité</label>'
+      + '<select id="oneshot-qty">'+qtyOpts+'</select>'
       + '<div id="oneshot-preview" class="muted" style="margin-top:10px;"></div>'
-      + '<div class="row" style="margin-top:14px;">'
+      + '<div class="row" style="margin-top:14px; gap:8px;">'
         + b('Ajouter la ligne','saveOneShotItem(false)','btn primary')
         + b('Ajouter et rester','saveOneShotItem(true)','btn')
       + '</div>'
     + '</div>'
   );
 
-  // --------- logique dynamique ----------
-  function refreshRanges(){
-    var bsel=document.getElementById('brand-prise');
-    var rsel=document.getElementById('range-prise');
-    if(!(bsel && rsel)) return;
-    var brand=bsel.value;
-    var list=_BRANDS[brand] || [];
-    rsel.innerHTML=list.map(x=>'<option>'+x+'</option>').join('');
-  }
+  // ----- Comportement : masquage dynamique selon intervention
+  function isCreation(interv){ return String(interv||'')==='Création'; }
 
-  var mp=[]; // [{pose,qty}]
-  window.mpAdd=function(){
-    var p=document.getElementById('mp-pose').value;
-    var q=Math.max(1,parseInt(document.getElementById('mp-qty').value,10)||1);
-    mp.push({pose:p,qty:q}); renderMP(); refreshPreview();
-  };
-  window.mpDel=function(i){ mp.splice(i,1); renderMP(); refreshPreview(); };
+  function applyInterventionVisibility(){
+    var interv = document.getElementById('oneshot-interv').value;
+    var poseWrap = document.getElementById('oneshot-pose-wrap');
+    var sectionWrap = document.getElementById('oneshot-section-wrap');
 
-  function renderMP(){
-    var el=document.getElementById('mp-list');
-    if(!el) return;
-    if(!mp.length){ el.innerHTML='<div class="muted">Aucune pose multiple.</div>'; return; }
-    el.innerHTML='<table class="table-mini"><tbody>'
-      + mp.map((x,i)=>'<tr><td>'+x.pose+'</td><td>'+x.qty+'</td><td>'+b("×",'mpDel('+i+')','btn')+'</td></tr>').join('')
-      + '</tbody></table>';
-  }
-
-  function isCreation(){ return String(document.getElementById('oneshot-interv').value||'')==='Création'; }
-  function togglePoseVisibility(){
-    var wrap=document.getElementById('oneshot-pose-wrap');
-    if(wrap) wrap.style.display = isCreation()? '' : 'none';
-  }
-
-  // Désignation courante (⚠️ Prises = fourniture)
-  function currentDesignation(){
-    if(cat==='Prises'){
-      var f=(document.getElementById('fourn-prise')||{}).value || 'Prise';
-      return f;
+    // Pose : visible uniquement en Création (toutes catégories)
+    if(poseWrap){
+      poseWrap.style.display = isCreation(interv) ? '' : 'none';
     }
-    var s=document.getElementById('oneshot-desig');
-    var c=document.getElementById('oneshot-custom-desig');
-    return (s&&s.value)||(c&&c.value)||'Élément';
+    // Section : visible uniquement en Création ET catégorie = Circuit spécialisé
+    if(sectionWrap){
+      sectionWrap.style.display = (isCreation(interv) && cat==='Circuit spécialisé') ? '' : 'none';
+    }
+    refreshPreview(); // tenir compte du masquage dans le calcul
   }
 
+  // ----- Aperçu PU/Total
   function refreshPreview(){
-    var interv=document.getElementById('oneshot-interv').value;
-    var desig=currentDesignation();
-    var pose=isCreation()? (document.getElementById('oneshot-pose').value||'') : '';
-    var pu=(typeof computePU==='function') ? computePU(cat, desig, interv, pose) : 0;
-    var q=parseInt(document.getElementById('oneshot-qty').value,10)||1;
+    var interv = document.getElementById('oneshot-interv').value;
+
+    // Désignation choisie
+    var desig  = defaultDesignation;
+    var selDes = document.getElementById('oneshot-desig');
+    var custom = document.getElementById('oneshot-custom-desig');
+    if(selDes) desig = selDes.value;
+    if(custom && custom.value.trim()) desig = custom.value.trim();
+
+    // Pose / Section : seulement si visibles (Création)
+    var poseEl = document.getElementById('oneshot-pose-wrap');
+    var sectionEl = document.getElementById('oneshot-section-wrap');
+
+    var pose   = (poseEl && poseEl.style.display!=='none') ? (document.getElementById('oneshot-pose').value||'') : '';
+    var section= (sectionEl && sectionEl.style.display!=='none') ? ((document.getElementById('oneshot-section')||{}).value||'') : '';
+
+    var pu = (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section) : 0;
+    var q  = parseInt(document.getElementById('oneshot-qty').value,10)||1;
     document.getElementById('oneshot-preview').innerHTML = 'PU : '+euro(pu)+' — Total : '+euro(pu*q);
   }
 
-  // Écouteurs
-  ['oneshot-interv','oneshot-desig','oneshot-qty','oneshot-pose','nb-spots'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.addEventListener('input', function(){
-      if(id==='oneshot-interv'){ togglePoseVisibility(); }
-      refreshPreview();
-    });
-  });
-  var fsel=document.getElementById('fourn-prise');
-  if(fsel) fsel.addEventListener('change', refreshPreview);
-  var bsel=document.getElementById('brand-prise');
-  if(bsel) bsel.addEventListener('change', refreshRanges);
+  // Events
+  ['oneshot-interv','oneshot-pose','oneshot-section','oneshot-desig','oneshot-custom-desig','oneshot-qty']
+    .forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('input', function(){ 
+      if(id==='oneshot-interv') applyInterventionVisibility(); else refreshPreview();
+    }); });
 
-  // init
-  togglePoseVisibility(); refreshRanges(); renderMP(); refreshPreview();
+  // Init
+  applyInterventionVisibility();
 }
 
-
-/* === Sauvegarde ligne one-shot ============================= */
-
 function saveOneShotItem(stayHere){
-  var cat=ctx.category;
-  var interv=document.getElementById('oneshot-interv').value;
-  var isCrea=(interv==='Création');
-  var pose=isCrea ? (document.getElementById('oneshot-pose').value||'') : '';
-  var qty=Math.max(1,parseInt(document.getElementById('oneshot-qty').value,10)||1);
+  var cat  = ctx.category;
+  var interv = document.getElementById('oneshot-interv').value;
 
-  // Désignation : Prises -> fourniture ; sinon select/custom
-  var desig=(function(){
-    if(cat==='Prises'){
-      return (document.getElementById('fourn-prise')||{}).value || 'Prise';
-    }
-    var s=document.getElementById('oneshot-desig');
-    var c=document.getElementById('oneshot-custom-desig');
-    return (s&&s.value)||(c&&c.value)||'Élément';
-  })();
+  // Si non Création → ne pas prendre pose/section
+  var poseWrap = document.getElementById('oneshot-pose-wrap');
+  var sectionWrap = document.getElementById('oneshot-section-wrap');
 
-  // PU à partir du catalogue
-  var pu=(typeof computePU==='function')?computePU(cat,desig,interv,pose):0;
+  var pose   = (poseWrap && poseWrap.style.display!=='none') ? (document.getElementById('oneshot-pose').value||'') : '';
+  var section= (sectionWrap && sectionWrap.style.display!=='none') ? ((document.getElementById('oneshot-section')||{}).value||'') : '';
 
-  // Métadonnées utiles (non affichées)
-  var meta={};
-  if(cat==='Prises'){
-    meta.__fourniture = (document.getElementById('fourn-prise')||{}).value || '';
-    meta.__marque     = (document.getElementById('brand-prise')||{}).value || '';
-    meta.__gamme      = (document.getElementById('range-prise')||{}).value || '';
+  var qty    = parseInt(document.getElementById('oneshot-qty').value,10)||1;
+
+  var desig = 'Élément';
+  if(cat==='Prises'){ desig='Prise'; }
+  else {
+    var selDes = document.getElementById('oneshot-desig');
+    var custom = document.getElementById('oneshot-custom-desig');
+    if(selDes) desig = selDes.value;
+    if(custom && custom.value.trim()) desig = custom.value.trim();
   }
 
-  ensureSection(ctx.piece);
-  devis[ctx.piece].items.push(Object.assign({
-    category:cat,
-    intervention:interv,
-    pose:pose,
-    designation:desig,
-    qty:qty,
-    prixU:pu,
-    __tabKey:ctx.piece
-  }, meta));
+  var pu = (typeof computePU==='function') ? computePU(cat, desig, interv, pose, section) : 0;
 
+  ensureSection(ctx.piece);
+  devis[ctx.piece].items.push({
+    category: cat,
+    intervention: interv,
+    pose: pose, // vide si non Création (d’où affichage cohérent en liste)
+    designation: (cat==='Circuit spécialisé' && desig==='Circuit spécialisé')
+                  ? (desig + (section?(' — '+section):'')) : desig + (section?(' — '+section):''),
+    qty: qty,
+    prixU: pu,
+    __tabKey: ctx.piece
+  });
   saveLocal();
   if(stayHere){ pageOneShotSelection(); } else { goPiece(ctx.piece); }
 }
 </script>
 
-
-<!-- === 5.6 — Spécifique & Notes ============================ -->
+<!-- 5.5 — Spécifique & notes -->
 <script>
 function pageSpecifiqueForm(){
-  var poseOpts=POSES.map(p=>'<option>'+p+'</option>').join('');
-  var invOpts=['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']
-    .map(i=>'<option value="'+i+'">'+i+'</option>').join('');
+  var poseOpts  = POSES.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  var invOpts   = ['Création','Remplacement appareillage','Recâblage avec remplacement appareillage','Recâblage sans remplacement appareillage']
+                    .map(i=>'<option value="'+i+'">'+i+'</option>').join('');
   view(
     '<div class="card">'
       + b('Retour','goPiece('+JSON.stringify(ctx.piece)+')','btn back')
       + '<h2>Spécifique — '+pieceDisplayLabel(ctx.piece)+'</h2>'
       + '<label>Intervention</label><select id="sp-interv">'+invOpts+'</select>'
-      + '<label style="margin-top:10px;">Nom</label><input id="sp-label" placeholder="ex : Pompe piscine…"/>'
+      + '<label style="margin-top:10px;">Nom</label>'
+      + '<input id="sp-label" placeholder="ex : Bandeau LED, Pompe piscine…" />'
       + '<label style="margin-top:10px;">Type de pose</label><select id="sp-pose">'+poseOpts+'</select>'
-      + '<label style="margin-top:10px;">Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal" placeholder="0"/>'
-      + '<label style="margin-top:10px;">Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1"/>'
-      + '<div class="row" style="margin-top:14px;">'
-        + b('Ajouter','saveSpecifique(false)','btn primary')
+      + '<label style="margin-top:10px;">Prix unitaire (€)</label><input id="sp-price" type="number" inputmode="decimal" placeholder="0" />'
+      + '<label style="margin-top:10px;">Quantité</label><input id="sp-qty" type="number" inputmode="numeric" min="1" value="1" />'
+      + '<div class="row" style="margin-top:14px; gap:8px;">'
+        + b('Ajouter la ligne','saveSpecifique(false)','btn primary')
         + b('Ajouter et rester','saveSpecifique(true)','btn')
       + '</div>'
     + '</div>'
   );
 }
-
 function saveSpecifique(stayHere){
-  var label=(document.getElementById('sp-label').value||'').trim();
+  var label = (document.getElementById('sp-label').value||'').trim();
   if(!label){ alert('Nom requis.'); return; }
-  var pose=document.getElementById('sp-pose').value||'';
-  var interv=document.getElementById('sp-interv').value||'Création';
-  var prix=parseFloat(document.getElementById('sp-price').value)||0;
-  var qty=Math.max(1,parseInt(document.getElementById('sp-qty').value,10)||1);
+  var pose  = document.getElementById('sp-pose').value || '';
+  var interv= document.getElementById('sp-interv').value || 'Création';
+  var prix  = parseFloat(document.getElementById('sp-price').value)||0;
+  var qty   = Math.max(1, parseInt(document.getElementById('sp-qty').value,10) || 1);
 
   ensureSection(ctx.piece);
   devis[ctx.piece].items.push({
@@ -1417,7 +1015,7 @@ function saveSpecifique(stayHere){
     designation:label,
     qty:qty,
     prixU:roundUp5(prix),
-    __tabKey:ctx.piece
+    __tabKey: ctx.piece
   });
   saveLocal();
   if(stayHere){ pageSpecifiqueForm(); } else { goPiece(ctx.piece); }
@@ -1425,14 +1023,13 @@ function saveSpecifique(stayHere){
 
 function editPieceNote(){
   ensureSection(ctx.piece);
-  var cur=devis[ctx.piece].note||'';
-  var n=prompt('Note pour '+pieceDisplayLabel(ctx.piece), cur);
+  var cur = devis[ctx.piece].note || '';
+  var n = prompt('Note pour '+pieceDisplayLabel(ctx.piece), cur);
   if(n!==null) devis[ctx.piece].note = n.trim();
   saveLocal();
   goPiece(ctx.piece);
 }
 </script>
-
 
 
 
@@ -1856,11 +1453,6 @@ function submitTabMod_Specifique(key){
 
 
 
-
-
-
-
-  
   
   
   
@@ -2182,442 +1774,118 @@ function ventAddEntretien(key){
 
 
 
+
   
-
-
-
-
-
-<!-- =============================
-     CHAPITRE 8 : PARAMÉTRAGE — V10.2 (propre & unifié)
-     Index :
-       8.0 • Styles
-       8.1 • Storage (Entreprise / Préférences)
-       8.2 • Helpers
-       8.3 • Accueil Paramétrage (pageParametrageAccueil)
-       8.4 • Configuration entreprise (form)
-       8.5 • Préférences devis & facturation (form)
-       8.6 • Paramétrage avancé (JSON / développeur)
-       8.7 • Coefficients de pose (UI + stockage + computePU)
-       8.8 • Expose (window)
-     ============================= -->
-
+  
+  
+<!-- =========================================
+     CHAPITRE 8 — PARAMÉTRAGE (refonte V10.1)
+     - Titre section : "Paramétrage"
+     - Bloc 1 : "Catalogue des tarifs de pose" (1 bouton)
+                -> Sous-page avec les 5 boutons historiques
+     - Bloc 2 : "Catalogue fournitures"
+     - Bloc 3 : "Configuration entreprise"
+     - Bloc 4 : "Préférences devis et facturation"
+     - Bloc 5 : "Paramétrage avancé (JSON / développeur)"
+     - Aucun pictogramme/emoji dans les boutons
+     - Non destructif : ne supprime rien d’autre
+     ========================================= -->
 <style>
-  /* 8.0 — Styles */
-  .param-wrap .card{ margin-bottom:24px; }
-  .param-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
-  .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
-  .field label{ display:block; font-weight:600; margin-bottom:6px; }
-  .muted{ color:var(--muted); }
-  .row.gap8{ gap:8px; flex-wrap:wrap; }
-  .subcard{ border:1px dashed var(--line); border-radius:10px; padding:10px; background:#fafafa; }
-  .mb8{ margin-bottom:8px; }
-
-  /* Coeffs de pose */
-  .pose-card .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-  .pose-field{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px}
-  .pose-field label{display:block;font-weight:600;margin-bottom:6px}
-  .pose-note{color:var(--muted);font-size:14px}
+  .param-wrap .card { margin-bottom: 16px; }
+  .param-wrap h2 { margin: 8px 0 10px; }
+  .param-wrap h3 { margin: 4px 0 8px; }
+  .param-note { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .param-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 </style>
 
 <script>
-/* =============================
-   8.1 • Storage keys & defaults
-   ============================= */
-const KEY_ENTREPRISE_V1 = 'cfg_entreprise_v1';
-const KEY_PREFS_V1      = 'prefs_devis_fact_v1';
-
-function _entrepriseDefaults(){
-  return {
-    raison_sociale: '',
-    siret: '',
-    adresse: '',
-    cp: '',
-    ville: '',
-    email: '',
-    telephone: '',
-    tva_percent: 20
-  };
-}
-function _prefsDefaults(){
-  return {
-    mode_separe: true,          // afficher Pose + Fourniture séparées
-    afficher_ttc: true,         // montrer HT/TTC dans exports/aperçu
-    remise_defaut: 0,           // % remise par défaut
-    conditions: '',             // conditions de règlement / délais
-    mentions: ''                // mentions légales/garanties
-  };
-}
-
-function getEntreprise(){
-  try{ return JSON.parse(localStorage.getItem(KEY_ENTREPRISE_V1)||'null') || _entrepriseDefaults(); }
-  catch(e){ return _entrepriseDefaults(); }
-}
-function setEntreprise(obj){
-  const cur = getEntreprise();
-  const out = Object.assign({}, cur, obj||{});
-  try{ localStorage.setItem(KEY_ENTREPRISE_V1, JSON.stringify(out)); }catch(e){}
-  return out;
-}
-function getPrefs(){
-  try{ return JSON.parse(localStorage.getItem(KEY_PREFS_V1)||'null') || _prefsDefaults(); }
-  catch(e){ return _prefsDefaults(); }
-}
-function setPrefs(obj){
-  const cur = getPrefs();
-  const out = Object.assign({}, cur, obj||{});
-  try{ localStorage.setItem(KEY_PREFS_V1, JSON.stringify(out)); }catch(e){}
-  return out;
-}
-
-/* =============================
-   8.2 • Helpers
-   ============================= */
-function _esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c])); }
-function _val(id){ var el=document.getElementById(id); return el ? el.value : ''; }
-function _num(id){ var v=parseFloat((_val(id)||'').replace(',','.')); return isNaN(v)?0:v; }
-</script>
-
-<script>
-/* =============================
-   8.3 • Accueil Paramétrage
-   ============================= */
-function pageParametrageAccueil(){
-  view(
-    '<div class="param-wrap">'
-    +  '<div class="card">'
-    +    b('Retour','pageMain()','btn back')
-    +    '<h2>Paramétrage</h2>'
-    +    '<p class="muted">Centralisez tous vos réglages : tarifs de prestation, coordonnées entreprise, préférences de devis & facturation, coefficients de pose, et options avancées.</p>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<h3>Catalogue prestation</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Gérez les tarifs de pose par famille (Appareillage, Luminaires, Commandes, Circuit spécialisé…). Les modifications s’appliquent à l’application, aux aperçus, aux exports et à la duplication “appliquer nouveaux tarifs”.</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir le catalogue prestation','pageCataloguePrestation ? pageCataloguePrestation() : alert(\"Module non chargé.\")','btn')
-    +    '</div>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<h3>Coefficients de pose</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Personnalisez les multiplicateurs appliqués automatiquement aux <strong>Créations</strong> selon le type de pose (synchronisés avec “Ajouter une pièce”).</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pageParam_CoeffPose()','btn')
-    +    '</div>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<h3>Configuration entreprise</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Renseignez vos informations légales et de contact. Elles s’afficheront dans l’en-tête et les exports.</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pageConfigEntreprise()','btn')
-    +    '</div>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<h3>Préférences devis & facturation</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Mode séparé (pose vs fournitures), affichage HT/TTC, remise par défaut et textes (conditions, mentions).</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pagePrefsDevis()','btn')
-    +    '</div>'
-    +  '</div>'
-
-    +  '<div class="card">'
-    +    '<h3>Paramétrage avancé (JSON / développeur)</h3>'
-    +    '<div class="subcard mb8"><div class="muted">Exporter / importer / éditer les blocs de configuration (entreprise, préférences, prestations, coefficients) en JSON.</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Ouvrir','pageParamAvance()','btn')
-    +    '</div>'
-    +  '</div>'
-    +'</div>'
-  );
-}
-</script>
-
-<script>
-/* =============================
-   8.4 • Configuration entreprise
-   ============================= */
-function pageConfigEntreprise(){
-  const e = getEntreprise();
-  view(
-    '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Configuration entreprise</h2></div>'
-    +  '<div class="card"><div class="param-grid">'
-    +    '<div class="field"><label>Raison sociale</label><input id="e-rs" value="'+_esc(e.raison_sociale)+'"/></div>'
-    +    '<div class="field"><label>SIRET</label><input id="e-siret" value="'+_esc(e.siret)+'"/></div>'
-    +    '<div class="field"><label>Adresse</label><input id="e-adr" value="'+_esc(e.adresse)+'"/></div>'
-    +    '<div class="field"><label>Code postal</label><input id="e-cp" value="'+_esc(e.cp)+'"/></div>'
-    +    '<div class="field"><label>Ville</label><input id="e-ville" value="'+_esc(e.ville)+'"/></div>'
-    +    '<div class="field"><label>Email</label><input id="e-mail" value="'+_esc(e.email)+'"/></div>'
-    +    '<div class="field"><label>Téléphone</label><input id="e-tel" value="'+_esc(e.telephone)+'"/></div>'
-    +    '<div class="field"><label>TVA (%)</label><input id="e-tva" type="number" inputmode="decimal" step="0.1" value="'+(+e.tva_percent||0)+'"/></div>'
-    +  '</div>'
-    +  '<div class="row gap8" style="margin-top:10px;">'
-    +    b('Enregistrer','saveEntreprise()','btn primary')
-    +  '</div></div>'
-    +'</div>'
-  );
-}
-function saveEntreprise(){
-  setEntreprise({
-    raison_sociale: _val('e-rs'),
-    siret: _val('e-siret'),
-    adresse: _val('e-adr'),
-    cp: _val('e-cp'),
-    ville: _val('e-ville'),
-    email: _val('e-mail'),
-    telephone: _val('e-tel'),
-    tva_percent: Math.max(0, _num('e-tva'))
-  });
-  alert('Informations enregistrées.');
-  pageConfigEntreprise();
-}
-</script>
-
-<script>
-/* =============================
-   8.5 • Préférences devis & facturation
-   ============================= */
-function pagePrefsDevis(){
-  const p = getPrefs();
-  view(
-    '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Préférences devis & facturation</h2></div>'
-    +  '<div class="card"><div class="param-grid">'
-    +    '<div class="field"><label><input id="pf-sep" type="checkbox" '+(p.mode_separe?'checked':'')+'/> Mode séparé (pose + fournitures)</label></div>'
-    +    '<div class="field"><label><input id="pf-ttc" type="checkbox" '+(p.afficher_ttc?'checked':'')+'/> Afficher HT / TTC</label></div>'
-    +    '<div class="field"><label>Remise par défaut (%)</label><input id="pf-rem" type="number" step="0.1" inputmode="decimal" value="'+(+p.remise_defaut||0)+'"/></div>'
-    +  '</div>'
-    +  '<div class="field" style="margin-top:10px;"><label>Conditions</label><textarea id="pf-cond" rows="4">'+_esc(p.conditions)+'</textarea></div>'
-    +  '<div class="field" style="margin-top:10px;"><label>Mentions</label><textarea id="pf-men" rows="4">'+_esc(p.mentions)+'</textarea></div>'
-    +  '<div class="row gap8" style="margin-top:10px;">'
-    +    b('Enregistrer','savePrefs()','btn primary')
-    +  '</div></div>'
-    +'</div>'
-  );
-}
-function savePrefs(){
-  setPrefs({
-    mode_separe: !!document.getElementById('pf-sep').checked,
-    afficher_ttc: !!document.getElementById('pf-ttc').checked,
-    remise_defaut: Math.max(0, _num('pf-rem')),
-    conditions: _val('pf-cond'),
-    mentions: _val('pf-men')
-  });
-  alert('Préférences enregistrées.');
-  pagePrefsDevis();
-}
-</script>
-
-<script>
-/* =============================
-   8.6 • Paramétrage avancé (JSON / développeur)
-   ============================= */
-function pageParamAvance(){
-  const packs = {
-    entreprise: getEntreprise(),
-    preferences: getPrefs(),
-    prestations: (typeof getPrestations==='function') ? getPrestations() : '(module non chargé)',
-    coeffs_pose: (typeof getPoseCoeffMap==='function') ? getPoseCoeffMap() : '(module non chargé)'
-  };
-  const pretty = _esc(JSON.stringify(packs, null, 2));
-
-  view(
-    '<div class="param-wrap">'
-    +  '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Paramétrage avancé (JSON / développeur)</h2></div>'
-    +  '<div class="card">'
-    +    '<div class="subcard mb8"><div class="muted">Attention : toute erreur de JSON peut casser le chargement. Sauvegardez avant import. Vous pouvez exporter pour backup.</div></div>'
-    +    '<div class="row gap8">'
-    +      b('Exporter la configuration','paramAdvExport()','btn')
-    +      b('Importer une configuration','paramAdvImport()','btn')
-    +    '</div>'
-    +  '</div>'
-    +  '<div class="card">'
-    +    '<h3>Visualisation</h3>'
-    +    '<textarea id="adv-json" rows="18" style="width:100%; font-family:monospace;">'+pretty+'</textarea>'
-    +    '<div class="row gap8" style="margin-top:10px;">'
-    +      b('Écraser depuis l’éditeur','paramAdvApply()','btn')
-    +    '</div>'
-    +  '</div>'
-    +'</div>'
-  );
-}
-function _bundleAll(){
-  const bundle = {
-    entreprise: getEntreprise(),
-    preferences: getPrefs()
-  };
-  if(typeof getPrestations==='function') bundle.prestations = getPrestations();
-  if(typeof getPoseCoeffMap==='function') bundle.coeffs_pose = getPoseCoeffMap();
-  return bundle;
-}
-function paramAdvExport(){
-  const raw = JSON.stringify(_bundleAll(), null, 2);
-  const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
-  const url  = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='parametrage_bundle.json'; a.click();
-  URL.revokeObjectURL(url);
-}
-function paramAdvImport(){
-  const input = document.createElement('input'); input.type='file'; input.accept='application/json';
-  input.onchange = function(){
-    const f = input.files && input.files[0]; if(!f) return;
-    const rd = new FileReader();
-    rd.onload = function(){
-      try{
-        const data = JSON.parse(rd.result||'{}');
-        if(data.entreprise) setEntreprise(data.entreprise);
-        if(data.preferences) setPrefs(data.preferences);
-        if(data.prestations && typeof setPrestations==='function') setPrestations(data.prestations);
-        if(data.coeffs_pose && typeof setPoseCoeffMap==='function') setPoseCoeffMap(data.coeffs_pose);
-        alert('Configuration importée.');
-        pageParamAvance();
-      }catch(e){ alert('Import impossible : '+e.message); }
-    };
-    rd.readAsText(f,'utf-8');
-  };
-  input.click();
-}
-function paramAdvApply(){
-  const txt = (document.getElementById('adv-json')||{}).value||'';
-  try{
-    const data = JSON.parse(txt);
-    if(data.entreprise) setEntreprise(data.entreprise);
-    if(data.preferences) setPrefs(data.preferences);
-    if(data.prestations && typeof setPrestations==='function') setPrestations(data.prestations);
-    if(data.coeffs_pose && typeof setPoseCoeffMap==='function') setPoseCoeffMap(data.coeffs_pose);
-    alert('Configuration appliquée.');
-    pageParamAvance();
-  }catch(e){
-    alert('JSON invalide : '+e.message);
+(function(){
+  // --- Sous-page : "Catalogue des tarifs de pose" avec les 5 boutons historiques ---
+  function pageTarifsCataloguePose(){
+    view(
+      '<div class="param-wrap">'
+      +  '<div class="card">'
+      +     b('Retour','pageTarifsAccueil()','btn back')
+      +     '<h2>Catalogue des tarifs de pose</h2>'
+      +     '<p class="param-note">Ajuste ici les tarifs unitaires et coefficients utilisés dans les calculs.</p>'
+      +     '<div class="param-actions">'
+      +        b('Prises','pageTarifsPrises()','btn primary')
+      +        b('Éclairage — Luminaires','pageTarifsEclLuminaires()','btn')
+      +        b('Éclairage — Commandes','pageTarifsEclCommandes()','btn')
+      +        b('Circuit spécialisé','pageTarifsCS()','btn')
+      +        b('Coefficients de pose','pageTarifsCoeffsPose()','btn')
+      +     '</div>'
+      +  '</div>'
+      + '</div>'
+    );
   }
-}
-</script>
 
-<script>
-/* =============================
-   8.7 • Coefficients de pose (UI + stockage + computePU)
-   ============================= */
-const KEY_POSE_COEFFS = 'poseCoeffs_v1';
-function _readJsonLS8(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-function _writeJsonLS8(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+  // --- Page principale : "Paramétrage" (structure en 5 cadres) ---
+  function pageTarifsAccueil(){
+    view(
+      '<div class="param-wrap">'
+      +  '<div class="card">'
+      +     b('Retour','pageMain()','btn back')
+      +     '<h2>Paramétrage</h2>'
+      +  '</div>'
 
-function _getPoseListFromApp(){
-  if (Array.isArray(window.POSES) && window.POSES.length) return JSON.parse(JSON.stringify(window.POSES));
-  return ['Apparent','Encastré placo','Encastré maçonnerie','Goulotte'];
-}
-function getPoseCoeffMap(){
-  const poses = _getPoseListFromApp();
-  const cur   = _readJsonLS8(KEY_POSE_COEFFS, {});
-  let changed = false;
-  poses.forEach(p=>{ if(typeof cur[p] !== 'number'){ cur[p]=1; changed=true; }});
-  Object.keys(cur).forEach(k=>{ if(poses.indexOf(k)===-1){ delete cur[k]; changed=true; }});
-  if(changed) _writeJsonLS8(KEY_POSE_COEFFS, cur);
-  return cur;
-}
-function setPoseCoeffMap(map){
-  const clean = {};
-  Object.keys(map||{}).forEach(k=>{ const v=+map[k]; clean[k]=isNaN(v)?1:Math.max(0,v); });
-  _writeJsonLS8(KEY_POSE_COEFFS, clean);
-}
-function getPoseCoeff(name){ const map=getPoseCoeffMap(); return (typeof map[name]==='number')? map[name]:1; }
-function setPoseCoeff(name, value){
-  const map=getPoseCoeffMap(); map[name]=Math.max(0, +value||1); _writeJsonLS8(KEY_POSE_COEFFS, map);
-}
+      // Bloc 1 — Catalogue des tarifs de pose (un seul bouton qui mène à la sous-page)
+      +  '<div class="card">'
+      +     '<h3>Catalogue des tarifs de pose</h3>'
+      +     '<p class="param-note">Accède au catalogue pour modifier les tarifs de pose (prises, éclairage, circuits spécialisés, coefficients…)</p>'
+      +     '<div class="param-actions">'
+      +        b('Catalogue des tarifs de pose','pageTarifsCataloguePose()','btn primary')
+      +     '</div>'
+      +  '</div>'
 
-function pageParam_CoeffPose(){
-  const poses = _getPoseListFromApp();
-  const map   = getPoseCoeffMap();
-  const fields = poses.map(p=>{
-    const id='pc_'+p.replace(/\s+/g,'_');
-    return '<div class="pose-field">'
-         +   '<label>'+_esc(p)+'</label>'
-         +   '<input id="'+id+'" type="number" step="0.01" inputmode="decimal" value="'+(+map[p]).toFixed(2)+'" />'
-         +   '<div class="pose-note">1.00 = neutre • &gt;1 = + cher • &lt;1 = - cher</div>'
-         + '</div>';
-  }).join('');
-  view(
-    '<div class="card">'+b('Retour','pageParametrageAccueil()','btn back')+'<h2>Coefficients de pose</h2>'
-    +'<p class="pose-note">Synchronisés automatiquement avec les types de pose utilisés dans “Ajouter une pièce”.</p></div>'
-    +'<div class="card pose-card"><div class="grid">'+fields+'</div>'
-    +'<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;">'
-      + b('💾 Enregistrer','saveParam_CoeffPose()','btn primary')
-      + b('↺ Remettre à 1.00','resetParam_CoeffPose()','btn')
-    +'</div></div>'
-  );
-}
-function saveParam_CoeffPose(){
-  const poses=_getPoseListFromApp(); const map={};
-  poses.forEach(p=>{
-    const id='pc_'+p.replace(/\s+/g,'_'); const el=document.getElementById(id);
-    map[p]=Math.max(0, parseFloat((el&&el.value)||'1')||1);
+      // Bloc 2 — Catalogue fournitures
+      +  '<div class="card">'
+      +     '<h3>Catalogue fournitures</h3>'
+      +     '<p class="param-note">Gère les fournitures (désignations + tarifs) utilisées par les menus et intégrées aux calculs.</p>'
+      +     '<div class="param-actions">'
+      +        b('Catalogue fournitures','pageCatalogue()','btn')
+      +     '</div>'
+      +  '</div>'
+
+      // Bloc 3 — Configuration entreprise (cadre séparé)
+      +  '<div class="card">'
+      +     '<h3>Configuration entreprise</h3>'
+      +     '<p class="param-note">Renseigne l’identité (coordonnées, SIREN/TVA), le logo, les mentions et coordonnées bancaires.</p>'
+      +     '<div class="param-actions">'
+      +        b('Configuration entreprise','pageConfigEntreprise()','btn')
+      +     '</div>'
+      +  '</div>'
+
+      // Bloc 4 — Préférences devis et facturation (cadre séparé)
+      +  '<div class="card">'
+      +     '<h3>Préférences devis et facturation</h3>'
+      +     '<p class="param-note">Définis l’affichage, la numérotation et les options de TVA pour les devis et factures.</p>'
+      +     '<div class="param-actions">'
+      +        b('Préférences devis et facturation','pagePreferences()','btn')
+      +     '</div>'
+      +  '</div>'
+
+      // Bloc 5 — Paramétrage avancé
+      +  '<div class="card">'
+      +     '<h3>Paramétrage avancé (JSON / développeur)</h3>'
+      +     '<p class="param-note">Importe, exporte ou modifie manuellement les ajouts (catégories, poses, sections, désignations, tarifs…).</p>'
+      +     '<div class="param-actions">'
+      +        b('Ouvrir le paramétrage avancé','pageTarifsPersoJSON()','btn')
+      +     '</div>'
+      +  '</div>'
+
+      + '</div>'
+    );
+  }
+
+  // Expose / remplace proprement (sans toucher aux autres chapitres)
+  Object.assign(window, {
+    pageTarifsAccueil,
+    pageTarifsCataloguePose
   });
-  setPoseCoeffMap(map);
-  alert('✅ Coefficients enregistrés.');
-}
-function resetParam_CoeffPose(){
-  if(!confirm('Remettre tous les coefficients de pose à 1.00 ?')) return;
-  const poses=_getPoseListFromApp(); const map={}; poses.forEach(p=>map[p]=1);
-  setPoseCoeffMap(map); pageParam_CoeffPose();
-}
-
-/* Wrap computePU une seule fois */
-(function wirePoseIntoCompute(){
-  const oldCompute = window.computePU;
-  window.computePU = function(category, designation, intervention, pose, section){
-    let base = 0;
-    if (typeof oldCompute==='function') base = +oldCompute(category, designation, intervention, pose, section) || 0;
-    else {
-      // Fallback minimal si computePU n’existait pas
-      const TB = (typeof window.TARIFS_BASE === 'object') ? window.TARIFS_BASE : {};
-      function pick(obj,k){ return (obj&&typeof obj==='object')? obj[k]:undefined; }
-      let ref;
-      if(category==='Prises'){ ref = pick(TB.prises, designation); }
-      else if(category==='Éclairage/Luminaires' || category==='Éclairage / Luminaires'){ ref = pick(TB.eclairage, designation); }
-      else if(category==='Éclairage/Commandes' || category==='Éclairage / Commandes'){ ref = pick(TB.eclairage, designation); }
-      else if(category==='Circuit spécialisé' || category==='Circuit specialise'){ ref = pick(TB.circuit_specialise, designation); }
-      base = (ref && typeof ref==='object') ? (+ref[intervention]||0) : 0;
-    }
-    if (String(intervention)==='Création' && pose){
-      const k = getPoseCoeff(pose) || 1;
-      let out = base * k;
-      if(typeof window.roundUp5==='function') out = roundUp5(out);
-      return out;
-    }
-    return base;
-  };
 })();
 </script>
 
-<script>
-/* =============================
-   8.8 • Expose (window)
-   ============================= */
-Object.assign(window, {
-  pageParametrageAccueil,
-  pageConfigEntreprise,
-  pagePrefsDevis,
-  pageParamAvance,
-  // Coeffs de pose
-  pageParam_CoeffPose,
-  saveParam_CoeffPose,
-  resetParam_CoeffPose,
-  getPoseCoeffMap,
-  setPoseCoeffMap,
-  getPoseCoeff,
-  setPoseCoeff
-});
-</script>
-
-
-
-
-
-
-
-  
 
 
 
@@ -3071,15 +2339,6 @@ Object.assign(window,{
   
 
 
-
-
-
-
-
-
-
-  
-
 <!-- =============================
      CHAPITRE 10 : FACTURATION (export .txt)
      - Génère une facture texte
@@ -3262,22 +2521,18 @@ function exportInvoiceText(){
 
 
 
-  
-
-
 
 
   
   
-<!-- ============================================================
-     CHAPITRE 11 : ESTIMATIF & EXPORTS — vNEXT + PDF Buttons
+  <!-- ============================================================
+     CHAPITRE 11 : ESTIMATIF & EXPORTS — vNEXT
      Index :
        §7.0 • Détection / libellé des pièces (Tableaux inclus)
        §7.1 • Tri dédié aux Tableaux (diff → coupure → disjoncteurs → reste)
-       §7.2 • Pages : Estimatif détaillé & Totaux par groupe (+ boutons PDF)
+       §7.2 • Pages : Estimatif détaillé & Totaux par groupe
        §7.3 • Exports : .txt par groupe / .zip par groupe
        §7.4 • Exports : complet .txt / complet .zip
-       §7.5 • Boutons PDF (helper)
      ============================================================ -->
 <script>
 // §7.0 • Détection & libellés
@@ -3398,12 +2653,8 @@ function pageEstimatif(){
        +    b("Export .zip (par groupe)","exportZipGroups()","btn")
        +    b("Export .txt (complet)","exportTextFull()","btn")
        +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div>';
+       +  '</div></div>';
 
-  // 🔽 Boutons PDF intégrés de façon déterministe
-  html += pdfButtonsHtml();
-
-  html += '</div>'; // close card
   view(html);
 }
 
@@ -3430,12 +2681,8 @@ function pageTotaux(){
        +    b("Export .zip (par groupe)","exportZipGroups()","btn")
        +    b("Export .txt (complet)","exportTextFull()","btn")
        +    b("Export .zip (complet)","exportZipFull()","btn")
-       +  '</div>';
+       +  '</div></div>';
 
-  // 🔽 Boutons PDF intégrés de façon déterministe
-  html += pdfButtonsHtml();
-
-  html += '</div>'; // close card
   view(html);
 }
 
@@ -3583,31 +2830,6 @@ async function exportZipFull(){
 
   alert('✅ Export .zip complet généré.');
 }
-
-/* ------------------------------------------------------------
-   §7.5 • Boutons PDF — helper déterministe (aucune injection)
-   ------------------------------------------------------------ */
-function pdfButtonsHtml(){
-  // si Chapitre 16 est présent → boutons actifs, sinon fallback avec message
-  var hasPage = (typeof pageDevisPDF16 === 'function');
-  var hasBuild = (typeof buildDevisPDF16 === 'function');
-
-  var apPreview = hasPage
-    ? b('Aperçu du devis (PDF)','pageDevisPDF16()','btn')
-    : '<button class="btn" onclick="alert(\'Module PDF manquant (Chapitre 16).\')">Aperçu du devis (PDF)</button>';
-
-  var apBuild = hasBuild
-    ? b('Générer le PDF (tout compris)','buildDevisPDF16()','btn primary')
-    : '<button class="btn primary" onclick="alert(\'Module PDF manquant (Chapitre 16).\')">Générer le PDF (tout compris)</button>';
-
-  return '<div class="card" style="margin-top:12px;">'
-       +   '<h3>Devis (PDF)</h3>'
-       +   '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-       +     apPreview
-       +     apBuild
-       +   '</div>'
-       + '</div>';
-}
 </script>
 
 
@@ -3616,15 +2838,9 @@ function pdfButtonsHtml(){
 
 
 
-
-
-
-  
-
-
 <!-- =============================
-     CHAPITRE 12 : CONFIG ENTREPRISE & PRÉFÉRENCES — V10.1
-     (Autonome, non intrusif — pages indépendantes)
+     CHAPITRE 12 : CONFIG ENTREPRISE & PRÉFÉRENCES
+     (Autonome, non intrusif — ajoute 2 pages et 1 bouton dans le Chap.8)
      ============================= -->
 
 <style>
@@ -3649,14 +2865,18 @@ function pdfButtonsHtml(){
     border:1px solid #c8e6c9; background:#e8f5e9; color:#256029;
     padding:8px 10px; border-radius:8px; font-size:14px;
   }
+  .alert-warn{
+    border:1px solid #ffe0b2; background:#fff3e0; color:#9c6f19;
+    padding:8px 10px; border-radius:8px; font-size:14px;
+  }
 </style>
 
 <script>
 /* ============================================================
-   Stockage & helpers (localStorage)
+   §11.0 • Stockage & helpers (localStorage)
    ============================================================ */
-const KEY_COMPANY = 'companyConfig_v1';
-const KEY_PREFS   = 'appPrefs_v1';
+const KEY_COMPANY   = 'companyConfig_v1';
+const KEY_PREFS     = 'appPrefs_v1';
 
 function readJsonLS(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
 function writeJsonLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
@@ -3680,11 +2900,12 @@ function getCompany(){
 function setCompany(obj){ writeJsonLS(KEY_COMPANY, obj||{}); }
 
 function getPrefs(){
+  // ➜ Ratio matériel supprimé (on bascule vers le catalogue)
   return readJsonLS(KEY_PREFS, {
     facturation_mode: 'tout_compris', // 'tout_compris' | 'separe'
     devise: '€',
-    tva_applicable: false,
-    taux_tva: 20,
+    tva_applicable: false,  // pour futur « réel »
+    taux_tva: 20,           // % (non utilisé tant que tva_applicable=false)
     numerotation_prefix: 'DEV-',
     numerotation_fact_prefix: 'FAC-',
     numerotation_courante: 1
@@ -3730,7 +2951,7 @@ function pickImageFile(cb){
 }
 
 /* ============================================================
-   UI — Configuration entreprise
+   §11.1 • UI — Configuration entreprise
    ============================================================ */
 function pageConfigEntreprise(notice){
   const cfg = getCompany();
@@ -3752,7 +2973,9 @@ function pageConfigEntreprise(notice){
        (meta.width||'?')+'×'+(meta.height||'?')+' px</div>')
     : '<div class="cfg-note">Aucun logo</div>';
 
-  const banner = notice ? '<div class="alert-ok">'+notice+'</div>' : '';
+  const banner = notice
+    ? '<div class="alert-ok">'+notice+'</div>'
+    : '';
 
   const logoHtml =
     '<div class="field">'
@@ -3769,16 +2992,16 @@ function pageConfigEntreprise(notice){
             + (hasLogo ? b('Retirer','cfgRemoveLogo()','btn') : '')
         + '</div>'
         + '<div id="dropzone" class="dropzone">Glissez-déposez votre logo ici (PNG/JPG recommandé)</div>'
-        + '<div class="cfg-note">Le logo sera intégré aux futurs documents (devis/factures).</div>'
+        + '<div class="cfg-note">Le logo sera intégré aux futurs PDF (devis/factures).</div>'
       + '</div>'
     + '</div>';
 
   view(
     '<div class="cfg-wrap">'
     +  '<div class="card">'
-        + b('Retour','pageParametrageAccueil ? pageParametrageAccueil() : pageMain()','btn back')
+        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
         + '<h2>Configuration entreprise</h2>'
-        + '<p class="cfg-note">Ces informations sont utilisées pour les exports (devis/factures) et les mentions légales.</p>'
+        + '<p class="cfg-note">Ces informations seront utilisées pour les futurs export PDF (devis/factures) et rappels légaux.</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -3786,8 +3009,8 @@ function pageConfigEntreprise(notice){
         + '<div class="cfg-grid">'
           + f('Raison sociale','ce_rs', cfg.raison_sociale, 'Ex : SARL Dupont Électricité')
           + f('Nom commercial','ce_nc', cfg.nom_commercial, 'Ex : Dupont Élec')
-          + f('SIREN','ce_siren', cfg.siren, '123 456 789')
-          + f('N° TVA intracom','ce_tva', cfg.tva_intracom, 'FRXX999999999')
+          + f('SIREN','ce_siren', cfg.siren, 'Ex : 123 456 789')
+          + f('N° TVA intracom','ce_tva', cfg.tva_intracom, 'Ex : FRXX999999999')
           + f('Adresse','ce_addr', cfg.adresse, 'Rue et n°')
           + f('Code postal','ce_cp', cfg.code_postal, '75000')
           + f('Ville','ce_ville', cfg.ville, 'Paris')
@@ -3807,7 +3030,7 @@ function pageConfigEntreprise(notice){
           + f('IBAN','ce_iban', cfg.iban, '')
           + f('BIC','ce_bic', cfg.bic, '')
         + '</div>'
-        + ta('Conditions de paiement','ce_cond', cfg.conditions_paiement, 'Virement sous 30 jours…')
+        + ta('Conditions de paiement','ce_cond', cfg.conditions_paiement, 'Ex : Virement sous 30 jours…')
         + ta('Mentions légales (pied de page)','ce_mentions', cfg.mentions_legales, 'Textes libres…')
       + '</div>'
 
@@ -3865,50 +3088,36 @@ function pageConfigEntreprise(notice){
   })();
 }
 
-/* ==========================
-   Sauvegarde — robuste (FIX)
-   ========================== */
 function saveConfigEntreprise(){
-  // État courant pour préserver ce qui n'est pas saisi
-  const prev = getCompany();
-
-  // Helper sécurisé : lit la valeur; si vide -> undefined (n'écrase pas)
-  const gv = (id) => {
-    const el = document.getElementById(id);
-    if (!el) return undefined;
-    const v = (el.value ?? '').trim();
-    return v === '' ? undefined : v;
-  };
-
-  const next = Object.assign({}, prev, {
-    raison_sociale:         gv('ce_rs')       ?? prev.raison_sociale,
-    nom_commercial:         gv('ce_nc')       ?? prev.nom_commercial,
-    siren:                  gv('ce_siren')    ?? prev.siren,
-    tva_intracom:           gv('ce_tva')      ?? prev.tva_intracom,
-    adresse:                gv('ce_addr')     ?? prev.adresse,
-    code_postal:            gv('ce_cp')       ?? prev.code_postal,
-    ville:                  gv('ce_ville')    ?? prev.ville,
-    pays:                   gv('ce_pays')     ?? prev.pays,
-    email:                  gv('ce_mail')     ?? prev.email,
-    telephone:              gv('ce_tel')      ?? prev.telephone,
-    site:                   gv('ce_web')      ?? prev.site,
-    rc_pro:                 gv('ce_rc')       ?? prev.rc_pro,
-    decennale:              gv('ce_dec')      ?? prev.decennale,
-    assureur:               gv('ce_ass')      ?? prev.assureur,
-    iban:                   gv('ce_iban')     ?? prev.iban,
-    bic:                    gv('ce_bic')      ?? prev.bic,
-    conditions_paiement:    gv('ce_cond')     ?? prev.conditions_paiement,
-    mentions_legales:       gv('ce_mentions') ?? prev.mentions_legales
-    // Logo géré ailleurs — on ne touche pas ici
+  const cfg = getCompany();
+  function gv(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+  Object.assign(cfg, {
+    raison_sociale: gv('ce_rs'),
+    nom_commercial: gv('ce_nc'),
+    siren: gv('ce_siren'),
+    tva_intracom: gv('ce_tva'),
+    adresse: gv('ce_addr'),
+    code_postal: gv('ce_cp'),
+    ville: gv('ce_ville'),
+    pays: gv('ce_pays'),
+    email: gv('ce_mail'),
+    telephone: gv('ce_tel'),
+    site: gv('ce_web'),
+    rc_pro: gv('ce_rc'),
+    decennale: gv('ce_dec'),
+    assureur: gv('ce_ass'),
+    iban: gv('ce_iban'),
+    bic: gv('ce_bic'),
+    conditions_paiement: gv('ce_cond'),
+    mentions_legales: gv('ce_mentions')
   });
-
-  setCompany(next);
-  // Relit pour garantir l'affichage des valeurs persistées
-  pageConfigEntreprise('Configuration entreprise enregistrée.');
+  setCompany(cfg);
+  alert('✅ Configuration entreprise enregistrée.');
 }
 
 /* ============================================================
-   UI — Préférences (mode facturation, devise, TVA…)
+   §11.2 • UI — Préférences (mode facturation, devise, TVA…)
+   (ratio matériel retiré)
    ============================================================ */
 function pagePreferences(){
   const p = getPrefs();
@@ -3918,9 +3127,9 @@ function pagePreferences(){
   view(
     '<div class="cfg-wrap">'
       + '<div class="card">'
-        + b('Retour','pageParametrageAccueil ? pageParametrageAccueil() : pageMain()','btn back')
-        + '<h2>Préférences devis et facturation</h2>'
-        + '<p class="cfg-note">Ces réglages influencent la présentation des exports et la logique de TVA.</p>'
+        + b('Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+        + '<h2>Préférences</h2>'
+        + '<p class="cfg-note">Ces réglages influencent la présentation des futurs exports (devis/factures) et la logique de TVA.</p>'
       + '</div>'
 
       + '<div class="card">'
@@ -3995,8 +3204,33 @@ function savePreferences(){
 }
 
 /* ============================================================
-   Expose (aucune injection automatique ici)
+   §11.3 • Intégration douce : ajoute 2 boutons au Chapitre 8
+   (si présent) et expose les pages au global
    ============================================================ */
+(function injectButtonsIntoParametrage(){
+  const orig = window.pageTarifsAccueil;
+  if(typeof orig === 'function'){
+    window.pageTarifsAccueil = function(){
+      orig();
+      const app = document.getElementById('app');
+      if(!app) return;
+      const btn1 = 'Configuration entreprise';
+      const btn2 = 'Préférences';
+      if(app.innerHTML.indexOf(btn1)===-1 || app.innerHTML.indexOf(btn2)===-1){
+        app.innerHTML = app.innerHTML.replace(
+          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
+          '$1'
+          + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
+          +   '<button class="btn" onclick="pageConfigEntreprise()">'+btn1+'</button>'
+          +   '<button class="btn" onclick="pagePreferences()">'+btn2+'</button>'
+          + '</div></div>'
+        );
+      }
+    };
+  }
+})();
+
+/* Expose au global */
 Object.assign(window, {
   pageConfigEntreprise,
   pagePreferences,
@@ -4010,326 +3244,589 @@ Object.assign(window, {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+  
+
 <!-- =============================
-     CHAPITRE 13 : PARAMÉTRAGE TARIFS & CATALOGUE — V10.3 (autonome)
-     - Accueil Paramétrage (pageTarifsAccueil)
-     - Catalogue prestation (pageCataloguePrestation)
-     - Prestations (get/set + LS)
-     - Tarifs base (sync LS -> TARIFS_BASE et inverse)
-     - Export / Import
+     CHAPITRE 13 : CATALOGUE MATÉRIEL (LIÉ AUX MENUS + TARIFS)
+     Index :
+       13.0 • Styles
+       13.1 • Stockage & Structure (alignée avec l’app)
+       13.2 • Helpers (merge, IO, UI utils)
+       13.3 • Application au runtime (DESIGNATIONS + TARIFS_BASE)
+       13.4 • Page d’accueil du catalogue
+       13.5 • Éditeur : PRISES
+       13.6 • Éditeur : ÉCLAIRAGE / Luminaires
+       13.7 • Éditeur : ÉCLAIRAGE / Commandes
+       13.8 • Éditeur : CIRCUIT SPÉCIALISÉ
+       13.9 • Import / Export / Reset
+       13.10 • Injection dans le Chapitre 8 (Paramétrage)
+       13.11 • Expose (window)
      ============================= -->
 
 <style>
-  .tarifs-wrap .card{ margin-bottom:18px; }
-  .tarifs-wrap .grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
-  .tarifs-wrap .field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
-  .tarifs-wrap .field label{ display:block; font-weight:600; margin-bottom:6px; }
-  .tarifs-wrap .muted{ color:var(--muted); }
-  .tarifs-wrap .pill{ display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:#fff; }
+  .cat-wrap .card{ margin-bottom:24px; }
+  .cat-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .cat-field{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px; }
+  .cat-field label{ display:block; font-weight:600; margin-bottom:6px; }
+  .cat-note{ color:var(--muted); font-size:14px; }
+  .pill.small{ padding:6px 10px; font-size:14px; }
+  .row.gap8{ gap:8px; flex-wrap:wrap; }
+  .table-mini{ width:100%; border-collapse:collapse; font-size:14px; }
+  .table-mini th, .table-mini td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
+  .table-mini th{ background:#fafafa; }
+  .type-head{ display:flex; align-items:center; justify-content:space-between; }
+  .muted{ color:var(--muted); }
+  .cat-tip{ font-size:13px; color:#555; }
 </style>
 
 <script>
-/* =============================
-   13.0 • Storage helpers
-   ============================= */
-const KEY_TARIFS_BASE_V1 = 'tarifsBase_v1';
-const KEY_PRESTATIONS_V1 = 'prestations_v1';
-function _readJson13(key, def){ try{ return JSON.parse(localStorage.getItem(key)||'null') ?? def; }catch(e){ return def; } }
-function _writeJson13(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+/* ============================================================
+   13.1 • Stockage & Structure (alignée avec l’app)
+   ------------------------------------------------------------
+   - Familles : Prises / Éclairage(Luminaires, Commandes) / Circuit spécialisé
+   - Chaque type possède ses tarifs par intervention (suivant la famille)
+   - Sauvegarde dans localStorage (KEY_CATALOG13)
+   ============================================================ */
+const KEY_CATALOG13 = 'catalogueTypes_v2';
 
-/* =============================
-   13.1 • Prestations (listes pour l'UI)
-   ============================= */
-function _prestationsDefaults(){
+/*
+Structure de base :
+
+{
+  "prises": [
+    {"nom":"Prise 2P+T","tarifs":{"Création":90,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":45,"Recâblage sans remplacement appareillage":30}},
+    ...
+  ],
+  "eclairage": {
+    "luminaires":[
+      {"nom":"Point de centre","tarifs":{"Création":110,"Remplacement luminaire":35,"Recâblage avec remplacement luminaire":55,"Recâblage sans remplacement luminaire":40}},
+      ...
+    ],
+    "commandes":[
+      {"nom":"Interrupteur simple","tarifs":{"Création":65,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":40,"Recâblage sans remplacement appareillage":28}},
+      ...
+    ]
+  },
+  "circuit_spec":[
+    {"nom":"Four","tarifs":{"Création":140,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":55,"Recâblage sans remplacement appareillage":40}},
+    ...
+  ]
+}
+
+Les libellés d’intervention sont adaptés :
+- Prises & Commandes : ...“appareillage”
+- Luminaires : ...“luminaire”
+- Circuit spécialisé : libellés “appareillage”
+*/
+
+function _catDefault(){
   return {
-    appareillage: {
-      luminaires: {
-        baseTypes: ['Point de centre','Applique'],
-        customTypes: []
-      },
-      commandes: {
-        baseTypes: ['Interrupteur simple','Interrupteur double'],
-        customTypes: []
-      }
-    }
+    prises: [
+      { nom:"Prise 2P+T",        tarifs:{ "Création":90, "Remplacement appareillage":25, "Recâblage avec remplacement appareillage":45, "Recâblage sans remplacement appareillage":30 } },
+      { nom:"Prise 2P+T IP44",   tarifs:{ "Création":110,"Remplacement appareillage":30, "Recâblage avec remplacement appareillage":50, "Recâblage sans remplacement appareillage":35 } }
+    ],
+    eclairage: {
+      luminaires: [
+        { nom:"Point de centre",  tarifs:{ "Création":110,"Remplacement luminaire":35, "Recâblage avec remplacement luminaire":55, "Recâblage sans remplacement luminaire":40 } },
+        { nom:"Applique",         tarifs:{ "Création":95, "Remplacement luminaire":30, "Recâblage avec remplacement luminaire":50, "Recâblage sans remplacement luminaire":35 } }
+      ],
+      commandes: [
+        { nom:"Interrupteur simple", tarifs:{ "Création":65,"Remplacement appareillage":25,"Recâblage avec remplacement appareillage":40,"Recâblage sans remplacement appareillage":28 } },
+        { nom:"Interrupteur double", tarifs:{ "Création":80,"Remplacement appareillage":30,"Recâblage avec remplacement appareillage":48,"Recâblage sans remplacement appareillage":34 } }
+      ]
+    },
+    circuit_spec: [
+      { nom:"Four",                tarifs:{ "Création":140,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":55,"Recâblage sans remplacement appareillage":40 } },
+      { nom:"Plaque de cuisson",   tarifs:{ "Création":155,"Remplacement appareillage":35,"Recâblage avec remplacement appareillage":60,"Recâblage sans remplacement appareillage":42 } },
+      { nom:"Lave-linge",          tarifs:{ "Création":135,"Remplacement appareillage":30,"Recâblage avec remplacement appareillage":52,"Recâblage sans remplacement appareillage":38 } }
+    ]
   };
 }
-function getPrestations(){ return _readJson13(KEY_PRESTATIONS_V1, _prestationsDefaults()); }
-function setPrestations(packs){
-  const base=_prestationsDefaults();
-  const clean = { appareillage:{ luminaires:{baseTypes:[],customTypes:[]}, commandes:{baseTypes:[],customTypes:[]} } };
-  try{
-    const L = (packs?.appareillage?.luminaires)||{};
-    const C = (packs?.appareillage?.commandes)||{};
-    clean.appareillage.luminaires.baseTypes = Array.from(new Set([...(L.baseTypes||base.appareillage.luminaires.baseTypes)])).filter(Boolean);
-    clean.appareillage.luminaires.customTypes = Array.from(new Set([...(L.customTypes||[])])).filter(Boolean);
-    clean.appareillage.commandes.baseTypes = Array.from(new Set([...(C.baseTypes||base.appareillage.commandes.baseTypes)])).filter(Boolean);
-    clean.appareillage.commandes.customTypes = Array.from(new Set([...(C.customTypes||[])])).filter(Boolean);
-  }catch(e){ return; }
-  _writeJson13(KEY_PRESTATIONS_V1, clean);
+
+function getCatalog13(){
+  try{ return JSON.parse(localStorage.getItem(KEY_CATALOG13)||'null') || _catDefault(); }
+  catch(e){ return _catDefault(); }
+}
+function setCatalog13(obj){
+  try{ localStorage.setItem(KEY_CATALOG13, JSON.stringify(obj||_catDefault())); }catch(e){}
 }
 
-/* =============================
-   13.2 • Tarifs base (FT posé, hors coeff pose)
-   - Merge LS -> TARIFS_BASE au chargement
-   - Enreg. -> LS
-   ============================= */
-(function syncTarifsFromLS(){
-  const saved=_readJson13(KEY_TARIFS_BASE_V1, null);
-  if(!saved) return;
-  if(typeof window.TARIFS_BASE!=='object') window.TARIFS_BASE={};
-  const T=window.TARIFS_BASE;
-  function merge(dst,src){
-    Object.keys(src||{}).forEach(k=>{
-      if(src[k] && typeof src[k]==='object' && !Array.isArray(src[k])){
-        if(!dst[k] || typeof dst[k]!=='object') dst[k]={};
-        merge(dst[k],src[k]);
-      }else{
-        dst[k]=src[k];
-      }
-    });
-  }
-  merge(T, saved);
-})();
+/* ============================================================
+   13.2 • Helpers (merge, IO, UI utils)
+   ============================================================ */
+function _clone(x){ return JSON.parse(JSON.stringify(x)); }
+function _ensureNum(n){ return Math.max(0, +n || 0); }
+function _escape(s){ return String(s||'').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 
-function saveTarifsBaseToLS(){
-  if(typeof window.TARIFS_BASE!=='object') return;
-  _writeJson13(KEY_TARIFS_BASE_V1, window.TARIFS_BASE);
-}
-
-/* =============================
-   13.3 • Accueil Paramétrage
-   ============================= */
-function pageTarifsAccueil(){
-  const hasCat = (typeof window.pageCataloguePrestation==='function');
-  const hasPrefs = (typeof window.pagePrefsDevis==='function') || (typeof window.pagePreferences==='function');
-  const openPrefs = (typeof window.pagePrefsDevis==='function') ? 'pagePrefsDevis()' : ((typeof window.pagePreferences==='function')?'pagePreferences()':'alert(\"Module Préférences non chargé.\")');
-  const hasEntre = (typeof window.pageConfigEntreprise==='function');
-  view(
-    '<div class="tarifs-wrap">'
-    + '<div class="card">'+ b("Retour","pageMain()","btn back") + '<h2>Paramétrage — Accueil</h2>'
-    + '<p class="muted">Gérez ici les tarifs de prestation, les coordonnées de l’entreprise et les préférences de facturation.</p></div>'
-
-    + '<div class="card"><h3>Catalogue prestation</h3>'
-    + '<p class="muted">Tarifs de pose (création / remplacement / recâblage) pour prises, luminaires, commandes et circuits spécialisés.</p>'
-    + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +   b('Ouvrir le catalogue', hasCat ? 'pageCataloguePrestation()' : 'alert(\"Catalogue non chargé.\")','btn primary')
-    +   b('Exporter configuration','param13Export()','btn')
-    +   b('Importer configuration','param13Import()','btn')
-    + '</div></div>'
-
-    + '<div class="card"><h3>Préférences devis & facturation</h3>'
-    + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +   b('Ouvrir', openPrefs,'btn')
-    + '</div></div>'
-
-    + '<div class="card"><h3>Configuration entreprise</h3>'
-    + '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +   b('Ouvrir', hasEntre ? 'pageConfigEntreprise()' : 'alert(\"Module Entreprise non chargé.\")','btn')
-    + '</div></div>'
-    + '</div>'
-  );
-}
-
-/* =============================
-   13.4 • UI Catalogue prestation
-   ============================= */
-function _num13(id){ var v=parseFloat((document.getElementById(id)?.value||'').replace(',','.')); return isNaN(v)?0:v; }
-function pageCataloguePrestation(){
-  const T = window.TARIFS_BASE || { prises:{}, eclairage:{}, circuit_specialise_base:{} };
-  const P = getPrestations();
-
-  function input(label, id, val){
-    return '<div class="field"><label>'+label+'</label>'
-         + '<input id="'+id+'" type="number" inputmode="decimal" step="0.1" value="'+(+val||0)+'"/></div>';
-  }
-  function blocPrises(){
-    const L = [
-      input('Création','p_cre', T.prises['Création']||0),
-      input('Remplacement appareillage','p_remap', T.prises['Remplacement appareillage']||0),
-      input('Recâblage avec remplacement appareillage','p_rcap', T.prises['Recâblage avec remplacement appareillage']||0),
-      input('Recâblage sans remplacement appareillage','p_rcsans', T.prises['Recâblage sans remplacement appareillage']||0)
-    ].join('');
-    return '<div class="card"><h3>Prises — Tarifs de pose</h3><div class="grid">'+L+'</div></div>';
-  }
-  function blocLum(){
-    const ds = (P.appareillage.luminaires.baseTypes||[]).concat(P.appareillage.luminaires.customTypes||[]);
-    const rows = ds.map(function(d,ix){
-      const base=T.eclairage[d]||{};
-      return '<div class="field"><label>'+d+' — Création</label><input id="l_'+ix+'_cre" type="number" step="0.1" value="'+(+base['Création']||0)+'"/></div>'
-           + '<div class="field"><label>'+d+' — Rempl. luminaire</label><input id="l_'+ix+'_rem" type="number" step="0.1" value="'+(+base['Remplacement luminaire']||0)+'"/></div>'
-           + '<div class="field"><label>'+d+' — Recâblage + rempl.</label><input id="l_'+ix+'_rcap" type="number" step="0.1" value="'+(+base['Recâblage avec remplacement luminaire']||0)+'"/></div>'
-           + '<div class="field"><label>'+d+' — Recâblage seul</label><input id="l_'+ix+'_rcsans" type="number" step="0.1" value="'+(+base['Recâblage sans remplacement luminaire']||0)+'"/></div>';
-    }).join('');
-    return '<div class="card"><h3>Éclairage — Luminaires</h3><div class="grid">'+rows+'</div>'
-         + '<div class="row" style="margin-top:8px;gap:8px;">'
-         +   b('Ajouter un type…','cat13AddType(\"lum\")','btn')
-         + '</div></div>';
-  }
-  function blocCmd(){
-    const ds = (P.appareillage.commandes.baseTypes||[]).concat(P.appareillage.commandes.customTypes||[]);
-    const rows = ds.map(function(d,ix){
-      const base=T.eclairage[d]||{};
-      return '<div class="field"><label>'+d+' — Création</label><input id="c_'+ix+'_cre" type="number" step="0.1" value="'+(+base['Création']||0)+'"/></div>'
-           + '<div class="field"><label>'+d+' — Rempl. appareillage</label><input id="c_'+ix+'_rem" type="number" step="0.1" value="'+(+base['Remplacement appareillage']||0)+'"/></div>'
-           + '<div class="field"><label>'+d+' — Recâblage + rempl.</label><input id="c_'+ix+'_rcap" type="number" step="0.1" value="'+(+base['Recâblage avec remplacement appareillage']||0)+'"/></div>'
-           + '<div class="field"><label>'+d+' — Recâblage seul</label><input id="c_'+ix+'_rcsans" type="number" step="0.1" value="'+(+base['Recâblage sans remplacement appareillage']||0)+'"/></div>';
-    }).join('');
-    return '<div class="card"><h3>Éclairage — Commandes</h3><div class="grid">'+rows+'</div>'
-         + '<div class="row" style="margin-top:8px;gap:8px;">'
-         +   b('Ajouter un type…','cat13AddType(\"cmd\")','btn')
-         + '</div></div>';
-  }
-  function blocCS(){
-    const L = [
-      input('Création','cs_cre', T.circuit_specialise_base['Création']||0),
-      input('Remplacement appareillage','cs_remap', T.circuit_specialise_base['Remplacement appareillage']||0),
-      input('Recâblage avec remplacement appareillage','cs_rcap', T.circuit_specialise_base['Recâblage avec remplacement appareillage']||0),
-      input('Recâblage sans remplacement appareillage','cs_rcsans', T.circuit_specialise_base['Recâblage sans remplacement appareillage']||0)
-    ].join('');
-    return '<div class="card"><h3>Circuit spécialisé — Tarif de base</h3><div class="grid">'+L+'</div>'
-         + '<p class="muted">Le coefficient de section est appliqué ailleurs (chap. 3).</p></div>';
-  }
-
-  view(
-    '<div class="tarifs-wrap">'
-    + '<div class="card">'
-      + b('Retour','pageTarifsAccueil()','btn back')
-      + '<h2>Catalogue prestation</h2>'
-      + '<p class="muted">Tous les tarifs sont des prix de pose (FT posé), hors coefficients de pose/section.</p>'
-    + '</div>'
-    + blocPrises()
-    + blocLum()
-    + blocCmd()
-    + blocCS()
-    + '<div class="card"><div class="row" style="gap:8px;flex-wrap:wrap;">'
-      + b('💾 Enregistrer','cat13Save()','btn primary')
-      + b('↺ Réinitialiser (valeurs actuelles → LS)','cat13WriteCurrentToLS()','btn')
-      + b('Exporter (tarifs+prestations)','param13Export()','btn')
-      + b('Importer','param13Import()','btn')
-    + '</div></div>'
-    + '</div>'
-  );
-
-  // handlers inline
-  window.cat13AddType = function(kind){
-    const name = (prompt(kind==='lum'?'Nouveau type de luminaire :':'Nouveau type de commande :','')||'').trim();
-    if(!name) return;
-    const P = getPrestations();
-    const bag = (kind==='lum') ? P.appareillage.luminaires : P.appareillage.commandes;
-    if(bag.baseTypes.indexOf(name)===-1 && bag.customTypes.indexOf(name)===-1){
-      bag.customTypes.push(name);
-      setPrestations(P);
+// Deep merge “add-only + override on leaf numbers”
+function _mergeTarifs(base, add){
+  if(!add || typeof add!=='object') return;
+  Object.keys(add).forEach(k=>{
+    const v = add[k];
+    if(v && typeof v==='object' && !Array.isArray(v)){
+      if(!base[k] || typeof base[k]!=='object') base[k] = {};
+      _mergeTarifs(base[k], v);
+    }else{
+      base[k] = v; // leaf (number/string) → override
     }
-    pageCataloguePrestation();
-  };
+  });
+}
 
-  window.cat13Save = function(){
-    const P = getPrestations();
-    const T = window.TARIFS_BASE || (window.TARIFS_BASE={ prises:{}, eclairage:{}, circuit_specialise_base:{} });
+/* ============================================================
+   13.3 • Application au runtime (DESIGNATIONS + TARIFS_BASE)
+   ------------------------------------------------------------
+   - Alimente DESIGNATIONS_PAR_CATEGORIE :
+       * "Prises" → tous types de prises
+       * "Éclairage/Luminaires" → types luminaires
+       * "Éclairage/Commandes" → types commandes
+       * "Circuit spécialisé" → types circuit_spec
+   - Fusionne dans TARIFS_BASE (ajout/override pour ces désignations)
+   ============================================================ */
+function applyCatalogToApp(){
+  const cat = getCatalog13();
 
+  // 1) DESIGNATIONS_PAR_CATEGORIE (si défini par l’app)
+  if(typeof window.DESIGNATIONS_PAR_CATEGORIE === 'object'){
     // Prises
-    T.prises['Création'] = _num13('p_cre');
-    T.prises['Remplacement appareillage'] = _num13('p_remap');
-    T.prises['Recâblage avec remplacement appareillage'] = _num13('p_rcap');
-    T.prises['Recâblage sans remplacement appareillage'] = _num13('p_rcsans');
-
-    // Lum
-    const dl = (P.appareillage.luminaires.baseTypes||[]).concat(P.appareillage.luminaires.customTypes||[]);
-    dl.forEach(function(d,ix){
-      if(!T.eclairage[d]) T.eclairage[d]={};
-      T.eclairage[d]['Création'] = _num13('l_'+ix+'_cre');
-      T.eclairage[d]['Remplacement luminaire'] = _num13('l_'+ix+'_rem');
-      T.eclairage[d]['Recâblage avec remplacement luminaire'] = _num13('l_'+ix+'_rcap');
-      T.eclairage[d]['Recâblage sans remplacement luminaire'] = _num13('l_'+ix+'_rcsans');
+    window.DESIGNATIONS_PAR_CATEGORIE['Prises'] = window.DESIGNATIONS_PAR_CATEGORIE['Prises'] || [];
+    cat.prises.forEach(t=>{
+      if(window.DESIGNATIONS_PAR_CATEGORIE['Prises'].indexOf(t.nom)===-1){
+        window.DESIGNATIONS_PAR_CATEGORIE['Prises'].push(t.nom);
+      }
     });
 
-    // Commandes
-    const dc = (P.appareillage.commandes.baseTypes||[]).concat(P.appareillage.commandes.customTypes||[]);
-    dc.forEach(function(d,ix){
-      if(!T.eclairage[d]) T.eclairage[d]={};
-      T.eclairage[d]['Création'] = _num13('c_'+ix+'_cre');
-      T.eclairage[d]['Remplacement appareillage'] = _num13('c_'+ix+'_rem');
-      T.eclairage[d]['Recâblage avec remplacement appareillage'] = _num13('c_'+ix+'_rcap');
-      T.eclairage[d]['Recâblage sans remplacement appareillage'] = _num13('c_'+ix+'_rcsans');
+    // Éclairage
+    window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'] = window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'] || [];
+    cat.eclairage.luminaires.forEach(t=>{
+      if(window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'].indexOf(t.nom)===-1){
+        window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Luminaires'].push(t.nom);
+      }
+    });
+    window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'] = window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'] || [];
+    cat.eclairage.commandes.forEach(t=>{
+      if(window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'].indexOf(t.nom)===-1){
+        window.DESIGNATIONS_PAR_CATEGORIE['Éclairage/Commandes'].push(t.nom);
+      }
     });
 
-    // CS
-    T.circuit_specialise_base['Création'] = _num13('cs_cre');
-    T.circuit_specialise_base['Remplacement appareillage'] = _num13('cs_remap');
-    T.circuit_specialise_base['Recâblage avec remplacement appareillage'] = _num13('cs_rcap');
-    T.circuit_specialise_base['Recâblage sans remplacement appareillage'] = _num13('cs_rcsans');
+    // Circuit spécialisé
+    window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'] = window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'] || [];
+    cat.circuit_spec.forEach(t=>{
+      if(window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'].indexOf(t.nom)===-1){
+        window.DESIGNATIONS_PAR_CATEGORIE['Circuit spécialisé'].push(t.nom);
+      }
+    });
+  }
 
-    saveTarifsBaseToLS();
-    alert('✅ Tarifs enregistrés.');
+  // 2) TARIFS_BASE (si défini par l’app)
+  //    On injecte/override les désignations avec les tarifs saisis ici.
+  if(typeof window.TARIFS_BASE === 'object'){
+    // Prises
+    TARIFS_BASE.prises = TARIFS_BASE.prises || {};
+    cat.prises.forEach(t=>{
+      TARIFS_BASE.prises[t.nom] = TARIFS_BASE.prises[t.nom] || {};
+      _mergeTarifs(TARIFS_BASE.prises[t.nom], t.tarifs || {});
+    });
+
+    // Éclairage / Luminaires (libellés “luminaire”)
+    TARIFS_BASE.eclairage = TARIFS_BASE.eclairage || {};
+    cat.eclairage.luminaires.forEach(t=>{
+      TARIFS_BASE.eclairage[t.nom] = TARIFS_BASE.eclairage[t.nom] || {};
+      _mergeTarifs(TARIFS_BASE.eclairage[t.nom], t.tarifs || {});
+    });
+
+    // Éclairage / Commandes (libellés “appareillage”)
+    cat.eclairage.commandes.forEach(t=>{
+      TARIFS_BASE.eclairage[t.nom] = TARIFS_BASE.eclairage[t.nom] || {};
+      _mergeTarifs(TARIFS_BASE.eclairage[t.nom], t.tarifs || {});
+    });
+
+    // Circuit spécialisé : on injecte des désignations spécifiques (si un flux les utilise)
+    // Sinon, ces tarifs serviront dans les écrans one-shot/rapides.
+    TARIFS_BASE.circuit_specialise = TARIFS_BASE.circuit_specialise || {};
+    cat.circuit_spec.forEach(t=>{
+      TARIFS_BASE.circuit_specialise[t.nom] = TARIFS_BASE.circuit_specialise[t.nom] || {};
+      _mergeTarifs(TARIFS_BASE.circuit_specialise[t.nom], t.tarifs || {});
+    });
+  }
+}
+// Applique au chargement du chapitre
+applyCatalogToApp();
+
+/* ============================================================
+   13.4 • Page d’accueil du catalogue
+   ============================================================ */
+function pageCatalogue(){
+  const c = getCatalog13();
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'
+        + b('⬅️ Retour','pageTarifsAccueil ? pageTarifsAccueil() : pageMain()','btn back')
+        + '<h2>Catalogue matériel (lié aux menus + tarifs)</h2>'
+        + '<p class="cat-note">Ajoute des types et renseigne leurs tarifs : ils apparaissent automatiquement dans les menus correspondants et sont pris en compte dans les calculs.</p>'
+        + '<div class="row gap8" style="margin-top:8px;">'
+          + b('⚡ Prises','pageCat_Prise()','btn primary')
+          + b('💡 Éclairage — Luminaires','pageCat_Luminaires()','btn')
+          + b('🕹️ Éclairage — Commandes','pageCat_Commandes()','btn')
+          + b('🔌 Circuit spécialisé','pageCat_CS()','btn')
+          + b('⬇️ Export JSON','cat13Export()','btn ghost')
+          + b('⬆️ Import JSON','cat13Import()','btn ghost')
+          + b('🧹 Réinitialiser','cat13Reset()','btn')
+        + '</div>'
+      + '</div>'
+
+      + '<div class="card">'
+        + '<h3>Aperçu rapide</h3>'
+        + '<p><strong>Prises :</strong> '+c.prises.length+'</p>'
+        + '<p><strong>Luminaires :</strong> '+c.eclairage.luminaires.length+' • <strong>Commandes :</strong> '+c.eclairage.commandes.length+'</p>'
+        + '<p><strong>Circuit spécialisé :</strong> '+c.circuit_spec.length+'</p>'
+        + '<p class="cat-tip">Astuce : après modifications, les menus de l’app sont mis à jour immédiatement.</p>'
+      + '</div>'
+    + '</div>'
+  );
+}
+
+/* ============================================================
+   13.5 • Éditeur : PRISES
+   (libellés “appareillage”)
+   ============================================================ */
+const _PRIX_KEYS_APP = [
+  "Création",
+  "Remplacement appareillage",
+  "Recâblage avec remplacement appareillage",
+  "Recâblage sans remplacement appareillage"
+];
+function _prixRowInputs(prefix, tarifs, keys){ 
+  return keys.map(k=>{
+    const id = `${prefix}-${k.replace(/\s+/g,'_')}`;
+    const val = +(tarifs?.[k]||0);
+    return `<div class="cat-field"><label>${_escape(k)}</label><input id="${id}" type="number" step="1" inputmode="decimal" value="${val}"/></div>`;
+  }).join('');
+}
+function _saveTarifsFromInputs(prefix, keys){
+  const out = {};
+  keys.forEach(k=>{
+    const id = `${prefix}-${k.replace(/\s+/g,'_')}`;
+    const el = document.getElementById(id);
+    out[k] = _ensureNum(el && el.value);
+  });
+  return out;
+}
+
+function pageCat_Prise(){
+  const c = getCatalog13();
+  const rows = c.prises.map((t,idx)=>{
+    const prefix = `p${idx}`;
+    return `
+      <div class="card">
+        <div class="type-head">
+          <h3>${_escape(t.nom)}</h3>
+          <div>${b('Supprimer','catPriseDel('+idx+')','btn')}</div>
+        </div>
+        <div class="cat-grid">
+          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_APP)}
+        </div>
+        <div class="row gap8" style="margin-top:8px;">
+          ${b('💾 Enregistrer','catPriseSave('+idx+')','btn primary')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>⚡ Prises</h2></div>'
+      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
+      + '<div class="card">'
+        + '<h3>Ajouter un type (Prises)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="p-add-name" placeholder="ex : Prise 2P+T IP55" />'
+          + b('Ajouter','catPriseAdd()','btn')
+        + '</div>'
+      + '</div>'
+    + '</div>'
+  );
+
+  // handlers
+  window.catPriseAdd = function(){
+    const el=document.getElementById('p-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
+    const cur=getCatalog13(); cur.prises.push({ nom:name, tarifs:{} }); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_Prise();
   };
-
-  window.cat13WriteCurrentToLS = function(){
-    saveTarifsBaseToLS();
-    alert('Cloné : les valeurs actuelles ont été écrites dans le stockage.');
+  window.catPriseDel = function(idx){
+    const cur=getCatalog13(); cur.prises.splice(idx,1); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_Prise();
+  };
+  window.catPriseSave = function(idx){
+    const cur=getCatalog13(); const t=cur.prises[idx]; if(!t) return;
+    t.tarifs = _saveTarifsFromInputs(`p${idx}`, _PRIX_KEYS_APP);
+    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
   };
 }
 
-/* =============================
-   13.5 • Export / Import (tarifs + prestations)
-   ============================= */
-function param13Export(){
-  const pack = {
-    tarifs: (window.TARIFS_BASE||{}),
-    prestations: getPrestations()
+/* ============================================================
+   13.6 • Éditeur : ÉCLAIRAGE / Luminaires
+   (libellés “luminaire”)
+   ============================================================ */
+const _PRIX_KEYS_LUM = [
+  "Création",
+  "Remplacement luminaire",
+  "Recâblage avec remplacement luminaire",
+  "Recâblage sans remplacement luminaire"
+];
+
+function pageCat_Luminaires(){
+  const c = getCatalog13();
+  const rows = c.eclairage.luminaires.map((t,idx)=>{
+    const prefix = `lum${idx}`;
+    return `
+      <div class="card">
+        <div class="type-head">
+          <h3>${_escape(t.nom)}</h3>
+          <div>${b('Supprimer','catLumDel('+idx+')','btn')}</div>
+        </div>
+        <div class="cat-grid">
+          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_LUM)}
+        </div>
+        <div class="row gap8" style="margin-top:8px;">
+          ${b('💾 Enregistrer','catLumSave('+idx+')','btn primary')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>💡 Éclairage — Luminaires</h2></div>'
+      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
+      + '<div class="card">'
+        + '<h3>Ajouter un type (Luminaires)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="lum-add-name" placeholder="ex : Réglette LED" />'
+          + b('Ajouter','catLumAdd()','btn')
+        + '</div>'
+        + '<p class="cat-tip">Les types ajoutés apparaîtront dans le menu “Éclairage / Luminaires”.</p>'
+      + '</div>'
+    + '</div>'
+  );
+
+  window.catLumAdd = function(){
+    const el=document.getElementById('lum-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
+    const cur=getCatalog13(); cur.eclairage.luminaires.push({ nom:name, tarifs:{} }); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_Luminaires();
   };
-  const raw = JSON.stringify(pack, null, 2);
+  window.catLumDel = function(idx){
+    const cur=getCatalog13(); cur.eclairage.luminaires.splice(idx,1); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_Luminaires();
+  };
+  window.catLumSave = function(idx){
+    const cur=getCatalog13(); const t=cur.eclairage.luminaires[idx]; if(!t) return;
+    t.tarifs = _saveTarifsFromInputs(`lum${idx}`, _PRIX_KEYS_LUM);
+    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
+  };
+}
+
+/* ============================================================
+   13.7 • Éditeur : ÉCLAIRAGE / Commandes
+   (libellés “appareillage”)
+   ============================================================ */
+function pageCat_Commandes(){
+  const c = getCatalog13();
+  const rows = c.eclairage.commandes.map((t,idx)=>{
+    const prefix = `cmd${idx}`;
+    return `
+      <div class="card">
+        <div class="type-head">
+          <h3>${_escape(t.nom)}</h3>
+          <div>${b('Supprimer','catCmdDel('+idx+')','btn')}</div>
+        </div>
+        <div class="cat-grid">
+          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_APP)}
+        </div>
+        <div class="row gap8" style="margin-top:8px;">
+          ${b('💾 Enregistrer','catCmdSave('+idx+')','btn primary')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>🕹️ Éclairage — Commandes</h2></div>'
+      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
+      + '<div class="card">'
+        + '<h3>Ajouter un type (Commandes)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="cmd-add-name" placeholder="ex : Variateur rotatif" />'
+          + b('Ajouter','catCmdAdd()','btn')
+        + '</div>'
+        + '<p class="cat-tip">Les types ajoutés apparaîtront dans le menu “Éclairage / Commandes”.</p>'
+      + '</div>'
+    + '</div>'
+  );
+
+  window.catCmdAdd = function(){
+    const el=document.getElementById('cmd-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
+    const cur=getCatalog13(); cur.eclairage.commandes.push({ nom:name, tarifs:{} }); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_Commandes();
+  };
+  window.catCmdDel = function(idx){
+    const cur=getCatalog13(); cur.eclairage.commandes.splice(idx,1); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_Commandes();
+  };
+  window.catCmdSave = function(idx){
+    const cur=getCatalog13(); const t=cur.eclairage.commandes[idx]; if(!t) return;
+    t.tarifs = _saveTarifsFromInputs(`cmd${idx}`, _PRIX_KEYS_APP);
+    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
+  };
+}
+
+/* ============================================================
+   13.8 • Éditeur : CIRCUIT SPÉCIALISÉ
+   (libellés “appareillage”)
+   ============================================================ */
+function pageCat_CS(){
+  const c = getCatalog13();
+  const rows = c.circuit_spec.map((t,idx)=>{
+    const prefix = `cs${idx}`;
+    return `
+      <div class="card">
+        <div class="type-head">
+          <h3>${_escape(t.nom)}</h3>
+          <div>${b('Supprimer','catCSDel('+idx+')','btn')}</div>
+        </div>
+        <div class="cat-grid">
+          ${_prixRowInputs(prefix, t.tarifs, _PRIX_KEYS_APP)}
+        </div>
+        <div class="row gap8" style="margin-top:8px;">
+          ${b('💾 Enregistrer','catCSSave('+idx+')','btn primary')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  view(
+    '<div class="cat-wrap">'
+      + '<div class="card">'+b('⬅️ Retour','pageCatalogue()','btn back')+'<h2>🔌 Circuit spécialisé</h2></div>'
+      + (rows || '<div class="card"><div class="cat-note">Aucun type pour le moment.</div></div>')
+      + '<div class="card">'
+        + '<h3>Ajouter un type (Circuit spécialisé)</h3>'
+        + '<div class="row gap8">'
+          + '<input id="cs-add-name" placeholder="ex : Cumulus, VMC, Pompe de relevage…" />'
+          + b('Ajouter','catCSAdd()','btn')
+        + '</div>'
+        + '<p class="cat-tip">Les types ajoutés apparaîtront dans “Circuit spécialisé”.</p>'
+      + '</div>'
+    + '</div>'
+  );
+
+  window.catCSAdd = function(){
+    const el=document.getElementById('cs-add-name'); const name=(el&&el.value||'').trim(); if(!name) return;
+    const cur=getCatalog13(); cur.circuit_spec.push({ nom:name, tarifs:{} }); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_CS();
+  };
+  window.catCSDel = function(idx){
+    const cur=getCatalog13(); cur.circuit_spec.splice(idx,1); setCatalog13(cur);
+    applyCatalogToApp(); pageCat_CS();
+  };
+  window.catCSSave = function(idx){
+    const cur=getCatalog13(); const t=cur.circuit_spec[idx]; if(!t) return;
+    t.tarifs = _saveTarifsFromInputs(`cs${idx}`, _PRIX_KEYS_APP);
+    setCatalog13(cur); applyCatalogToApp(); alert('✅ Tarifs enregistrés.');
+  };
+}
+
+/* ============================================================
+   13.9 • Import / Export / Reset
+   ============================================================ */
+function cat13Export(){
+  const raw = JSON.stringify(getCatalog13(), null, 2);
   const blob = new Blob([raw], {type:'application/json;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href=url; a.download='catalogue_prestation.json'; a.click(); URL.revokeObjectURL(url);
+  a.href = url; a.download = 'catalogue_types_v2.json'; a.click();
+  URL.revokeObjectURL(url);
 }
-function param13Import(){
-  const input=document.createElement('input');
-  input.type='file'; input.accept='application/json';
-  input.onchange=()=>{
-    const f=input.files && input.files[0]; if(!f) return;
-    const rd=new FileReader();
-    rd.onload=()=>{
+function cat13Import(){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'application/json';
+  input.onchange = function(){
+    const f = input.files && input.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = function(){
       try{
-        const data=JSON.parse(rd.result||'{}');
-        if(data.prestations) setPrestations(data.prestations);
-        if(data.tarifs && typeof data.tarifs==='object'){
-          if(typeof window.TARIFS_BASE!=='object') window.TARIFS_BASE={};
-          // remplace proprement (shallow/deep simple)
-          window.TARIFS_BASE = JSON.parse(JSON.stringify(data.tarifs));
-          saveTarifsBaseToLS();
-        }
-        alert('✅ Import réussi.');
-        if(typeof pageCataloguePrestation==='function') pageCataloguePrestation();
+        const obj = JSON.parse(rd.result||'{}');
+        if(!obj || !obj.prises || !obj.eclairage || !obj.circuit_spec) { alert('❌ JSON inattendu.'); return; }
+        setCatalog13(obj);
+        applyCatalogToApp();
+        alert('✅ Catalogue importé.');
+        pageCatalogue();
       }catch(e){ alert('❌ Import impossible : '+e.message); }
     };
     rd.readAsText(f,'utf-8');
   };
   input.click();
 }
+function cat13Reset(){
+  if(!confirm('Réinitialiser le catalogue aux valeurs par défaut ?')) return;
+  localStorage.removeItem(KEY_CATALOG13);
+  applyCatalogToApp();
+  alert('✅ Catalogue réinitialisé.');
+  pageCatalogue();
+}
 
-/* =============================
-   13.6 • Expose (global)
-   ============================= */
+/* ============================================================
+   13.10 • Injection dans le Chapitre 8 (Paramétrage)
+   ============================================================ */
+(function injectIntoParametrage(){
+  const orig = window.pageTarifsAccueil;
+  if(typeof orig === 'function'){
+    window.pageTarifsAccueil = function(){
+      orig();
+      const app = document.getElementById('app');
+      if(!app) return;
+      const btn = 'Catalogue matériel (lié aux menus + tarifs)';
+      if(app.innerHTML.indexOf('pageCatalogue()')===-1){
+        app.innerHTML = app.innerHTML.replace(
+          /(<div class="row"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)/,
+          '$1'
+          + '<div class="card tarif-card"><div class="row" style="gap:8px;">'
+          +   '<button class="btn" onclick="pageCatalogue()">'+btn+'</button>'
+          + '</div></div>'
+        );
+      }
+    };
+  }
+})();
+
+/* ============================================================
+   13.11 • Expose (window)
+   ============================================================ */
 Object.assign(window, {
-  pageTarifsAccueil,
-  pageCataloguePrestation,
-  getPrestations,
-  setPrestations,
-  param13Export,
-  param13Import
+  pageCatalogue,
+  pageCat_Prise,
+  pageCat_Luminaires,
+  pageCat_Commandes,
+  pageCat_CS,
+  cat13Export,
+  cat13Import,
+  cat13Reset,
+  applyCatalogToApp
 });
 </script>
 
-
-
- 
-
-
   
-
-
   
 
 
@@ -4457,486 +3954,4 @@ if (typeof window.goIntervention !== 'function') {
 
 // Lancement auto
 init();
-</script>
-
-
-
-
-
-
-
-
-<!-- =============================
-     CHAPITRE 15 (UNIFIÉ) — v15.ONE
-     Tarifs & Duplication
-     - Recalcul (globaux + overrides de CE devis)
-     - Duplication avec tarifs globaux
-     - Overrides locaux (éditeur) + sauvegarde
-     - Gestion PRISES (schéma plat OU par désignation)
-     - Compat Tableau/Mods (ID, DJ, pose tableau, etc.)
-     - Injection propre (Estimatif & Totaux) + nettoyage anciens boutons
-     ============================= -->
-<script>
-(function(){
-
-/* ============== 15.0 • Helpers sûrs ============== */
-function _deep(x){ try{return JSON.parse(JSON.stringify(x))}catch(e){return x} }
-function _num(x){ return Number.isFinite(+x) ? +x : 0 }
-function _poseCoef(p){ const m=(window.COEFF_POSE||{}); return +m[p]>0?+m[p]:1 }
-function _round5(n){ n=_num(n); return Math.ceil(n/5)*5 }
-function _get(obj, path, def){ try{ return path.split('.').reduce((o,k)=> (o && k in o)? o[k] : undefined, obj) ?? def; }catch(e){ return def; } }
-function _esc15X(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-/* ============== 15.1 • Résolution tarifs (globaux + overrides) ============== */
-/* Interventions standard (colonnes de l’éditeur) */
-const INTERVS_STD = [
-  'Création',
-  'Remplacement appareillage',
-  'Remplacement luminaire',
-  'Recâblage avec remplacement appareillage',
-  'Recâblage sans remplacement appareillage',
-  'Recâblage avec remplacement luminaire',
-  'Recâblage sans remplacement luminaire'
-];
-
-/* PRISES : accepte 2 schémas
-   - plat:    TARIFS_BASE.prises[intervention] = nombre
-   - par des: TARIFS_BASE.prises[designation][intervention] = nombre
-*/
-function _findPriseTarif(obj, designation, intervention){
-  if(!obj || !obj.prises) return null;
-  const P = obj.prises;
-
-  // 1) par désignation exacte
-  if (P[designation] && P[designation][intervention] != null){
-    return +P[designation][intervention];
-  }
-  // 2) schéma plat (clé = intervention)
-  if (P[intervention] != null && (typeof P[intervention] === 'number' || typeof P[intervention] === 'string')){
-    return +P[intervention];
-  }
-  // 3) fallback générique "Prise"
-  if (P['Prise'] && P['Prise'][intervention] != null){
-    return +P['Prise'][intervention];
-  }
-  return null;
-}
-
-/* Accès générique pour autres familles */
-function _findTarifIn(obj, cat, designation, intervention){
-  if(!obj) return null;
-  if(cat==='Prises') return _findPriseTarif(obj, designation, intervention);
-  if(cat==='Éclairage/Luminaires' || cat==='Éclairage/Commandes'){
-    return _get(obj, 'eclairage["'+designation+'"]["'+intervention+'"]', null);
-  }
-  if(/^Circuit\s*sp/i.test(cat)){
-    const s = _get(obj, 'circuit_specialise["'+designation+'"]["'+intervention+'"]', null);
-    if(s!=null) return s;
-    const b = _get(obj, 'circuit_specialise_base["'+intervention+'"]', null);
-    if(b!=null) return b;
-  }
-  return null;
-}
-
-/* ============== 15.2 • Calcul PU (ligne) ============== */
-function computePU15X(item, opts){
-  const cat  = String(item.category||'').trim();
-  const des  = String(item.designation||'').trim();
-  const intv = String(item.intervention||'').trim() || 'Création';
-  const pose = String(item.pose||'').trim();
-  const extras = (opts && opts.extras) || {};
-
-  const over  = (opts && opts.overrides) || (window.devis && devis.__tarifs_override) || null;
-  let pu = _findTarifIn(over, cat, des, intv);
-  if(pu==null) pu = _findTarifIn(window.TARIFS_BASE||{}, cat, des, intv);
-
-  // Cas spé : lignes de spots (surcoût par spot si défini)
-  if(cat==='Éclairage/Luminaires' && /alimentation ligne de spot/i.test(des) && extras.spots){
-    const perSpot = _findTarifIn(over, cat, 'Alimentation ligne de spot (par spot)', intv)
-                 ?? _findTarifIn(window.TARIFS_BASE||{}, cat, 'Alimentation ligne de spot (par spot)', intv);
-    if(perSpot!=null) pu = _num(pu) + _num(perSpot) * _num(extras.spots);
-  }
-
-  if(pu!=null && intv==='Création' && pose){
-    pu = _num(pu) * _poseCoef(pose);
-  }
-  if(pu!=null) return _round5(pu);
-
-  return _num(item.prixU||0);
-}
-
-/* ======== 15.3 • Spécifiques TABLEAU (ID, DJ, pose, mods) ======== */
-function _intFirst(s, def){ const m=/(\d+)/.exec(String(s||'')); return m?+m[1]:(def||0); }
-
-function repriceTableauPose(it){
-  if (typeof window.getTabPrice !== 'function') return it.prixU;
-  const r = _intFirst(/(\d+)\s*rang/i.exec(it.designation||'')?.[1],1);
-  const m = _intFirst(/(\d+)\s*modules?/i.exec(it.designation||'')?.[1],13);
-  const pu = +getTabPrice(r, m, it.pose||'Saillie', it.intervention||'Création')||0;
-  return pu? _round5(pu) : it.prixU;
-}
-function repriceTableauID(it){
-  const TT=(window.TARIFS_TABLEAU||{}), map=TT.inter_diff||{};
-  const s=String(it.designation||''); const isA=/Type\s*A\b/i.test(s); const isAC=/Type\s*AC\b/i.test(s);
-  const amp=_intFirst(s,40); const key=isA? (amp+'-A') : (amp+'-AC');
-  const price = map[key] ?? null; return (price!=null)? _round5(+price||0) : it.prixU;
-}
-function repriceTableauDJ(it){
-  const TT=(window.TARIFS_TABLEAU||{}), map=TT.disjoncteurs||{};
-  const amp=_intFirst(it.designation,0), price=map[amp];
-  return (price!=null)? _round5(+price||0) : it.prixU;
-}
-function repriceTableauCommande(it){
-  const TT=(window.TARIFS_TABLEAU||{}), map=TT.commandes||{};
-  const price = map[it.designation] ?? null;
-  return (price!=null)? _round5(+price||0) : it.prixU;
-}
-function repriceDeplacementTab(it){
-  if(typeof calcDeplacementTotal!=='function') return it.prixU;
-  const m=/Circuits à rallonger\s*:\s*(\d+)\s*—\s*Boîte\s*:\s*([^—]+?)\s*—\s*Goulotte\s*:\s*([\d.,]+)\s*m/i.exec(it.designation||'');
-  if(!m) return it.prixU;
-  const n=+m[1]||0, lbl=(m[2]||'').trim(), lm=parseFloat((m[3]||'0').replace(',','.'))||0;
-  let id='NONE';
-  if(/100\s*×\s*150/i.test(lbl)) id='100x150';
-  else if(/150\s*×\s*200/i.test(lbl)) id='150x200';
-  else if(/200\s*×\s*250/i.test(lbl)) id='200x250';
-  else if(/300\s*×\s*350/i.test(lbl)) id='300x350';
-  return _round5(+calcDeplacementTotal(n,id,lm)||0);
-}
-function repriceRemplCoffret(it){
-  if(typeof calcRemplacementCoffretTotal!=='function') return it.prixU;
-  const mr=/(\d+)\s*rangée\(s\).*?(\d+)\s*modules.*?Pose\s*(Saillie|Encastré)/i.exec(it.designation||'');
-  if(!mr) return it.prixU;
-  const rang=+mr[1]||1, modTxt=(mr[2]||'13')+' modules', p=mr[3]||'Saillie';
-  return _round5(+calcRemplacementCoffretTotal(rang, modTxt, p)||0);
-}
-function repriceRecabCircuits(it){
-  if(typeof calcRecabCircuits!=='function') return it.prixU;
-  const mc=/Nombre de circuits à recâbler\s*:\s*(\d+)/i.exec(it.designation||'');
-  if(!mc) return it.prixU;
-  return _round5(+calcRecabCircuits(+mc[1]||0)||0);
-}
-
-/* ======== 15.4 • Routeur (ligne) ======== */
-function repriceItem15X(it){
-  const cat = String(it.category||'').trim();
-  try{
-    // Familles “catalogue”
-    if(/^Prises$/i.test(cat)
-    || /^Éclairage\/Luminaires$/i.test(cat)
-    || /^Éclairage\/Commandes$/i.test(cat)
-    || /^Circuit\s*sp[ée]cialis[ée]$/i.test(cat)){
-      return computePU15X(it, { overrides: (window.devis && devis.__tarifs_override)||{}, extras: it.__extras||{} });
-    }
-
-    // Tableau & distribution
-    if(/^Tableau\/Modulaire$/i.test(cat)){
-      const s=String(it.designation||'');
-      if(/^ID\s*30mA/i.test(s)) return repriceTableauID(it);
-      if(/^Disjoncteur\s/i.test(s)) return repriceTableauDJ(it);
-      return it.prixU;
-    }
-    if(/^Tableau\/Commandes$/i.test(cat)) return repriceTableauCommande(it);
-    if(/^Tableau\s*&\s*distribution$/i.test(cat)){
-      const s=String(it.designation||'');
-      if(/^Pose tableau/i.test(s)) return repriceTableauPose(it);
-      if(/Remplacement coffret/i.test(s)) return repriceRemplCoffret(it);
-      if(/Recâblage tableau existant — Circuits/i.test(cat) || /Circuits à recâbler/i.test(s)) return repriceRecabCircuits(it);
-      if(/Modification emplacement Tableau/i.test(cat) || /Circuits à rallonger/i.test(s)) return repriceDeplacementTab(it);
-      return it.prixU; // bloc récap / libre
-    }
-
-    // Autres familles (Ventilation, Spécifique, etc.) : on ne touche pas
-    return it.prixU;
-  }catch(e){
-    console.warn('Reprice item error', e, it);
-    return it.prixU;
-  }
-}
-
-/* ======== 15.5 • Repricing d’un devis complet ======== */
-function repriceDevisObject15X(src, opts){
-  const draft = _deep(src||{});
-  for(const k in draft){
-    if(k.indexOf('__')===0) continue;
-    const sec = draft[k]; if(!sec || !Array.isArray(sec.items)) continue;
-    sec.items = sec.items.map(it=>{
-      const out = _deep(it);
-      const pu = repriceItem15X(out);
-      if (typeof pu === 'number' && isFinite(pu)) out.prixU = pu;
-      return out;
-    });
-  }
-  return draft;
-}
-
-/* ======== 15.6 • Actions ======== */
-function repriceCurrentDevis15X(){
-  if(!window.devis){ alert('Aucun devis chargé.'); return; }
-  window.devis = repriceDevisObject15X(window.devis, { overrides: (window.devis.__tarifs_override||{}) });
-  if(typeof saveLocal==='function') saveLocal();
-  alert('✅ Devis recalculé (globaux + overrides).');
-  try{ if(typeof pageEstimatif==='function') pageEstimatif(); }catch(e){}
-}
-
-function duplicateWithGlobalTarifs15X(){
-  if(!window.devis){ alert('Aucun devis chargé.'); return; }
-  const dup = _deep(window.devis); delete dup.__tarifs_override;
-  const res = repriceDevisObject15X(dup, { overrides: null });
-  res.__id   = 'dv_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-  res.__name = (dup.__name||'Devis').replace(/\s*\(.*\)\s*$/,'') + ' — recalculé (globaux)';
-
-  window.devis = res;
-  if(typeof saveLocal==='function') saveLocal();
-  try{ if(typeof saveCurrentDevis==='function') saveCurrentDevis(); }catch(e){}
-  alert('✅ Duplicata créé avec tarifs globaux.');
-  try{ if(typeof pageSavedDevis==='function') pageSavedDevis(); }catch(e){}
-}
-
-/* ======== 15.7 • Overrides (UI simple) ======== */
-function _collectCatalogueFromDevis(){
-  const out = { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
-  if(!window.devis) return out;
-  for(const k in devis){
-    if(k.indexOf('__')===0) continue;
-    const sec = devis[k]; if(!sec || !Array.isArray(sec.items)) continue;
-    sec.items.forEach(it=>{
-      const cat=String(it.category||'').trim();
-      const des=String(it.designation||'').trim();
-      const intv=String(it.intervention||'').trim()||'Création';
-      if(/^Prises$/i.test(cat)){
-        (out.prises[des] ||= {}); out.prises[des][intv] ??= '';
-      }else if(/^Éclairage\/(Luminaires|Commandes)$/i.test(cat)){
-        (out.eclairage[des] ||= {}); out.eclairage[des][intv] ??= '';
-      }else if(/^Circuit\s*sp/i.test(cat)){
-        (out.circuit_specialise[des] ||= {}); out.circuit_specialise[des][intv] ??= '';
-      }
-    });
-  }
-  const cur = (window.devis && devis.__tarifs_override)||{};
-  ['prises','eclairage','circuit_specialise','circuit_specialise_base'].forEach(ns=>{
-    if(cur[ns]){
-      Object.keys(cur[ns]).forEach(des=>{
-        out[ns][des]=Object.assign({}, out[ns][des]||{}, cur[ns][des]);
-      });
-    }
-  });
-  return out;
-}
-
-function pageTarifsDevis(){
-  if(!window.devis){ alert('Aucun devis chargé.'); return; }
-  const data = _collectCatalogueFromDevis();
-  function renderSection(title, ns){
-    const map = data[ns]; const keys = Object.keys(map);
-    if(!keys.length) return '<p class="muted">Aucune ligne pour cette famille.</p>';
-    const head = '<tr><th style="min-width:260px">Désignation</th>'+INTERVS_STD.map(i=>'<th style="min-width:120px">'+i+'</th>').join('')+'</tr>';
-    const rows = keys.map(des=>{
-      const cells = INTERVS_STD.map(i=>{
-        const val = (map[des] && map[des][i] != null) ? map[des][i] : '';
-        const id  = 'ov_'+ns+'__'+btoa(encodeURIComponent(des)).replace(/=+$/,'')+'__'+btoa(encodeURIComponent(i)).replace(/=+$/,'');
-        return '<td><input id="'+id+'" type="number" step="1" inputmode="decimal" placeholder="—" value="'+(val===''?'':String(val))+'" /></td>';
-      }).join('');
-      return '<tr><td><strong>'+_esc15X(des)+'</strong></td>'+cells+'</tr>';
-    }).join('');
-    return '<div class="card">'
-         +   '<div class="section-title" style="padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#f6f6f6;margin-bottom:8px;">'+_esc15X(title)+'</div>'
-         +   '<div style="overflow:auto;"><table class="dv-table"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>'
-         + '</div>';
-  }
-
-  view(
-    '<div class="dv-wrap">'
-    +  '<div class="card">'+(typeof b==='function'?b('Retour','pageEstimatif ? pageEstimatif() : pageMain()','btn back'):'')
-    +  '<h2>Tarifs de CE devis (overrides)</h2>'
-    +  '<p class="muted">Les valeurs saisies ici priment sur le catalogue global. Laisse vide pour utiliser les tarifs globaux.</p>'
-    +  '</div>'
-    +  renderSection('Prises','prises')
-    +  renderSection('Éclairage (Luminaires & Commandes)','eclairage')
-    +  renderSection('Circuit spécialisé','circuit_specialise')
-    +  '<div class="card"><div class="row" style="gap:8px;flex-wrap:wrap;">'
-    +    (typeof b==='function'? b('Enregistrer (devis)','saveTarifsOverride15X()','btn primary') : '<button onclick="saveTarifsOverride15X()">Enregistrer (devis)</button>')
-    +    (typeof b==='function'? b('Recalculer avec ces tarifs','repriceCurrentDevis15X()','btn') : '<button onclick="repriceCurrentDevis15X()">Recalculer avec ces tarifs</button>')
-    +    (typeof b==='function'? b('Vider les overrides','clearTarifsOverride15X()','btn') : '<button onclick="clearTarifsOverride15X()">Vider les overrides</button>')
-    +  '</div></div>'
-    +'</div>'
-  );
-}
-
-function saveTarifsOverride15X(){
-  const over = { prises:{}, eclairage:{}, circuit_specialise:{}, circuit_specialise_base:{} };
-  function readSection(ns){
-    const inputs = Array.from(document.querySelectorAll('input[id^="ov_'+ns+'__"]'));
-    inputs.forEach(inp=>{
-      const m = new RegExp('^ov_'+ns+'__([^_]+)__([^_]+)$').exec(inp.id.replace(/=+$/,''));
-      if(!m) return;
-      const des = decodeURIComponent(atob(m[1]+'=='));
-      const itv = decodeURIComponent(atob(m[2]+'=='));
-      const val = inp.value.trim();
-      if(val!==''){
-        const num = _num(val);
-        (over[ns][des] ||= {}); over[ns][des][itv] = num;
-      }
-    });
-  }
-  readSection('prises'); readSection('eclairage'); readSection('circuit_specialise');
-  if(!window.devis) window.devis={};
-  devis.__tarifs_override = over;
-  if(typeof saveLocal==='function') saveLocal();
-  alert('✅ Tarifs personnalisés enregistrés pour ce devis.');
-}
-
-function clearTarifsOverride15X(){
-  if(!window.devis) return;
-  delete devis.__tarifs_override;
-  if(typeof saveLocal==='function') saveLocal();
-  alert('Overrides supprimés.');
-  try{ pageTarifsDevis(); }catch(e){}
-}
-
-/* ======== 15.8 • Injection UI + Nettoyage anciens boutons ======== */
-(function attachButtons15X(){
-  function append(){
-    const app=document.getElementById('app'); if(!app) return;
-    if(app.innerHTML.indexOf('pageTarifsDevis()')!==-1) return; // déjà injecté
-
-    app.innerHTML +=
-      '<div class="card" style="margin-top:12px;">'
-      +  '<h3>Tarifs & duplication</h3>'
-      +  '<div class="row" style="gap:8px;flex-wrap:wrap;">'
-      +    '<button class="btn" onclick="repriceCurrentDevis15X()">🔄 Recalculer (globaux + overrides)</button>'
-      +    '<button class="btn primary" onclick="duplicateWithGlobalTarifs15X()">🧭 Dupliquer avec tarifs globaux</button>'
-      +    '<button class="btn" onclick="pageTarifsDevis()">✏️ Tarifs de ce devis</button>'
-      +  '</div>'
-      +'</div>';
-  }
-  function stripLegacy(){
-    const app=document.getElementById('app'); if(!app) return;
-    Array.from(app.querySelectorAll('button')).forEach(btn=>{
-      const oc=(btn.getAttribute('onclick')||''); const txt=(btn.textContent||'');
-      if (/duplicateDevisWithCurrentTarifs\(\)/.test(oc)
-       || /duplicateDevisWithCurrentTarifs_REPRICE\(\)/.test(oc)
-       || /Dupliquer avec tarifs actuels/i.test(txt)
-       || /Dupliquer avec nouveaux tarifs/i.test(txt)) {
-        btn.remove();
-      }
-    });
-  }
-  function wrap(name){
-    const orig=window[name];
-    if(typeof orig!=='function' || orig.__v15oneWrapped) return;
-    window[name]=function(){ orig.apply(this,arguments); stripLegacy(); append(); };
-    window[name].__v15oneWrapped=true;
-  }
-  wrap('pageEstimatif'); wrap('pageTotaux');
-  setTimeout(function(){ stripLegacy(); append(); }, 0); // si déjà affiché
-})();
-
-/* ======== 15.9 • Expose ======== */
-Object.assign(window,{
-  repriceDevisObject15X,
-  repriceCurrentDevis15X,
-  duplicateWithGlobalTarifs15X,
-  pageTarifsDevis,
-  saveTarifsOverride15X,
-  clearTarifsOverride15X
-});
-
-})();
-</script>
-
-
-
-
-
-
-
-
-
-
-<!-- =============================
-     CHAPITRE 16 : DEVIS (PDF) — V16.5 STABLE ET AUTONOME
-     ============================= -->
-<script>
-/* Helpers de base */
-function _rd16(k,d){try{return JSON.parse(localStorage.getItem(k)||'null')??d}catch(e){return d}}
-function _wr16(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-function _esc16(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function _num16(v){return Number.isFinite(+v)?+v:0}
-function _euro16(n){const v=_num16(n);return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
-function _todayFR16(){return new Date().toLocaleDateString('fr-FR',{year:'numeric',month:'2-digit',day:'2-digit'})}
-function _pad4_16(n){return String(n).padStart(4,'0')}
-
-/* Données locales */
-const KEY_PREFS_V1='appPrefs_v1',KEY_COMPANY_V1='companyConfig_v1',KEY_CLI='devis_last_client_v1',KEY_CGV='devis_cgv_v1';
-function _getClient16(){return _rd16(KEY_CLI,{nom:'',adresse:'',cp:'',ville:'',tel:'',email:''})}
-function _setClient16(c){_wr16(KEY_CLI,c||{})}
-function _getCGV16(){return _rd16(KEY_CGV,`Conditions générales de vente :
-- Validité : 30 jours
-- Paiement : 30 jours fin de mois
-- Travaux conformes aux règles de l’art
-- Modifications = avenant
-- Garantie légale fournitures et pose.`)}
-function _setCGV16(t){_wr16(KEY_CGV,String(t||''))}
-
-/* Récupération lignes devis */
-function _pieceLabel16(k){return(typeof pieceDisplayLabel==='function')?pieceDisplayLabel(k):k}
-function _sortedItems16(k,it){return(typeof sortedItemsForPiece==='function')?sortedItemsForPiece(k,it):(Array.isArray(it)?it.slice():[])}
-function _collectLines16(){
- const out=[];let total=0;const src=(typeof devis==='object'&&devis)?devis:{};
- for(const k in src){if(k.startsWith('__'))continue;const sec=src[k];if(!sec||!Array.isArray(sec.items))continue;
-  const arr=_sortedItems16(k,sec.items);
-  arr.forEach(it=>{const q=_num16(it.qty),pu=_num16(it.prixU),t=q*pu;total+=t;
-   const d=(it.intervention?it.intervention+' — ':'')+(it.designation||'Élément');out.push({piece:_pieceLabel16(k),designation:d,qty:q,pu:pu,total:t});});
- }
- return{lines:out,total};
-}
-
-/* Génération HTML imprimable */
-function _buildPrintableHTML16(){
- const prefs=_rd16(KEY_PREFS_V1,{}),co=_rd16(KEY_COMPANY_V1,{}),cli=_getClient16(),cgv=_getCGV16();
- const name=(devis&&devis.__name)||'Devis',pref=prefs.numerotation_prefix||'DEV-',num=_pad4_16(prefs.numerotation_courante||1),ref=(devis&&devis.__ref)||pref+num;
- const pack=_collectLines16();const by={};pack.lines.forEach(l=>(by[l.piece]||(by[l.piece]=[])).push(l));
- let secHTML='';for(const p in by){const rows=by[p].map(L=>`<tr><td>${_esc16(L.designation)}</td><td style="text-align:right">${L.qty}</td><td style="text-align:right">${_euro16(L.pu)}</td><td style="text-align:right">${_euro16(L.total)}</td></tr>`).join('');const st=by[p].reduce((s,x)=>s+_num16(x.total),0);
-  secHTML+=`<div class="sec-title">${_esc16(p)}</div><table class="dv-table"><thead><tr><th>Désignation</th><th>Qté</th><th>PU</th><th>Total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3" style="text-align:right"><b>Sous-total</b></td><td style="text-align:right"><b>${_euro16(st)}</b></td></tr></tfoot></table>`}
- const tvaOn=!!prefs.tva_applicable,taux=_num16(prefs.taux_tva||20),HT=_num16(pack.total),TVA=tvaOn?HT*taux/100:0,TTC=HT+TVA;
- const logo=co.logo_dataurl?`<img src="${co.logo_dataurl}" style="max-height:70px;max-width:240px;border:1px solid #eee;border-radius:6px;padding:4px;">`:'';
- const css=`body{font:14px/1.35 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Arial;color:#222;margin:0}
-.sheet{width:210mm;margin:auto;padding:18mm 16mm}.sec-title{background:#f3f4f6;border:1px solid #ddd;border-radius:6px;padding:6px 8px;margin:16px 0 6px;font-weight:600}
-.dv-table{width:100%;border-collapse:collapse;margin:4px 0 12px}.dv-table th,.dv-table td{border:1px solid #ccc;padding:5px 6px}
-@media print{.no-print{display:none}}`;
- return `<!doctype html><html><head><meta charset=utf-8><title>${_esc16(name)} – ${_esc16(ref)}</title><style>${css}</style></head>
-<body><div class=sheet>
-<div style="display:flex;justify-content:space-between"><div>${logo}<div>${_esc16(co.raison_sociale||co.nom_commercial||'')}</div><div>${_esc16(co.ville||'')}</div></div>
-<div><h2>Devis ${_esc16(ref)}</h2><div>${_todayFR16()}</div><div><b>${_esc16(cli.nom)}</b><br>${_esc16(cli.ville)}</div></div></div>
-<h1>${_esc16(name)}</h1><div class=muted>Devis en prix global par ligne (fournitures + pose).</div>${secHTML||'<p>Aucune ligne.</p>'}
-<table style="width:100%;margin-top:8px"><tr><td style="text-align:right">Total HT</td><td style="text-align:right">${_euro16(HT)}</td></tr>
-${tvaOn?`<tr><td style="text-align:right">TVA (${taux} %)</td><td style="text-align:right">${_euro16(TVA)}</td></tr>`:''}
-<tr><td style="text-align:right"><b>Total TTC</b></td><td style="text-align:right"><b>${_euro16(TTC)}</b></td></tr></table>
-<h3>Conditions générales</h3><pre style="white-space:pre-wrap;border:1px solid #ccc;padding:6px;border-radius:6px">${_esc16(cgv)}</pre>
-<div class=no-print style="margin-top:10px"><button onclick="window.print()">Imprimer / PDF</button><button onclick="window.close()">Fermer</button></div>
-</div></body></html>`;
-}
-
-/* Actions */
-function buildDevisPDF16(){try{const h=_buildPrintableHTML16(),w=open('','_blank');if(!w)return alert('Autorise les pop-ups');w.document.write(h);w.document.close();setTimeout(()=>w.focus(),200);}catch(e){alert('Erreur PDF : '+e.message)}}
-function pageDevisPDF16(){alert('Aperçu désactivé : utilise le bouton PDF.')}  
-
-/* Injection automatique des boutons */
-(function(){
- const add=()=>{
-   const app=document.getElementById('app');if(!app)return;
-   if(app.innerHTML.includes('buildDevisPDF16'))return;
-   app.innerHTML+=`<div class="card" style="margin-top:12px">
-     <h3>Devis (PDF)</h3>
-     <div class="row" style="gap:8px;flex-wrap:wrap">
-       <button class="btn" onclick="buildDevisPDF16()">Aperçu / Générer PDF</button>
-     </div>
-   </div>`;}
- const wrap=n=>{const o=window[n];if(typeof o!=='function')return;window[n]=function(){o.apply(this,arguments);add();}};
- wrap('pageEstimatif');wrap('pageTotaux');setTimeout(add,0);
-})();
-
-/* Expose */
-Object.assign(window,{buildDevisPDF16,pageDevisPDF16});
 </script>
