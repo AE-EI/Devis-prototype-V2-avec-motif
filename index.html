@@ -501,9 +501,17 @@ function saveCurrentDevis(){
   // Détermine/valide le nom
   var name = (devis.__name||'').trim();
   if(i < 0 && !name){
-    name = (prompt('Nom du devis :','')||'').trim();
-    if(!name){ alert('Sauvegarde annulée.'); return; }
+    showNamePromptModal('Nom du devis :', function(chosenName){
+      if(!chosenName){ alert('Sauvegarde annulée.'); return; }
+      _finishSaveCurrentDevis(chosenName);
+    });
+    return;
   }
+  _finishSaveCurrentDevis(name);
+}
+function _finishSaveCurrentDevis(name){
+  var saved = getSavedList();
+  var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
   devis.__name = name || (saved[i]?.name) || ('Devis '+new Date().toLocaleDateString());
 
   var record = { name: devis.__name, date: new Date().toLocaleString(), data: devis };
@@ -524,6 +532,41 @@ function saveCurrentDevis(){
   setSavedList(saved);
   makeSavedBackup(saved);
   alert('✅ Devis sauvegardé.');
+}
+
+/** Petite modale inline (remplace prompt(), indisponible en PWA standalone iOS) */
+function showNamePromptModal(label, callback){
+  showInlinePrompt(label, '', callback);
+}
+function showInlinePrompt(label, defaultValue, callback){
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = '<div class="card" style="max-width:400px;width:100%;background:#fff;">'
+    + '<h3 style="margin-top:0;">'+label+'</h3>'
+    + '<input id="modal-inline-prompt" />'
+    + '<div class="row" style="margin-top:12px; gap:8px;">'
+    + '<button class="btn primary" id="modal-inline-ok">Valider</button>'
+    + '<button class="btn" id="modal-inline-cancel">Annuler</button>'
+    + '</div></div>';
+  document.body.appendChild(overlay);
+  var input = overlay.querySelector('#modal-inline-prompt');
+  input.value = (defaultValue!=null ? String(defaultValue) : '');
+  input.focus();
+  input.select();
+  function cleanup(){ document.body.removeChild(overlay); }
+  overlay.querySelector('#modal-inline-ok').onclick = function(){
+    var v = input.value;
+    cleanup();
+    callback(v);
+  };
+  overlay.querySelector('#modal-inline-cancel').onclick = function(){
+    cleanup();
+    callback(null);
+  };
+  overlay.addEventListener('click', function(e){ if(e.target===overlay){ cleanup(); callback(null); } });
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ overlay.querySelector('#modal-inline-ok').click(); }
+  });
 }
 
 // === §4.4 • Export / Import ===================================
@@ -798,13 +841,17 @@ function confirmPieceChoice(){
   var qualif = (document.getElementById('piece-qualif').value || '').trim();
   var etage  = document.getElementById('piece-etage').value;
   if(!sel) return;
-  var base = sel;
-  if(sel==='__NEW__'){
-    base = (prompt('Nom de la pièce :','') || '').trim();
-    if(!base) return;
-  }
   var etageVal = (etage && etage!=='(aucun)') ? etage : '';
-  var key = createOrGetPiece(base, qualif, etageVal);
+  if(sel==='__NEW__'){
+    showInlinePrompt('Nom de la pièce :', '', function(base){
+      base = (base||'').trim();
+      if(!base) return;
+      var key = createOrGetPiece(base, qualif, etageVal);
+      goPiece(key);
+    });
+    return;
+  }
+  var key = createOrGetPiece(sel, qualif, etageVal);
   goPiece(key);
 }
 </script>
@@ -1065,10 +1112,15 @@ function saveSpecifique(stayHere){
 function editPieceNote(){
   ensureSection(ctx.piece);
   var cur = devis[ctx.piece].note || '';
-  var n = prompt('Note pour '+pieceDisplayLabel(ctx.piece), cur);
-  if(n!==null) devis[ctx.piece].note = n.trim();
-  saveLocal();
-  goPiece(ctx.piece);
+  var piece = ctx.piece;
+  showInlinePrompt('Note pour '+pieceDisplayLabel(piece), cur, function(n){
+    if(n!==null){
+      ensureSection(piece);
+      devis[piece].note = n.trim();
+      saveLocal();
+    }
+    goPiece(piece);
+  });
 }
 </script>
 
@@ -1390,13 +1442,29 @@ function pageTab_DisjSaveDetails(key, rating){
   const types=[...document.querySelectorAll('.dj-type')];
   const notes=[...document.querySelectorAll('.dj-note')];
   const details=[];
-  for(let i=0;i<types.length;i++){
-    let t=types[i]?.value||''; if(t==="__custom__"){ t=prompt("Nom personnalisé du circuit :","")||("Circuit "+(i+1)); }
-    const n=notes[i]?.value||''; details.push({type:t,note:n});
+  let idx=0;
+  function next(){
+    if(idx>=types.length){
+      if(!tabState.disj[rating]) tabState.disj[rating]={qty:0,details:[]};
+      tabState.disj[rating].details=details;
+      saveLocal(); pageTab_Disjoncteurs(key);
+      return;
+    }
+    const i=idx++;
+    let t=types[i]?.value||'';
+    const n=notes[i]?.value||'';
+    if(t==="__custom__"){
+      showInlinePrompt('Nom personnalisé du circuit :', '', function(v){
+        t = (v||"Circuit "+(i+1));
+        details.push({type:t,note:n});
+        next();
+      });
+    } else {
+      details.push({type:t,note:n});
+      next();
+    }
   }
-  if(!tabState.disj[rating]) tabState.disj[rating]={qty:0,details:[]};
-  tabState.disj[rating].details=details;
-  saveLocal(); pageTab_Disjoncteurs(key);
+  next();
 }
 function pageTab_DisjValider(key){
   saveDisjQtyFromUI();
@@ -1421,12 +1489,16 @@ function pageTab_DisjValider(key){
     const label=(c.label||"Calibre personnalisé").trim();
     const hasDetail=Array.isArray(c.details)&&c.details.some(d=>d&&(d.type||d.note));
     const detailText=hasDetail?' — circuits : '+c.details.map((d,i)=>(d.type||('Circuit '+(i+1)))+(d.note?(' ('+d.note+')'):'')).join(', '):'';
-    const pu=parseFloat(prompt("Prix unitaire pour « "+label+" » (€) :","0")||"0")||0;
-    devis[key].items.push({
-      category:"Tableau/Modulaire",
-      designation:`Disjoncteur ${label}${detailText}`,
-      qty:c.qty, prixU:pu, __tabKey:key
+    showInlinePrompt("Prix unitaire pour « "+label+" » (€) :", '0', function(v){
+      const pu=parseFloat(v||"0")||0;
+      devis[key].items.push({
+        category:"Tableau/Modulaire",
+        designation:`Disjoncteur ${label}${detailText}`,
+        qty:c.qty, prixU:pu, __tabKey:key
+      });
+      saveLocal(); pageTabHome(key);
     });
+    return;
   }
   saveLocal(); pageTabHome(key);
 }
@@ -3571,15 +3643,16 @@ function exportDevisToutComprisTXT(){
   alert('✅ Devis (tout compris) exporté.');
 }
 function exportDevisSepareTXT(){
-  var pct = prompt('Pourcentage MATÉRIEL (0–100) ?', '40');
-  if(pct==null) return; // annulé
-  var name = (devis.__name || 'Devis').trim() || 'Devis';
-  var blob = new Blob([buildDevisText_Separe(pct)], {type:'text/plain;charset=utf-8'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_devis_separe.txt';
-  a.click(); URL.revokeObjectURL(url);
-  alert('✅ Devis (séparé) exporté.');
+  showInlinePrompt('Pourcentage MATÉRIEL (0–100) ?', '40', function(pct){
+    if(pct==null) return; // annulé
+    var name = (devis.__name || 'Devis').trim() || 'Devis';
+    var blob = new Blob([buildDevisText_Separe(pct)], {type:'text/plain;charset=utf-8'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href = url; a.download = name.replace(/\s+/g,'_').toLowerCase()+'_devis_separe.txt';
+    a.click(); URL.revokeObjectURL(url);
+    alert('✅ Devis (séparé) exporté.');
+  });
 }
 </script>
 
