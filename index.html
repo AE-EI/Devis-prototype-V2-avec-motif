@@ -209,7 +209,7 @@ var SECTIONS_CABLE = ['0,75 mm²','1,5 mm²','2,5 mm²','6 mm²','Personnalisée
 // Désignations possibles par catégorie
 var DESIGNATIONS_PAR_CATEGORIE = {
   // <— pour Prises on ne s’en sert plus (désignation supprimée dans l’UI)
-  'Éclairage/Luminaires': ['Point de centre','Applique'],
+  'Éclairage/Luminaires': ['Point de centre','Applique','Projecteur extérieur','Projecteur extérieur avec détecteur'],
   'Éclairage/Commandes': ['Interrupteur simple','Interrupteur double'],
   'Circuit spécialisé': [
     'Four','Plaque de cuisson','Lave-linge','Lave-vaisselle',
@@ -246,6 +246,18 @@ var TARIFS_BASE = {
       'Remplacement luminaire': 30,
       'Recâblage avec remplacement luminaire': 95,
       'Recâblage sans remplacement luminaire': 65
+    },
+    'Projecteur extérieur': {
+      'Création': 110,
+      'Remplacement luminaire': 35,
+      'Recâblage avec remplacement luminaire': 100,
+      'Recâblage sans remplacement luminaire': 70
+    },
+    'Projecteur extérieur avec détecteur': {
+      'Création': 130,
+      'Remplacement luminaire': 45,
+      'Recâblage avec remplacement luminaire': 110,
+      'Recâblage sans remplacement luminaire': 80
     },
     'Interrupteur simple': {
       'Création': 50,
