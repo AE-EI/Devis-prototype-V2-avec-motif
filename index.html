@@ -86,9 +86,46 @@ window.addEventListener('error', function (e) {
       '<div class="card"><h2>Erreur JS</h2><pre>'
       + (e.message || 'Erreur inconnue')
       + '\n' + (e.filename || '') + ':' + (e.lineno || 0) + ':' + (e.colno || 0)
-      + '</pre></div>';
+      + '</pre>'
+      + '<button class="btn primary" onclick="(typeof pageMain===\'function\')?pageMain():location.reload()">⬅️ Retour à l’accueil</button>'
+      + '</div>';
   }
 });
+
+// §2.1b • Wrappers sûrs pour alert()/confirm() (indisponibles dans certains contextes PWA/standalone)
+// En cas d’échec du dialogue natif, on retombe sur un toast (alert) ou une modale inline (confirm)
+// au lieu de laisser l’exception remonter et casser toute la page (cf. §2.1).
+(function(){
+  var nativeAlert = window.alert;
+  var nativeConfirm = window.confirm;
+
+  function showToast(msg){
+    try{
+      var t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);'
+        + 'background:#111;color:#fff;padding:10px 16px;border-radius:8px;z-index:10000;'
+        + 'max-width:90vw;box-shadow:0 4px 12px rgba(0,0,0,.3);font-size:14px;';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 2500);
+    }catch(e){}
+  }
+
+  window.alert = function(msg){
+    try{ nativeAlert(msg); }
+    catch(e){ showToast(String(msg)); }
+  };
+
+  window.confirm = function(msg){
+    try{ return nativeConfirm(msg); }
+    catch(e){
+      // Dialogue natif indisponible : on ne bloque pas l’action (mieux vaut
+      // laisser l’utilisateur continuer que figer l’app sans confirmation possible).
+      showToast(String(msg));
+      return true;
+    }
+  };
+})();
 
 // §2.2 • État global & contexte courant
 var devis = {}; // contiendra aussi __id, __name, __tabCounter
