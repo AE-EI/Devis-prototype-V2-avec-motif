@@ -143,25 +143,20 @@ function euro(n){ return (+(n||0)).toFixed(2) + ' €'; }
 function view(html, noFooter){
   if(!noFooter){
     html += '<div class="row" style="margin-top:16px; gap:12px;">'
-          + b('⬅️ Accueil','confirmBackHome()','btn back')
+          + b('⬅️ Menu principal','goMenuPrincipal()','btn back')
           + b('💾 Sauvegarder devis','saveCurrentDevis()','btn primary')
           + '</div>';
   }
   $app().innerHTML = html;
 }
-function confirmBackHome(){
-  var hasData = Object.keys(devis)
-    .filter(function(k){ return k.indexOf('__') !== 0; })
-    .some(function(k){
-      var s = devis[k]||{};
-      return (s.items && s.items.length>0) || (s.note && s.note.trim().length>0);
-    });
-
-  if(!hasData || confirm('Revenir au menu principal ?\n⚠️ Les modifications non sauvegardées seront perdues.')){
-    if (typeof pageMain === 'function') pageMain();
-    else $app().innerHTML = '<div class="card"><h2>Accueil</h2><p class="muted">Le chapitre Menu (4) n\'est pas encore chargé.</p></div>';
-  }
+function goMenuPrincipal(){
+  // Le devis en cours est déjà sauvegardé en continu dans le stockage local
+  // (saveLocal() après chaque action) : pas besoin de confirmation pour revenir.
+  if (typeof pageMain === 'function') pageMain();
+  else $app().innerHTML = '<div class="card"><h2>Menu principal</h2><p class="muted">Le chapitre Menu (4) n\'est pas encore chargé.</p></div>';
 }
+// Alias conservé pour compatibilité avec d’anciens appels
+function confirmBackHome(){ goMenuPrincipal(); }
 
 // §2.4 • Libellés de pièces (build/format)
 function buildPieceLabel(base, qualif, etage){
