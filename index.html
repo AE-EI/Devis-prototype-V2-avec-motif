@@ -691,6 +691,14 @@ function goPiece(key){
         var poseTxt = (it.intervention==="Création" && it.pose) ? ' — '+String(it.pose).toLowerCase() : '';
         var unitTxt = it.unit || 'u';
         var left = it.intervention ? (it.intervention+' — ') : '';
+        if(window.__editingLine && window.__editingLine.piece===key && window.__editingLine.idx===i){
+          return '<li>'
+            + left + it.designation + poseTxt + ' — '
+            + '<input id="edit-qty-'+i+'" type="number" inputmode="decimal" min="0.01" step="any" value="'+it.qty+'" style="width:80px;display:inline-block;" /> '+unitTxt+' '
+            + b('Valider','saveLineEdit('+JSON.stringify(key)+','+i+')','btn primary')
+            + b('Annuler','cancelLineEdit('+JSON.stringify(key)+')','btn')
+          +'</li>';
+        }
         return '<li>'
           + left + it.designation + poseTxt
           +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
@@ -721,15 +729,23 @@ function delLine(key, idx){
   (devis[key].items||[]).splice(idx,1); saveLocal(); goPiece(key);
 }
 function editLine(key, idx){
+  window.__editingLine = { piece:key, idx:idx };
+  goPiece(key);
+}
+function cancelLineEdit(key){
+  window.__editingLine = null;
+  goPiece(key);
+}
+function saveLineEdit(key, idx){
   var it = (devis[key].items||[])[idx];
   if(!it) return;
-  var unitTxt = it.unit || 'u';
-  var val = prompt('Nouvelle quantité pour « '+it.designation+' » ('+unitTxt+')', it.qty);
-  if(val===null) return; // annulé
+  var input = document.getElementById('edit-qty-'+idx);
+  var val = input ? input.value : '';
   var n = parseFloat(String(val).replace(',','.'));
   if(isNaN(n) || n<=0){ alert('Quantité invalide.'); return; }
   it.qty = n;
   saveLocal();
+  window.__editingLine = null;
   goPiece(key);
 }
 function removePiece(key){
