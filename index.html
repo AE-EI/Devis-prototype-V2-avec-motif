@@ -694,6 +694,7 @@ function goPiece(key){
         return '<li>'
           + left + it.designation + poseTxt
           +' ('+it.qty+' '+unitTxt+' × '+euro(it.prixU)+' = '+euro(total)+') '
+          + b('Modifier','editLine('+JSON.stringify(key)+','+i+')','btn')
           + b('×','delLine('+JSON.stringify(key)+','+i+')','btn')
         +'</li>';
       }).join('') + '</ul>'
@@ -718,6 +719,18 @@ function goPiece(key){
 
 function delLine(key, idx){
   (devis[key].items||[]).splice(idx,1); saveLocal(); goPiece(key);
+}
+function editLine(key, idx){
+  var it = (devis[key].items||[])[idx];
+  if(!it) return;
+  var unitTxt = it.unit || 'u';
+  var val = prompt('Nouvelle quantité pour « '+it.designation+' » ('+unitTxt+')', it.qty);
+  if(val===null) return; // annulé
+  var n = parseFloat(String(val).replace(',','.'));
+  if(isNaN(n) || n<=0){ alert('Quantité invalide.'); return; }
+  it.qty = n;
+  saveLocal();
+  goPiece(key);
 }
 function removePiece(key){
   if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
