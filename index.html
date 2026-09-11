@@ -1955,6 +1955,8 @@ function pageTarifsEclLuminaires(){
   var e = (TARIFS_BASE && TARIFS_BASE.eclairage) ? TARIFS_BASE.eclairage : {};
   var PDC = e['Point de centre'] || {};
   var APP = e['Applique'] || {};
+  var PROJ = e['Projecteur extérieur'] || {};
+  var PROJD = e['Projecteur extérieur avec détecteur'] || {};
   view(
     '<div class="tarif-wrap">'
     + '<div class="card tarif-card">'
@@ -1974,6 +1976,22 @@ function pageTarifsEclLuminaires(){
         + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_app_rem_lum', APP['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_app_rec_avec', APP['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
         + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_app_rec_sans', APP['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Projecteur extérieur</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('lum_proj_cre', PROJ['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_proj_rem_lum', PROJ['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_proj_rec_avec', PROJ['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_proj_rec_sans', PROJ['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+      + '</div>'
+
+      + '<h3 style="margin-top:18px;">Projecteur extérieur avec détecteur</h3>'
+      + '<div class="tarif-grid">'
+        + '<div class="field"><label>Création</label>'+_numInput('lum_projd_cre', PROJD['Création'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Remplacement luminaire</label>'+_numInput('lum_projd_rem_lum', PROJD['Remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage avec remplacement luminaire</label>'+_numInput('lum_projd_rec_avec', PROJD['Recâblage avec remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
+        + '<div class="field"><label>Recâblage sans remplacement luminaire</label>'+_numInput('lum_projd_rec_sans', PROJD['Recâblage sans remplacement luminaire'])+'<small>Tarif unitaire</small></div>'
       + '</div>'
 
       + '<div class="tarif-actions">'
@@ -1998,6 +2016,18 @@ function saveTarifsEclLuminaires(){
           'Remplacement luminaire': _tfVal('lum_app_rem_lum'),
           'Recâblage avec remplacement luminaire': _tfVal('lum_app_rec_avec'),
           'Recâblage sans remplacement luminaire': _tfVal('lum_app_rec_sans')
+        },
+        'Projecteur extérieur': {
+          'Création': _tfVal('lum_proj_cre'),
+          'Remplacement luminaire': _tfVal('lum_proj_rem_lum'),
+          'Recâblage avec remplacement luminaire': _tfVal('lum_proj_rec_avec'),
+          'Recâblage sans remplacement luminaire': _tfVal('lum_proj_rec_sans')
+        },
+        'Projecteur extérieur avec détecteur': {
+          'Création': _tfVal('lum_projd_cre'),
+          'Remplacement luminaire': _tfVal('lum_projd_rem_lum'),
+          'Recâblage avec remplacement luminaire': _tfVal('lum_projd_rec_avec'),
+          'Recâblage sans remplacement luminaire': _tfVal('lum_projd_rec_sans')
         }
       }
     }
