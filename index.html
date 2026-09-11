@@ -148,11 +148,40 @@ function view(html, noFooter){
   }
   $app().innerHTML = html;
 }
-function goMenuPrincipal(){
-  // Le devis en cours est déjà sauvegardé en continu dans le stockage local
-  // (saveLocal() après chaque action) : pas besoin de confirmation pour revenir.
+function _goToMainMenu(){
   if (typeof pageMain === 'function') pageMain();
   else $app().innerHTML = '<div class="card"><h2>Menu principal</h2><p class="muted">Le chapitre Menu (4) n\'est pas encore chargé.</p></div>';
+}
+/** Le devis en cours a-t-il du contenu qui ne correspond à aucune sauvegarde nommée existante ? */
+function isDevisUnsaved(){
+  var hasData = Object.keys(devis)
+    .filter(function(k){ return k.indexOf('__') !== 0; })
+    .some(function(k){
+      var s = devis[k]||{};
+      return (s.items && s.items.length>0) || (s.note && s.note.trim().length>0);
+    });
+  if(!hasData) return false;
+  if(typeof getSavedList !== 'function') return true; // chapitre 4 pas encore chargé : prudence
+  var saved = getSavedList();
+  var rec = saved.find(function(d){ return d.data && d.data.__id === devis.__id; });
+  if(!rec) return true; // jamais sauvegardé
+  try{ return JSON.stringify(rec.data) !== JSON.stringify(devis); } // modifié depuis la dernière sauvegarde
+  catch(e){ return true; }
+}
+function goMenuPrincipal(){
+  if(isDevisUnsaved()){
+    showInlineChoice('Ce devis n’est pas sauvegardé.\nVoulez-vous le sauvegarder avant de revenir au menu principal ?', [
+      { label:'💾 Sauvegarder', value:'save', cls:'btn primary' },
+      { label:'Continuer sans sauvegarder', value:'discard', cls:'btn' },
+      { label:'Annuler', value:'cancel', cls:'btn' }
+    ], function(choice){
+      if(choice === 'save'){ saveCurrentDevis(_goToMainMenu); }
+      else if(choice === 'discard'){ _goToMainMenu(); }
+      // 'cancel' : on reste sur la page actuelle
+    });
+    return;
+  }
+  _goToMainMenu();
 }
 // Alias conservé pour compatibilité avec d’anciens appels
 function confirmBackHome(){ goMenuPrincipal(); }
@@ -524,7 +553,7 @@ function deleteDevis(idx){
 }
 
 // === §4.3 • Sauvegarde complète (+ backup automatique) ========
-function saveCurrentDevis(){
+function saveCurrentDevis(afterSave){
   ensureId();
   var saved = getSavedList();
 
@@ -536,13 +565,13 @@ function saveCurrentDevis(){
   if(i < 0 && !name){
     showNamePromptModal('Nom du devis :', function(chosenName){
       if(!chosenName){ alert('Sauvegarde annulée.'); return; }
-      _finishSaveCurrentDevis(chosenName);
+      _finishSaveCurrentDevis(chosenName, afterSave);
     });
     return;
   }
-  _finishSaveCurrentDevis(name);
+  _finishSaveCurrentDevis(name, afterSave);
 }
-function _finishSaveCurrentDevis(name){
+function _finishSaveCurrentDevis(name, afterSave){
   var saved = getSavedList();
   var i = saved.findIndex(function(d){ return d.data && d.data.__id === devis.__id; });
   devis.__name = name || (saved[i]?.name) || ('Devis '+new Date().toLocaleDateString());
@@ -551,7 +580,7 @@ function _finishSaveCurrentDevis(name){
 
   if(i >= 0){
     saved[i] = record;
-    _commitSaveCurrentDevis(saved);
+    _commitSaveCurrentDevis(saved, afterSave);
     return;
   }
   // Dédoublonnage par nom (évite 2 entrées strictement homonymes)
@@ -560,17 +589,18 @@ function _finishSaveCurrentDevis(name){
     showInlineConfirm('Un devis « '+devis.__name+' » existe déjà. L\'écraser ?', function(ok){
       if(!ok) return;
       saved[j] = record;
-      _commitSaveCurrentDevis(saved);
+      _commitSaveCurrentDevis(saved, afterSave);
     });
     return;
   }
   saved.push(record);
-  _commitSaveCurrentDevis(saved);
+  _commitSaveCurrentDevis(saved, afterSave);
 }
-function _commitSaveCurrentDevis(saved){
+function _commitSaveCurrentDevis(saved, afterSave){
   setSavedList(saved);
   makeSavedBackup(saved);
   showToast('✅ Devis sauvegardé.');
+  if(typeof afterSave === 'function') afterSave();
 }
 
 /** Petite modale inline (remplace prompt(), indisponible en PWA standalone iOS) */
@@ -638,6 +668,30 @@ function showInlineConfirm(message, callback){
   }
   overlay.querySelector('#modal-confirm-ok').onclick = function(){ finish(true); };
   overlay.querySelector('#modal-confirm-cancel').onclick = function(){ finish(false); };
+}
+
+/** Modale à choix multiples. buttons: [{label, value, cls}], callback(value) */
+function showInlineChoice(message, buttons, callback){
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var btnsHtml = buttons.map(function(btn, i){
+    return '<button class="'+(btn.cls||'btn')+'" data-choice-idx="'+i+'">'+btn.label+'</button>';
+  }).join('');
+  overlay.innerHTML = '<div class="card" style="max-width:400px;width:100%;background:#fff;">'
+    + '<p style="margin-top:0;white-space:pre-wrap;">'+message+'</p>'
+    + '<div class="row" style="margin-top:12px; gap:8px; flex-wrap:wrap;">'+btnsHtml+'</div></div>';
+  document.body.appendChild(overlay);
+  var done = false;
+  function cleanup(){ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+  function finish(v){
+    if(done) return;
+    done = true;
+    cleanup();
+    callback(v);
+  }
+  buttons.forEach(function(btn, i){
+    overlay.querySelector('[data-choice-idx="'+i+'"]').onclick = function(){ finish(btn.value); };
+  });
 }
 
 // === §4.4 • Export / Import ===================================
