@@ -95,21 +95,20 @@ window.addEventListener('error', function (e) {
 // §2.1b • Wrappers sûrs pour alert()/confirm() (indisponibles dans certains contextes PWA/standalone)
 // En cas d’échec du dialogue natif, on retombe sur un toast (alert) ou une modale inline (confirm)
 // au lieu de laisser l’exception remonter et casser toute la page (cf. §2.1).
+function showToast(msg){
+  try{
+    var t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);'
+      + 'background:#111;color:#fff;padding:10px 16px;border-radius:8px;z-index:10000;'
+      + 'max-width:90vw;box-shadow:0 4px 12px rgba(0,0,0,.3);font-size:14px;';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 2500);
+  }catch(e){}
+}
 (function(){
   var nativeAlert = window.alert;
   var nativeConfirm = window.confirm;
-
-  function showToast(msg){
-    try{
-      var t = document.createElement('div');
-      t.textContent = msg;
-      t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);'
-        + 'background:#111;color:#fff;padding:10px 16px;border-radius:8px;z-index:10000;'
-        + 'max-width:90vw;box-shadow:0 4px 12px rgba(0,0,0,.3);font-size:14px;';
-      document.body.appendChild(t);
-      setTimeout(function(){ t.remove(); }, 2500);
-    }catch(e){}
-  }
 
   window.alert = function(msg){
     try{ nativeAlert(msg); }
@@ -514,12 +513,14 @@ function loadDevis(idx){
 }
 
 function deleteDevis(idx){
-  if(!confirm('Supprimer ce devis sauvegardé ?')) return;
-  var saved = getSavedList();
-  saved.splice(idx,1);
-  setSavedList(saved);
-  makeSavedBackup(saved);
-  pageSavedDevis();
+  showInlineConfirm('Supprimer ce devis sauvegardé ?', function(ok){
+    if(!ok) return;
+    var saved = getSavedList();
+    saved.splice(idx,1);
+    setSavedList(saved);
+    makeSavedBackup(saved);
+    pageSavedDevis();
+  });
 }
 
 // === §4.3 • Sauvegarde complète (+ backup automatique) ========
@@ -550,20 +551,26 @@ function _finishSaveCurrentDevis(name){
 
   if(i >= 0){
     saved[i] = record;
-  } else {
-    // Dédoublonnage par nom (évite 2 entrées strictement homonymes)
-    var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === devis.__name.toLowerCase(); });
-    if(j >= 0){
-      if(!confirm('Un devis « '+devis.__name+' » existe déjà. L\'écraser ?')) return;
-      saved[j] = record;
-    } else {
-      saved.push(record);
-    }
+    _commitSaveCurrentDevis(saved);
+    return;
   }
-
+  // Dédoublonnage par nom (évite 2 entrées strictement homonymes)
+  var j = saved.findIndex(function(d){ return (d.name||'').toLowerCase() === devis.__name.toLowerCase(); });
+  if(j >= 0){
+    showInlineConfirm('Un devis « '+devis.__name+' » existe déjà. L\'écraser ?', function(ok){
+      if(!ok) return;
+      saved[j] = record;
+      _commitSaveCurrentDevis(saved);
+    });
+    return;
+  }
+  saved.push(record);
+  _commitSaveCurrentDevis(saved);
+}
+function _commitSaveCurrentDevis(saved){
   setSavedList(saved);
   makeSavedBackup(saved);
-  alert('✅ Devis sauvegardé.');
+  showToast('✅ Devis sauvegardé.');
 }
 
 /** Petite modale inline (remplace prompt(), indisponible en PWA standalone iOS) */
@@ -575,30 +582,62 @@ function showInlinePrompt(label, defaultValue, callback){
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
   overlay.innerHTML = '<div class="card" style="max-width:400px;width:100%;background:#fff;">'
     + '<h3 style="margin-top:0;">'+label+'</h3>'
+    + '<form id="modal-inline-form">'
     + '<input id="modal-inline-prompt" />'
     + '<div class="row" style="margin-top:12px; gap:8px;">'
-    + '<button class="btn primary" id="modal-inline-ok">Valider</button>'
-    + '<button class="btn" id="modal-inline-cancel">Annuler</button>'
-    + '</div></div>';
+    + '<button type="submit" class="btn primary" id="modal-inline-ok">Valider</button>'
+    + '<button type="button" class="btn" id="modal-inline-cancel">Annuler</button>'
+    + '</div></form></div>';
   document.body.appendChild(overlay);
   var input = overlay.querySelector('#modal-inline-prompt');
+  var form  = overlay.querySelector('#modal-inline-form');
   input.value = (defaultValue!=null ? String(defaultValue) : '');
   input.focus();
   input.select();
-  function cleanup(){ document.body.removeChild(overlay); }
-  overlay.querySelector('#modal-inline-ok').onclick = function(){
-    var v = input.value;
+  var done = false;
+  function cleanup(){ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+  function finish(v){
+    if(done) return; // évite un double-callback (submit + click)
+    done = true;
     cleanup();
     callback(v);
-  };
-  overlay.querySelector('#modal-inline-cancel').onclick = function(){
-    cleanup();
-    callback(null);
-  };
-  overlay.addEventListener('click', function(e){ if(e.target===overlay){ cleanup(); callback(null); } });
-  input.addEventListener('keydown', function(e){
-    if(e.key === 'Enter'){ overlay.querySelector('#modal-inline-ok').click(); }
+  }
+  // Le bouton "Valider" (submit) capte de façon fiable la touche Entrée / le
+  // bouton "OK"/"Terminé" du clavier virtuel mobile, contrairement à un
+  // simple listener keydown qui n'est pas toujours déclenché sur mobile.
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    finish(input.value);
   });
+  overlay.querySelector('#modal-inline-cancel').onclick = function(){
+    finish(null);
+  };
+  // Pas d'annulation au clic en dehors de la carte : sur mobile, taper à
+  // côté pour fermer le clavier annulait la saisie sans avertissement.
+}
+
+/** Confirmation inline (remplace confirm(), qui sur certains appareils
+    renvoie silencieusement "false" sans rien afficher — cf. showInlinePrompt) */
+function showInlineConfirm(message, callback){
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = '<div class="card" style="max-width:400px;width:100%;background:#fff;">'
+    + '<p style="margin-top:0;white-space:pre-wrap;">'+message+'</p>'
+    + '<div class="row" style="margin-top:12px; gap:8px;">'
+    + '<button class="btn primary" id="modal-confirm-ok">Confirmer</button>'
+    + '<button class="btn" id="modal-confirm-cancel">Annuler</button>'
+    + '</div></div>';
+  document.body.appendChild(overlay);
+  var done = false;
+  function cleanup(){ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+  function finish(v){
+    if(done) return;
+    done = true;
+    cleanup();
+    callback(v);
+  }
+  overlay.querySelector('#modal-confirm-ok').onclick = function(){ finish(true); };
+  overlay.querySelector('#modal-confirm-cancel').onclick = function(){ finish(false); };
 }
 
 // === §4.4 • Export / Import ===================================
@@ -666,9 +705,9 @@ function recoverSavedIfEmpty(){
   if(saved && saved.length) return; // rien à faire
   var backup = readJSON(STORE_KEYS.backup, null);
   if(backup && Array.isArray(backup.saved) && backup.saved.length){
-    if(confirm('Aucune sauvegarde active trouvée, mais une copie de secours est disponible. Restaurer ?')){
-      setSavedList(backup.saved);
-    }
+    showInlineConfirm('Aucune sauvegarde active trouvée, mais une copie de secours est disponible. Restaurer ?', function(ok){
+      if(ok) setSavedList(backup.saved);
+    });
   }
 }
 
@@ -836,9 +875,9 @@ function saveLineEdit(key, idx){
   goPiece(key);
 }
 function removePiece(key){
-  if(confirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?')){
-    delete devis[key]; saveLocal(); pageHome();
-  }
+  showInlineConfirm('Supprimer la pièce « '+pieceDisplayLabel(key)+' » et toutes ses lignes ?', function(ok){
+    if(ok){ delete devis[key]; saveLocal(); pageHome(); }
+  });
 }
 </script>
 
@@ -1696,8 +1735,10 @@ function saveVentName(key){
   saveLocal(); pageVentHome(key);
 }
 function ventDelete(key){
-  if(!confirm('Supprimer « '+key+' » ?')) return;
-  delete devis[key]; saveLocal(); pageVentAccueil();
+  showInlineConfirm('Supprimer « '+key+' » ?', function(ok){
+    if(!ok) return;
+    delete devis[key]; saveLocal(); pageVentAccueil();
+  });
 }
 
 function pageVentHome(key){
@@ -2447,10 +2488,12 @@ function saveTarifsPersoJSON(){
 }
 
 function resetTarifsPersoJSON(){
-  if(!confirm('Réinitialiser toutes les personnalisations JSON ?')) return;
-  localStorage.removeItem(CUSTOM_SCHEMA_KEY);
-  // recharger les listes runtime (on repart sur le tronc)
-  location.reload();
+  showInlineConfirm('Réinitialiser toutes les personnalisations JSON ?', function(ok){
+    if(!ok) return;
+    localStorage.removeItem(CUSTOM_SCHEMA_KEY);
+    // recharger les listes runtime (on repart sur le tronc)
+    location.reload();
+  });
 }
 
 function exportTarifsPersoJSON(){
@@ -4634,11 +4677,13 @@ function cat13Import(){
   input.click();
 }
 function cat13Reset(){
-  if(!confirm('Réinitialiser le catalogue aux valeurs par défaut ?')) return;
-  localStorage.removeItem(KEY_CATALOG13);
-  applyCatalogToApp();
-  alert('✅ Catalogue réinitialisé.');
-  pageCatalogue();
+  showInlineConfirm('Réinitialiser le catalogue aux valeurs par défaut ?', function(ok){
+    if(!ok) return;
+    localStorage.removeItem(KEY_CATALOG13);
+    applyCatalogToApp();
+    alert('✅ Catalogue réinitialisé.');
+    pageCatalogue();
+  });
 }
 
 /* ============================================================
